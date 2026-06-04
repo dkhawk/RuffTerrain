@@ -153,6 +153,17 @@ export class Map3DController {
     this.currentTrackMarker.position = { lat: center.lat, lng: center.lng, altitude: 50 };
     this.currentTrackMarker.extruded = true;
     this.currentTrackMarker.drawsWhenOccluded = true;
+
+    const cursorTemplate = document.createElement('template');
+    const cursorDot = document.createElement('div');
+    cursorDot.style.width = "24px";
+    cursorDot.style.height = "24px";
+    cursorDot.style.backgroundColor = "#ffeb3b";
+    cursorDot.style.borderRadius = "50%";
+    cursorDot.style.border = "4px solid #1e293b";
+    cursorDot.style.boxShadow = "0 4px 8px rgba(0,0,0,0.8)";
+    cursorTemplate.content.appendChild(cursorDot);
+    this.currentTrackMarker.appendChild(cursorTemplate);
   }
 
   /**
