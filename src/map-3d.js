@@ -149,9 +149,10 @@ export class Map3DController {
 
     // Create the scrubbing cursor marker (interactive 3D pin)
     this.currentTrackMarker = document.createElement('gmp-marker-3d');
-    this.currentTrackMarker.position = { lat: center.lat, lng: center.lng, altitude: 15 };
     this.currentTrackMarker.altitudeMode = "RELATIVE_TO_GROUND";
-    this.currentTrackMarker.extrude = false;
+    this.currentTrackMarker.position = { lat: center.lat, lng: center.lng, altitude: 50 };
+    this.currentTrackMarker.extruded = true;
+    this.currentTrackMarker.drawsWhenOccluded = true;
   }
 
   /**
@@ -404,7 +405,7 @@ export class Map3DController {
 
     // Add scrubbing tracker cursor
     if (this.currentTrackMarker) {
-      this.currentTrackMarker.position = { lat: startPt.lat, lng: startPt.lon, altitude: 15 };
+      this.currentTrackMarker.position = { lat: startPt.lat, lng: startPt.lon, altitude: 50 };
       this.map.append(this.currentTrackMarker);
     }
   }
@@ -416,7 +417,7 @@ export class Map3DController {
     const poly = document.createElement('gmp-polyline-3d');
     poly.strokeColor = strokeColor;
     poly.strokeWidth = 6;
-    poly.altitudeMode = "RELATIVE_TO_GROUND";
+    poly.altitudeMode = "CLAMP_TO_GROUND";
     poly.coordinates = coordinates;
     this.map.append(poly);
     this.polylines.push(poly);
@@ -433,7 +434,7 @@ export class Map3DController {
     if (!pt) return;
 
     if (this.currentTrackMarker) {
-      this.currentTrackMarker.position = { lat: pt.lat, lng: pt.lon, altitude: 15 };
+      this.currentTrackMarker.position = { lat: pt.lat, lng: pt.lon, altitude: 50 };
     }
 
     this.currentCameraLat = pt.lat;

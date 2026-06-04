@@ -883,8 +883,7 @@ hr {
 }
 
 .warning-item.rejected {
-  opacity: 0.45;
-  border-left-color: var(--text-muted);
+  display: none;
 }
 
 .warning-text {
