@@ -392,8 +392,7 @@ export class Map3DController {
         altitudeMode: "RELATIVE_TO_GROUND",
         extruded: true,
         drawsWhenOccluded: true,
-        label: wpt.name,
-        interactive: true
+        label: wpt.name
       });
       marker.interactive = true;
 
