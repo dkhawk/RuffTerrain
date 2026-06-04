@@ -391,24 +391,12 @@ export class Map3DController {
 
     // Add Waypoints
     route.waypoints.forEach((wpt) => {
-      // Create a simple styled SVG dot matching the cursor dot structure exactly
-      const sym = (wpt.sym || "").toLowerCase();
-      const name = (wpt.name || "").toLowerCase();
-      let color = "#ffeb3b"; // Yellow
-      if (name === "start" || sym.includes("start")) {
-        color = "#4ade80"; // Green
-      } else if (name === "finish" || sym.includes("finish")) {
-        color = "#f87171"; // Red
-      }
-
-      const dot = createSvgDot(color, 24);
-
       const marker = new this.AdvancedMarkerElement({
         position: { lat: wpt.lat, lng: wpt.lon },
         title: wpt.name,
         gmpClickable: true,
         gmpDraggable: !this.isEditLocked,
-        content: dot
+        content: createWaypointSvg(wpt)
       });
 
       // Add click popover details
@@ -619,4 +607,81 @@ export class Map3DController {
       durationMillis: 1500
     });
   }
+}
+
+/**
+ * Generates a premium custom vector SVG node representing the type of waypoint.
+ * Supports Start, Finish, First Aid/Medical, Water, Food/Aid Station, and Default markers.
+ * @param {Object} wpt Waypoint details
+ * @returns {SVGElement} SVG DOM node
+ */
+function createWaypointSvg(wpt) {
+  const sym = (wpt.sym || "").toLowerCase();
+  const name = (wpt.name || "").toLowerCase();
+  const station = wpt.extensions?.station;
+  const services = station?.services || {};
+
+  let type = "waypoint"; // Default
+
+  if (name === "start" || sym.includes("start")) {
+    type = "start";
+  } else if (name === "finish" || sym.includes("finish") || sym.includes("checkered")) {
+    type = "finish";
+  } else if (services.medical || sym.includes("medical") || sym.includes("first aid") || sym.includes("hospital") || sym.includes("aid")) {
+    type = "medical";
+  } else if (services.food || services.hot_food || sym.includes("food") || sym.includes("restaurant")) {
+    type = "food";
+  } else if (services.water || services.unmanaged_water || sym.includes("water") || sym.includes("drop") || sym.includes("spring")) {
+    type = "water";
+  } else if (station?.type === "aid-station" || sym.includes("station") || sym.includes("aid")) {
+    type = "aid-station";
+  }
+
+  const width = 36;
+  const height = 36;
+
+  let bg = "#ffb834"; // default orange-yellow
+  let icon = "";
+
+  if (type === "start") {
+    bg = "#10b981"; // Emerald Green
+    icon = `<path d="M15 12l9 6-9 6z" fill="white" />`;
+  } else if (type === "finish") {
+    bg = "#ef4444"; // Red
+    icon = `
+      <path d="M12 10h12v10H12z" fill="white" />
+      <path d="M12 10h3v3h-3zm6 0h3v3h-3zm-3 3h3v3h-3zm6 0h3v3h-3zm-6 3h3v3h-3zm6 0h3v3h-3z" fill="black" />
+      <path d="M11 9h1v18h-1z" fill="white" />
+    `;
+  } else if (type === "medical") {
+    bg = "#f43f5e"; // Rose Red
+    icon = `<path d="M16 11h4v5h5v4h-5v5h-4v-5h-5v-4h5z" fill="white" />`;
+  } else if (type === "food" || type === "aid-station") {
+    bg = "#8b5cf6"; // Royal Purple
+    icon = `
+      <path d="M12 11v6h2v-6h-2zm3-2v8h1.5v-8H15zm4 2v6h2v-6h-2zm-8-3h11a1 1 0 0 1 1 1v12a2 2 0 0 1-2 2H11a2 2 0 0 1-2-2V10a1 1 0 0 1 1-1z" fill="none" stroke="white" stroke-width="2" />
+      <path d="M13 13v4m5-4v4" stroke="white" stroke-width="1.5" stroke-linecap="round" />
+    `;
+  } else if (type === "water") {
+    bg = "#06b6d4"; // Cyan
+    icon = `<path d="M18 11c0 0-5 5.5-5 8.5a5 5 0 0 0 10 0c0-3-5-8.5-5-8.5z" fill="white" />`;
+  } else {
+    bg = "#3b82f6"; // Blue
+    icon = `<circle cx="18" cy="18" r="4.5" fill="white" />`;
+  }
+
+  const svgString = `
+    <svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}" viewBox="0 0 36 36">
+      <defs>
+        <filter id="marker-shadow" x="-20%" y="-20%" width="140%" height="140%">
+          <feDropShadow dx="0" dy="3" stdDeviation="3" flood-color="#000000" flood-opacity="0.4"/>
+        </filter>
+      </defs>
+      <circle cx="18" cy="18" r="14" fill="${bg}" stroke="#ffffff" stroke-width="2.5" filter="url(#marker-shadow)" />
+      ${icon}
+    </svg>
+  `;
+
+  const parser = new DOMParser();
+  return parser.parseFromString(svgString, "image/svg+xml").documentElement;
 }
