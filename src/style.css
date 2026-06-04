@@ -871,11 +871,15 @@ hr {
 }
 
 .warning-item.climb {
-  border-left-color: var(--primary-color);
+  border-left-color: var(--warning);
 }
 
 .warning-item.desert {
-  border-left-color: #3ea4ff;
+  border-left-color: var(--danger);
+}
+
+.warning-item.spatial-mismatch {
+  border-left-color: var(--secondary);
 }
 
 .warning-item.rejected {

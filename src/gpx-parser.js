@@ -245,8 +245,8 @@ export function parseGPX(gpxText) {
  * Modifies the route object directly by populating `route.warnings`.
  * @param {Object} route The parsed route object
  */
-export function calculateWarnings(route) {
-  const warnings = [];
+export function calculateWarnings(route, extraWarnings = []) {
+  const warnings = [...extraWarnings];
   const trackpoints = route.trackpoints;
   if (!trackpoints || trackpoints.length === 0) return;
 
@@ -533,6 +533,7 @@ export function reconcileCourse(route, extractionPayload, nominalDistanceM = nul
 
   const stations = extractionPayload.stations || [];
   const updatedWaypoints = [...route.waypoints];
+  const spatialWarnings = [];
 
   stations.forEach((station) => {
     const stationId = station.id;
@@ -566,6 +567,17 @@ export function reconcileCourse(route, extractionPayload, nominalDistanceM = nul
       lat = overrideLat;
       lon = overrideLon;
       useExactOverride = true;
+
+      if (minSpatialDist > 2000) {
+        spatialWarnings.push({
+          id: `spatial-mismatch-${stationId}`,
+          type: "SPATIAL_MISMATCH",
+          message: `Spatial Mismatch: Station "${name}" coordinate override is ${(minSpatialDist / 1000).toFixed(1)}km from the nearest trackpoint.`,
+          startDist: trackpoints[closestIdx].dist_m,
+          endDist: trackpoints[closestIdx].dist_m,
+          approved: true,
+        });
+      }
     } else {
       // Heuristic: check if turnaround
       let isTurnaround = false;
@@ -664,7 +676,7 @@ export function reconcileCourse(route, extractionPayload, nominalDistanceM = nul
   route.waypoints = updatedWaypoints;
   
   // Recalculate warnings because adding resources resolves resource deserts
-  calculateWarnings(route);
+  calculateWarnings(route, spatialWarnings);
 }
 
 /**
