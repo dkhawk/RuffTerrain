@@ -147,23 +147,7 @@ export class Map3DController {
       }
     });
 
-    // Create the scrubbing cursor marker (interactive 3D pin)
-    this.currentTrackMarker = document.createElement('gmp-marker-3d');
-    this.currentTrackMarker.altitudeMode = "RELATIVE_TO_GROUND";
-    this.currentTrackMarker.position = { lat: center.lat, lng: center.lng, altitude: 50 };
-    this.currentTrackMarker.extruded = true;
-    this.currentTrackMarker.drawsWhenOccluded = true;
-
-    const cursorTemplate = document.createElement('template');
-    const cursorDot = document.createElement('div');
-    cursorDot.style.width = "24px";
-    cursorDot.style.height = "24px";
-    cursorDot.style.backgroundColor = "#ffeb3b";
-    cursorDot.style.borderRadius = "50%";
-    cursorDot.style.border = "4px solid #1e293b";
-    cursorDot.style.boxShadow = "0 4px 8px rgba(0,0,0,0.8)";
-    cursorTemplate.content.appendChild(cursorDot);
-    this.currentTrackMarker.appendChild(cursorTemplate);
+    this.currentTrackMarker = null;
   }
 
   /**
@@ -216,9 +200,14 @@ export class Map3DController {
     });
     this.markers = [];
 
-    try {
-      this.map.removeChild(this.currentTrackMarker);
-    } catch (e) {}
+    if (this.currentTrackMarker) {
+      try {
+        this.map.removeChild(this.currentTrackMarker);
+      } catch (e) {
+        this.currentTrackMarker.remove();
+      }
+      this.currentTrackMarker = null;
+    }
   }
 
   /**
@@ -414,11 +403,26 @@ export class Map3DController {
       this.markers.push(marker);
     });
 
-    // Add scrubbing tracker cursor
-    if (this.currentTrackMarker) {
-      this.currentTrackMarker.position = { lat: startPt.lat, lng: startPt.lon, altitude: 50 };
-      this.map.append(this.currentTrackMarker);
-    }
+    // Create scrubbing tracker cursor
+    this.currentTrackMarker = document.createElement('gmp-marker-3d');
+    this.currentTrackMarker.altitudeMode = "RELATIVE_TO_GROUND";
+    this.currentTrackMarker.position = { lat: startPt.lat, lng: startPt.lon, altitude: 50 };
+    this.currentTrackMarker.extruded = true;
+    this.currentTrackMarker.drawsWhenOccluded = true;
+
+    // Add a highly visible template for the cursor
+    const cursorTemplate = document.createElement('template');
+    const cursorDot = document.createElement('div');
+    cursorDot.style.width = "24px";
+    cursorDot.style.height = "24px";
+    cursorDot.style.backgroundColor = "#ffeb3b"; // Bright yellow
+    cursorDot.style.borderRadius = "50%";
+    cursorDot.style.border = "4px solid #1e293b";
+    cursorDot.style.boxShadow = "0 4px 8px rgba(0,0,0,0.8)";
+    cursorTemplate.content.appendChild(cursorDot);
+    this.currentTrackMarker.appendChild(cursorTemplate);
+
+    this.map.append(this.currentTrackMarker);
   }
 
   /**
