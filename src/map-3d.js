@@ -371,72 +371,25 @@ export class Map3DController {
         label: wpt.name
       });
 
-      const wrapper = document.createElement("div");
-      wrapper.className = "marker-wrapper";
-      wrapper.style.width = "34px";
-      wrapper.style.height = "34px";
-      wrapper.style.borderRadius = "50%";
-      wrapper.style.background = "rgba(15, 23, 42, 0.85)";
-      wrapper.style.border = "2px solid rgba(56, 189, 248, 0.65)";
-      wrapper.style.boxShadow = "0 6px 12px rgba(0, 0, 0, 0.6)";
-      wrapper.style.display = "flex";
-      wrapper.style.alignItems = "center";
-      wrapper.style.justifyContent = "center";
-      wrapper.style.fontSize = "16px";
-      wrapper.style.color = "#fff";
-      wrapper.style.cursor = "pointer";
-      wrapper.style.transition = "transform 0.2s ease, border-color 0.2s ease";
-
-      let emoji = "📍";
+      // Create a simple styled dot matching the cursor dot structure exactly
+      const dot = document.createElement('div');
+      dot.style.width = "24px";
+      dot.style.height = "24px";
+      
       const sym = (wpt.sym || "").toLowerCase();
       const name = (wpt.name || "").toLowerCase();
-
       if (name === "start" || sym.includes("start")) {
-        emoji = "🛫";
-        wrapper.style.borderColor = "rgba(74, 222, 128, 0.8)";
+        dot.style.backgroundColor = "#4ade80"; // Green
       } else if (name === "finish" || sym.includes("finish")) {
-        emoji = "🏁";
-        wrapper.style.borderColor = "rgba(248, 113, 113, 0.8)";
-      } else if (sym.includes("aid") || name.includes("aid") || name.includes("station")) {
-        emoji = "🩹";
-        wrapper.style.borderColor = "rgba(251, 146, 60, 0.8)";
-      } else if (sym.includes("water") || name.includes("water") || name.includes("spring") || name.includes("creek")) {
-        emoji = "💧";
-        wrapper.style.borderColor = "rgba(56, 189, 248, 0.8)";
-      } else if (sym.includes("scenic") || name.includes("scenic") || name.includes("overlook") || name.includes("view")) {
-        emoji = "👁️";
-        wrapper.style.borderColor = "rgba(168, 85, 247, 0.8)";
-      } else if (sym.includes("campground") || name.includes("campground") || name.includes("camp")) {
-        emoji = "⛺";
-        wrapper.style.borderColor = "rgba(250, 204, 21, 0.8)";
-      } else if (sym.includes("refuge") || name.includes("refuge") || name.includes("shelter")) {
-        emoji = "🛖";
-        wrapper.style.borderColor = "rgba(45, 212, 191, 0.8)";
-      } else if (sym.includes("summit") || name.includes("summit") || name.includes("peak") || name.includes("pass")) {
-        emoji = "🏔️";
-        wrapper.style.borderColor = "rgba(226, 232, 240, 0.8)";
+        dot.style.backgroundColor = "#f87171"; // Red
       } else {
-        emoji = "📍";
+        dot.style.backgroundColor = "#ffeb3b"; // Yellow
       }
 
-      const emojiSpan = document.createElement("span");
-      emojiSpan.textContent = emoji;
-      wrapper.appendChild(emojiSpan);
-
-      // Boundary detection for edge cutoffs
-      if (wpt.name.toLowerCase() === "start" || route.waypoints.indexOf(wpt) === 0) {
-        wrapper.classList.add("edge-left");
-      } else if (wpt.name.toLowerCase() === "finish" || route.waypoints.indexOf(wpt) === route.waypoints.length - 1) {
-        wrapper.classList.add("edge-right");
-      }
-
-      // Hover Pane
-      const tooltip = document.createElement("div");
-      tooltip.className = "marker-tooltip";
-      tooltip.textContent = wpt.name;
-      wrapper.appendChild(tooltip);
-
-      marker.appendChild(wrapper);
+      dot.style.borderRadius = "50%";
+      dot.style.border = "4px solid #1e293b";
+      dot.style.boxShadow = "0 4px 8px rgba(0,0,0,0.8)";
+      marker.appendChild(dot);
 
       // Add click popover details
       marker.addEventListener("gmp-click", () => {
