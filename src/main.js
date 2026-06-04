@@ -72,6 +72,7 @@ let isPlaying = false;
 let lastPausedPoiIndex = -1; // Prevents getting stuck in a loop at the same POI trackpoint
 let lastPausedPoiId = null;  // Prevents getting stuck in a loop at the same POI
 let autoResumeTimeout = null; // Handles the timer for auto-continuing the preview
+let isEditingPoiLocation = false; // Manages the edit location mode of the active POI
 
 // ==========================================
 // DOM ELEMENT REFERENCES
@@ -150,6 +151,10 @@ const poiDialogCloseBottom = document.getElementById("poi-dialog-close-bottom");
 const poiTimelinePassesList = document.getElementById("poi-timeline-passes-list");
 const poiServicesIconsRow = document.getElementById("poi-services-icons-row");
 const poiTableRows = document.getElementById("poi-table-rows");
+const poiDialogEditBtn = document.getElementById("poi-dialog-edit-btn");
+const poiEditModeSelector = document.getElementById("poi-edit-mode-selector");
+const poiEditModeSnap = document.getElementById("poi-edit-mode-snap");
+const poiEditModeFree = document.getElementById("poi-edit-mode-free");
 
 // Bottom elevation scrubber & preview control sliders
 const cardElevationScrubber = document.getElementById("card-elevation-scrubber");
@@ -220,32 +225,24 @@ document.addEventListener("DOMContentLoaded", () => {
     if (!activeRoute) return;
     const targetWpt = activeRoute.waypoints.find(w => w.name === wpt.name && w.lat === wpt.lat && w.lon === wpt.lon);
     if (targetWpt) {
-      // Find closest trackpoint on the route path for elevation and distance snap
-      let minVal = Infinity;
-      let closestIdx = 0;
-      activeRoute.trackpoints.forEach((pt, idx) => {
-        const d = Math.hypot(pt.lat - newPosition.lat, pt.lon - newPosition.lng);
-        if (d < minVal) {
-          minVal = d;
-          closestIdx = idx;
-        }
-      });
-
       const shouldSnap = dragSnapCheckbox ? dragSnapCheckbox.checked : true;
-      if (shouldSnap) {
-        const snappedPt = activeRoute.trackpoints[closestIdx];
-        targetWpt.lat = snappedPt.lat;
-        targetWpt.lon = snappedPt.lon;
-        targetWpt.ele = snappedPt.ele;
-        targetWpt.dist_m = snappedPt.dist_m;
+      const snapped = snapToRouteSegments(activeRoute, newPosition);
+      
+      if (shouldSnap && snapped) {
+        targetWpt.lat = snapped.lat;
+        targetWpt.lon = snapped.lon;
+        targetWpt.ele = snapped.ele;
+        targetWpt.dist_m = snapped.dist_m;
+        targetWpt.closestTrackpointIndex = snapped.closestTrackpointIndex;
       } else {
         targetWpt.lat = newPosition.lat;
         targetWpt.lon = newPosition.lng;
-        targetWpt.ele = activeRoute.trackpoints[closestIdx].ele; // Snap elevation to path at closest point
-        targetWpt.dist_m = activeRoute.trackpoints[closestIdx].dist_m;
+        if (snapped) {
+          targetWpt.ele = snapped.ele;
+          targetWpt.dist_m = snapped.dist_m;
+          targetWpt.closestTrackpointIndex = snapped.closestTrackpointIndex;
+        }
       }
-      
-      targetWpt.closestTrackpointIndex = closestIdx;
 
       // Update related stats & UIs
       updateRouteStatsUI(activeRoute);
@@ -256,8 +253,97 @@ document.addEventListener("DOMContentLoaded", () => {
 
       // Redraw map elements to sync marker locations exactly
       mapController.drawRoute(activeRoute, climbColorsCheckbox.checked);
+
+      // If we are currently showing details of this waypoint, refresh the dialog content
+      if (poiDetailDialog && !poiDetailDialog.classList.contains("hidden") && poiValName.textContent === targetWpt.name) {
+        showPoiDetailDialog(targetWpt, targetWpt.closestTrackpointIndex);
+      }
     }
   };
+
+  /**
+   * Projects a point onto the closest line segment of the route trackpoints.
+   * Returns snapped coordinates, interpolated elevation, and distance along course.
+   * @param {Object} route Active route
+   * @param {Object} pos Target coordinate {lat, lng}
+   * @returns {Object} Snapped details
+   */
+  function snapToRouteSegments(route, pos) {
+    const pts = route.trackpoints;
+    if (!pts || pts.length === 0) return null;
+    if (pts.length === 1) {
+      return {
+        lat: pts[0].lat,
+        lon: pts[0].lon,
+        ele: pts[0].ele,
+        dist_m: pts[0].dist_m,
+        closestTrackpointIndex: 0
+      };
+    }
+
+    let minSqDist = Infinity;
+    let bestLat = pts[0].lat;
+    let bestLon = pts[0].lon;
+    let bestEle = pts[0].ele;
+    let bestDist = pts[0].dist_m;
+    let bestIdx = 0;
+
+    const latToMeters = 111320; // Meters per degree latitude
+
+    for (let i = 0; i < pts.length - 1; i++) {
+      const A = pts[i];
+      const B = pts[i + 1];
+
+      // Flat latitude scaling projection approximation
+      const cosLat = Math.cos((A.lat + B.lat) * Math.PI / 360);
+      
+      const ax = A.lon * cosLat;
+      const ay = A.lat;
+      const bx = B.lon * cosLat;
+      const by = B.lat;
+      const px = pos.lng * cosLat;
+      const py = pos.lat;
+
+      const vx = bx - ax;
+      const vy = by - ay;
+      const wx = px - ax;
+      const wy = py - ay;
+
+      const lensq = vx * vx + vy * vy;
+      let t = 0;
+      if (lensq > 0) {
+        t = (wx * vx + wy * vy) / lensq;
+        t = Math.max(0, Math.min(1, t));
+      }
+
+      const cx = ax + t * vx;
+      const cy = ay + t * vy;
+
+      const projLon = cx / cosLat;
+      const projLat = cy;
+
+      const dx = (px - cx) * latToMeters;
+      const dy = (py - cy) * latToMeters;
+      const sqDist = dx * dx + dy * dy;
+
+      if (sqDist < minSqDist) {
+        minSqDist = sqDist;
+        bestLat = projLat;
+        bestLon = projLon;
+        bestEle = A.ele + t * (B.ele - A.ele);
+        bestDist = A.dist_m + t * (B.dist_m - A.dist_m);
+        bestIdx = i;
+      }
+    }
+
+    return {
+      lat: bestLat,
+      lon: bestLon,
+      ele: bestEle,
+      dist_m: bestDist,
+      closestTrackpointIndex: bestIdx
+    };
+  }
 
   // Initialize dynamic canvas-based elevation chart profile scrubber
   elevationChart = new ElevationChart(elevationCanvas, (index, isClick) => {
@@ -1048,6 +1134,20 @@ function showPoiDetailDialog(wpt, index) {
  * @param {boolean} resumePlayback Start playback loop
  */
 function closePoiDetailDialog(resumePlayback = false) {
+  if (isEditingPoiLocation) {
+    isEditingPoiLocation = false;
+    if (poiDialogEditBtn) {
+      poiDialogEditBtn.textContent = "✏️ Edit Location";
+      poiDialogEditBtn.style.backgroundColor = "var(--primary-color)";
+    }
+    if (poiEditModeSelector) {
+      poiEditModeSelector.classList.add("hidden");
+    }
+    if (mapController) {
+      mapController.setEditLock(true);
+    }
+  }
+
   if (poiDetailDialog) {
     poiDetailDialog.classList.add("hidden");
   }
@@ -1821,6 +1921,73 @@ function setupEventListeners() {
   poiDialogCloseBottom.addEventListener("click", () => {
     closePoiDetailDialog(true);
   });
+
+  // Edit Location Button Handler
+  if (poiDialogEditBtn) {
+    poiDialogEditBtn.addEventListener("click", () => {
+      if (!isEditingPoiLocation) {
+        // Enter Edit Mode
+        isEditingPoiLocation = true;
+        poiDialogEditBtn.textContent = "💾 Save Position";
+        poiDialogEditBtn.style.backgroundColor = "#10b981"; // Emerald Green
+        if (poiEditModeSelector) {
+          poiEditModeSelector.classList.remove("hidden");
+        }
+        
+        // Sync active state from current preference
+        const isSnap = dragSnapCheckbox ? dragSnapCheckbox.checked : true;
+        if (isSnap) {
+          poiEditModeSnap.classList.add("active");
+          poiEditModeFree.classList.remove("active");
+        } else {
+          poiEditModeFree.classList.add("active");
+          poiEditModeSnap.classList.remove("active");
+        }
+
+        if (mapController) {
+          mapController.setEditLock(false); // unlock draggable markers
+        }
+        showToast("Edit mode enabled. Drag the marker on the map to relocate it.");
+      } else {
+        // Exit/Save Edit Mode
+        isEditingPoiLocation = false;
+        poiDialogEditBtn.textContent = "✏️ Edit Location";
+        poiDialogEditBtn.style.backgroundColor = "var(--primary-color)";
+        if (poiEditModeSelector) {
+          poiEditModeSelector.classList.add("hidden");
+        }
+        if (mapController) {
+          mapController.setEditLock(true); // lock markers
+        }
+        showToast("Position saved successfully.");
+        saveActiveRouteState();
+      }
+    });
+  }
+
+  // Snap to Course Pill Toggle
+  if (poiEditModeSnap) {
+    poiEditModeSnap.addEventListener("click", () => {
+      poiEditModeSnap.classList.add("active");
+      poiEditModeFree.classList.remove("active");
+      if (dragSnapCheckbox) {
+        dragSnapCheckbox.checked = true;
+      }
+      localStorage.setItem("pref_drag_snap", "true");
+    });
+  }
+
+  // Free Drag Pill Toggle
+  if (poiEditModeFree) {
+    poiEditModeFree.addEventListener("click", () => {
+      poiEditModeFree.classList.add("active");
+      poiEditModeSnap.classList.remove("active");
+      if (dragSnapCheckbox) {
+        dragSnapCheckbox.checked = false;
+      }
+      localStorage.setItem("pref_drag_snap", "false");
+    });
+  }
 
   // Listen to waypoint markers clicks from 3D Satellite Map
   window.addEventListener("waypoint-click", (e) => {

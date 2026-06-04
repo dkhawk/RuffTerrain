@@ -340,9 +340,22 @@
               <!-- Render table rows dynamically -->
             </tbody>
           </table>
+        <!-- Relocation mode selector (hidden by default) -->
+        <div id="poi-edit-mode-selector" class="hidden" style="display: flex; flex-direction: column; gap: 6px; padding: 10px; border-radius: 6px; background: rgba(255,255,255,0.03); border: 1px dashed rgba(255,255,255,0.1); margin-top: 12px; margin-bottom: 8px;">
+          <span style="font-size: 11px; font-weight: bold; color: var(--text-secondary); text-transform: uppercase; letter-spacing: 0.5px;">Relocation Mode:</span>
+          <div style="display: flex; gap: 6px;">
+            <button id="poi-edit-mode-snap" class="btn btn-sm btn-secondary flex-grow-1 active" style="font-size: 11px; padding: 6px 10px;">🔗 Snap to Course</button>
+            <button id="poi-edit-mode-free" class="btn btn-sm btn-secondary flex-grow-1" style="font-size: 11px; padding: 6px 10px;">🌐 Free Drag</button>
+          </div>
+          <span style="font-size: 10px; color: var(--text-secondary); line-height: 1.3; margin-top: 2px;">
+            💡 <em>Drag the marker on the 3D map to relocate it.</em>
+          </span>
         </div>
 
-        <button id="poi-dialog-close-bottom" class="btn btn-secondary w-100 mt-3">Close Info & Resume</button>
+        <div class="poi-edit-controls-row mt-3" style="display: flex; gap: 8px;">
+          <button id="poi-dialog-edit-btn" class="btn btn-primary flex-grow-1" style="font-size: 13px; font-weight: bold; background-color: var(--primary-color);">✏️ Edit Location</button>
+          <button id="poi-dialog-close-bottom" class="btn btn-secondary flex-grow-1" style="font-size: 13px;">Close Info & Resume</button>
+        </div>
       </div>
     </section>
 
