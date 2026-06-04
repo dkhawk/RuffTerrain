@@ -150,7 +150,9 @@ export class Map3DController {
     testDot.style.borderRadius = "50%";
     testDot.style.border = "4px solid #1e293b";
     testDot.style.boxShadow = "0 4px 8px rgba(0,0,0,0.8)";
-    staticMarker.appendChild(testDot);
+    const template = document.createElement('template');
+    template.content.appendChild(testDot);
+    staticMarker.appendChild(template);
 
     this.map.append(staticMarker);
 
@@ -408,7 +410,10 @@ export class Map3DController {
       dot.style.borderRadius = "50%";
       dot.style.border = "4px solid #1e293b";
       dot.style.boxShadow = "0 4px 8px rgba(0,0,0,0.8)";
-      marker.appendChild(dot);
+      
+      const template = document.createElement('template');
+      template.content.appendChild(dot);
+      marker.appendChild(template);
 
       // Add click popover details
       marker.addEventListener("gmp-click", () => {
@@ -444,7 +449,10 @@ export class Map3DController {
     cursorDot.style.borderRadius = "50%";
     cursorDot.style.border = "4px solid #1e293b";
     cursorDot.style.boxShadow = "0 4px 8px rgba(0,0,0,0.8)";
-    this.currentTrackMarker.appendChild(cursorDot);
+    
+    const template = document.createElement('template');
+    template.content.appendChild(cursorDot);
+    this.currentTrackMarker.appendChild(template);
 
     this.map.append(this.currentTrackMarker);
   }
@@ -458,7 +466,7 @@ export class Map3DController {
       strokeColor: strokeColor,
       strokeWidth: 6,
       altitudeMode: "CLAMP_TO_GROUND",
-      coordinates: coordinates
+      path: coordinates
     });
     this.map.append(poly);
     this.polylines.push(poly);
@@ -573,7 +581,7 @@ export class Map3DController {
       strokeColor: strokeColor,
       strokeWidth: 14,
       altitudeMode: "CLAMP_TO_GROUND",
-      coordinates: warnPts.map(pt => ({ lat: pt.lat, lng: pt.lon, altitude: 10 }))
+      path: warnPts.map(pt => ({ lat: pt.lat, lng: pt.lon, altitude: 10 }))
     });
     
     this.map.append(this.activeWarningPolyline);
