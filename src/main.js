@@ -127,6 +127,7 @@ const warningsCount = document.getElementById("warnings-count");
 const warningsList = document.getElementById("warnings-list");
 const toggleWarningsBtn = document.getElementById("toggle-warnings-btn");
 const closeWarningsBtn = document.getElementById("close-warnings-btn");
+const regenerateWarningsBtn = document.getElementById("regenerate-warnings-btn");
 
 // Collapsible POI Detail Dialog Panel
 const poiDetailDialog = document.getElementById("poi-detail-dialog");
@@ -1231,6 +1232,17 @@ function setupEventListeners() {
     closeWarningsBtn.addEventListener("click", () => {
       cardWarnings.classList.add("hidden");
       toggleWarningsBtn.classList.remove("hidden");
+    });
+  }
+
+  if (regenerateWarningsBtn) {
+    regenerateWarningsBtn.addEventListener("click", () => {
+      if (!activeRoute) return;
+      const spatialWarnings = activeRoute.warnings ? activeRoute.warnings.filter(w => w.type === "SPATIAL_MISMATCH") : [];
+      calculateWarnings(activeRoute, spatialWarnings, units);
+      renderWarningsUI(activeRoute);
+      elevationChart.draw();
+      showToast("Warnings regenerated.");
     });
   }
 
