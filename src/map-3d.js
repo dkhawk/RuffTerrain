@@ -236,19 +236,38 @@ export class Map3DController {
 
     const centerLat = (minLat + maxLat) / 2;
     const centerLon = (minLon + maxLon) / 2;
+    const latDiff = maxLat - minLat;
+    const lngDiff = maxLon - minLon;
 
-    // Approximate the distance of the bounding box diagonal using Haversine
-    const R = 6371000;
-    const dLat = (maxLat - minLat) * Math.PI / 180;
-    const dLon = (maxLon - minLon) * Math.PI / 180;
-    const a = Math.sin(dLat/2) * Math.sin(dLat/2) +
-              Math.cos(minLat * Math.PI / 180) * Math.cos(maxLat * Math.PI / 180) *
-              Math.sin(dLon/2) * Math.sin(dLon/2);
-    const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
-    const distM = R * c;
+    // Convert degree differences to physical meters
+    const H = latDiff * 111000;
+    const W = lngDiff * 111000 * Math.cos(centerLat * Math.PI / 180);
+
+    let mapWidth = window.innerWidth;
+    let mapHeight = window.innerHeight;
+    if (this.map) {
+      const rect = this.map.getBoundingClientRect();
+      if (rect.width && rect.height) {
+        mapWidth = rect.width;
+        mapHeight = rect.height;
+      }
+    }
+
+    // 3D Camera FOV vertical constant (safely calibrated to 30 degrees)
+    const tanHalfFov = Math.tan((30 / 2) * Math.PI / 180);
+    
+    // Required camera range to fit height vertically
+    const rangeH = H / (2 * tanHalfFov);
+    
+    // Required camera range to fit width horizontally
+    const aspectRatio = mapWidth / mapHeight;
+    const rangeW = W / (2 * tanHalfFov * aspectRatio);
+    
+    // Select largest bounding dimension constraint and add a 50% safety padding margin
+    const idealRange = Math.max(5000, Math.max(rangeH, rangeW) * 1.5);
 
     this.map.center = { lat: centerLat, lng: centerLon, altitude: 0 };
-    this.map.range = Math.max(1000, distM * 1.15); // Add padding
+    this.map.range = idealRange;
     this.map.tilt = 0; // Look straight down
     this.map.heading = 0; // North up
 
