@@ -99,6 +99,7 @@ const dropZone = document.getElementById("drop-zone");
 const fileSelector = document.getElementById("file-selector");
 const loadLeadvilleDemo = document.getElementById("load-leadville-demo");
 const editLockCheckbox = document.getElementById("edit-lock-checkbox");
+const dragSnapCheckbox = document.getElementById("drag-snap-checkbox");
 
 const cardGeminiChat = document.getElementById("card-gemini-chat");
 const chatMessages = document.getElementById("chat-messages");
@@ -173,6 +174,8 @@ const mapsApiKeyInput = document.getElementById("maps-api-key");
 const geminiApiKeyInput = document.getElementById("gemini-api-key");
 const settingsUnits = document.getElementById("settings-units");
 const settingsPauseTime = document.getElementById("settings-pause-time");
+const settingsTurnDamping = document.getElementById("settings-turn-damping");
+const turnDampingVal = document.getElementById("turn-damping-val");
 const recentCoursesList = document.getElementById("recent-courses-list");
 const saveSettingsBtn = document.getElementById("save-settings-btn");
 
@@ -216,22 +219,32 @@ document.addEventListener("DOMContentLoaded", () => {
     if (!activeRoute) return;
     const targetWpt = activeRoute.waypoints.find(w => w.name === wpt.name && w.lat === wpt.lat && w.lon === wpt.lon);
     if (targetWpt) {
-      targetWpt.lat = newPosition.lat;
-      targetWpt.lon = newPosition.lng;
-
-      // Snap the waypoint to the closest trackpoint on the route path
+      // Find closest trackpoint on the route path for elevation and distance snap
       let minVal = Infinity;
       let closestIdx = 0;
       activeRoute.trackpoints.forEach((pt, idx) => {
-        const d = Math.hypot(pt.lat - targetWpt.lat, pt.lon - targetWpt.lon);
+        const d = Math.hypot(pt.lat - newPosition.lat, pt.lon - newPosition.lng);
         if (d < minVal) {
           minVal = d;
           closestIdx = idx;
         }
       });
+
+      const shouldSnap = dragSnapCheckbox ? dragSnapCheckbox.checked : true;
+      if (shouldSnap) {
+        const snappedPt = activeRoute.trackpoints[closestIdx];
+        targetWpt.lat = snappedPt.lat;
+        targetWpt.lon = snappedPt.lon;
+        targetWpt.ele = snappedPt.ele;
+        targetWpt.dist_m = snappedPt.dist_m;
+      } else {
+        targetWpt.lat = newPosition.lat;
+        targetWpt.lon = newPosition.lng;
+        targetWpt.ele = activeRoute.trackpoints[closestIdx].ele; // Snap elevation to path at closest point
+        targetWpt.dist_m = activeRoute.trackpoints[closestIdx].dist_m;
+      }
+      
       targetWpt.closestTrackpointIndex = closestIdx;
-      targetWpt.dist_m = activeRoute.trackpoints[closestIdx].dist_m;
-      targetWpt.ele = activeRoute.trackpoints[closestIdx].ele;
 
       // Update related stats & UIs
       updateRouteStatsUI(activeRoute);
@@ -239,6 +252,9 @@ document.addEventListener("DOMContentLoaded", () => {
 
       showToast(`Updated location for: ${wpt.name}`);
       saveActiveRouteState();
+
+      // Redraw map elements to sync marker locations exactly
+      mapController.drawRoute(activeRoute, climbColorsCheckbox.checked);
     }
   };
 
@@ -345,6 +361,26 @@ function loadPreferences() {
     const isLocked = savedEditLock === "true";
     editLockCheckbox.checked = isLocked;
     toggleEditLock(isLocked);
+  }
+
+  const savedDragSnap = localStorage.getItem("pref_drag_snap");
+  if (savedDragSnap) {
+    const isChecked = savedDragSnap === "true";
+    if (dragSnapCheckbox) dragSnapCheckbox.checked = isChecked;
+  } else {
+    if (dragSnapCheckbox) dragSnapCheckbox.checked = true;
+    localStorage.setItem("pref_drag_snap", "true");
+  }
+
+  const savedTurnDamping = localStorage.getItem("pref_turn_damping");
+  if (savedTurnDamping) {
+    if (settingsTurnDamping) settingsTurnDamping.value = savedTurnDamping;
+    if (turnDampingVal) turnDampingVal.textContent = `${savedTurnDamping}%`;
+    if (mapController) mapController.turnRateFactor = (101 - parseInt(savedTurnDamping)) / 1000;
+  } else {
+    if (settingsTurnDamping) settingsTurnDamping.value = "86";
+    if (turnDampingVal) turnDampingVal.textContent = "86%";
+    if (mapController) mapController.turnRateFactor = 0.015;
   }
 }
 
@@ -981,8 +1017,8 @@ function showPoiDetailDialog(wpt, index) {
     poiTableRows.appendChild(tr);
   }
 
-  // Start in collapsed state matching aesthetics requirements
-  poiDetailDialog.classList.add("collapsed");
+  // Start in expanded state so user immediately sees all details
+  poiDetailDialog.classList.remove("collapsed");
   poiDetailDialog.classList.remove("hidden");
 
   // Setup auto-resume timeout (skip if settings pauseTime is set to 0)
@@ -1435,6 +1471,12 @@ function setupEventListeners() {
     units = settingsUnits.value;
     pauseDuration = parseInt(settingsPauseTime.value) || 0;
 
+    const turnDampingValue = settingsTurnDamping.value;
+    localStorage.setItem("pref_turn_damping", turnDampingValue);
+    if (mapController) {
+      mapController.turnRateFactor = (101 - parseInt(turnDampingValue)) / 1000;
+    }
+
     localStorage.setItem("gmaps_api_key", apiKeyMaps);
     localStorage.setItem("gemini_api_key", apiKeyGemini);
     localStorage.setItem("settings_units", units);
@@ -1498,6 +1540,14 @@ function setupEventListeners() {
     toggleEditLock(e.target.checked);
     showToast(e.target.checked ? "Edits locked." : "Edits unlocked.");
   });
+
+  // Waypoint Dragging snapping toggle listener
+  if (dragSnapCheckbox) {
+    dragSnapCheckbox.addEventListener("change", (e) => {
+      localStorage.setItem("pref_drag_snap", e.target.checked);
+      showToast(e.target.checked ? "Waypoint snapping enabled." : "Waypoint free drag enabled.");
+    });
+  }
 
   // Load Leadville Demo Course
   loadLeadvilleDemo.addEventListener("click", async () => {
@@ -1699,6 +1749,14 @@ function setupEventListeners() {
       }
     }
   });
+
+  // Camera Rotation Turn Damping Slider Listener
+  if (settingsTurnDamping) {
+    settingsTurnDamping.addEventListener("input", (e) => {
+      const val = e.target.value;
+      if (turnDampingVal) turnDampingVal.textContent = `${val}%`;
+    });
+  }
 
   // Color Coding Climbs polyline toggle
   climbColorsCheckbox.addEventListener("change", (e) => {

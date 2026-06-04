@@ -118,6 +118,7 @@ export class Map3DController {
     this.cameraTilt = 65;
     this.colorCodeClimbs = false;
     this.isEditLocked = true;
+    this.turnRateFactor = 0.015;
 
     // Simulation State
     this.currentCameraLat = 0;
@@ -157,21 +158,6 @@ export class Map3DController {
     this.map.style.display = "block";
 
     this.container.appendChild(this.map);
-
-    // Create a simple, static test marker at the center coordinates
-    const staticMarker = new this.Marker3DElement({
-      position: { lat: center.lat, lng: center.lng, altitude: 10 },
-      altitudeMode: "RELATIVE_TO_GROUND",
-      extruded: true,
-      label: "Center Test Marker"
-    });
-
-    const testDot = createSvgDot("#ff4e4e", 24);
-    const template = document.createElement('template');
-    template.content.appendChild(testDot);
-    staticMarker.appendChild(template);
-
-    this.map.append(staticMarker);
 
     // Setup Event Listeners for camera/orientation change to drive the compass
     this.map.addEventListener("gmp-headingchange", () => {
@@ -540,7 +526,7 @@ export class Map3DController {
     this.currentCameraAltitude += (pt.ele - this.currentCameraAltitude) * 0.05;
 
     // Heavily damp the turn rate
-    this.currentCameraHeading = slerpHeading(this.currentCameraHeading, targetHeading, 0.015);
+    this.currentCameraHeading = slerpHeading(this.currentCameraHeading, targetHeading, this.turnRateFactor);
 
     this.map.center = { lat: this.currentCameraLat, lng: this.currentCameraLng, altitude: this.currentCameraAltitude };
     this.map.range = this.cameraRange;
