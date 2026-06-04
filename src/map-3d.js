@@ -141,9 +141,11 @@ export class Map3DController {
     this.container.innerHTML = ""; // Clear loader message
 
     const { Map3DElement, Marker3DElement, Polyline3DElement } = await google.maps.importLibrary("maps3d");
+    const { AdvancedMarkerElement } = await google.maps.importLibrary("marker");
     this.Map3DElement = Map3DElement;
     this.Marker3DElement = Marker3DElement;
     this.Polyline3DElement = Polyline3DElement;
+    this.AdvancedMarkerElement = AdvancedMarkerElement;
 
     this.map = new Map3DElement({
       center: { lat: center.lat, lng: center.lng, altitude: center.altitude + 2000 },
@@ -260,8 +262,10 @@ export class Map3DController {
     this.colorCodeClimbs = colorCodeClimbs;
 
     const { Marker3DElement, Polyline3DElement } = await google.maps.importLibrary("maps3d");
+    const { AdvancedMarkerElement } = await google.maps.importLibrary("marker");
     this.Marker3DElement = Marker3DElement;
     this.Polyline3DElement = Polyline3DElement;
+    this.AdvancedMarkerElement = AdvancedMarkerElement;
 
     const trackpoints = route.trackpoints;
     if (trackpoints.length < 2) return;
@@ -387,16 +391,6 @@ export class Map3DController {
 
     // Add Waypoints
     route.waypoints.forEach((wpt) => {
-      const marker = new this.Marker3DElement({
-        position: { lat: wpt.lat, lng: wpt.lon, altitude: 10 },
-        altitudeMode: "RELATIVE_TO_GROUND",
-        extruded: true,
-        drawsWhenOccluded: true,
-        label: wpt.name,
-        gmpClickable: true
-      });
-      marker.gmpClickable = true;
-
       // Create a simple styled SVG dot matching the cursor dot structure exactly
       const sym = (wpt.sym || "").toLowerCase();
       const name = (wpt.name || "").toLowerCase();
@@ -408,24 +402,23 @@ export class Map3DController {
       }
 
       const dot = createSvgDot(color, 24);
-      
-      const template = document.createElement('template');
-      template.content.appendChild(dot);
-      marker.appendChild(template);
+
+      const marker = new this.AdvancedMarkerElement({
+        position: { lat: wpt.lat, lng: wpt.lon },
+        title: wpt.name,
+        gmpClickable: true,
+        gmpDraggable: !this.isEditLocked,
+        content: dot
+      });
 
       // Add click popover details
-      marker.addEventListener("gmp-click", () => {
-        const event = new CustomEvent("waypoint-click", { detail: wpt });
-        window.dispatchEvent(event);
-      });
       marker.addEventListener("click", () => {
         const event = new CustomEvent("waypoint-click", { detail: wpt });
         window.dispatchEvent(event);
       });
 
       // Draggable Editing logic
-      marker.gmpDraggable = !this.isEditLocked;
-      marker.addEventListener("gmp-dragend", () => {
+      marker.addEventListener("dragend", () => {
         if (this.onWaypointDragEnd) {
           this.onWaypointDragEnd(wpt, marker.position);
         }
@@ -437,18 +430,10 @@ export class Map3DController {
 
     // Create scrubbing tracker cursor
     const startPt = trackpoints[0];
-    this.currentTrackMarker = new this.Marker3DElement({
-      position: { lat: startPt.lat, lng: startPt.lon, altitude: 15 },
-      altitudeMode: "RELATIVE_TO_GROUND",
-      extruded: true,
-      drawsWhenOccluded: true
+    this.currentTrackMarker = new this.AdvancedMarkerElement({
+      position: { lat: startPt.lat, lng: startPt.lon },
+      content: createSvgDot("#ffeb3b", 24)
     });
-
-    const cursorDot = createSvgDot("#ffeb3b", 24);
-    
-    const template = document.createElement('template');
-    template.content.appendChild(cursorDot);
-    this.currentTrackMarker.appendChild(template);
 
     this.map.append(this.currentTrackMarker);
   }
@@ -479,7 +464,7 @@ export class Map3DController {
     if (!pt) return;
 
     if (this.currentTrackMarker) {
-      this.currentTrackMarker.position = { lat: pt.lat, lng: pt.lon, altitude: 15 };
+      this.currentTrackMarker.position = { lat: pt.lat, lng: pt.lon };
     }
 
     this.currentCameraLat = pt.lat;
