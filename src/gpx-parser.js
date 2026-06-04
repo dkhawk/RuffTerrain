@@ -41,7 +41,7 @@ export function haversine(lat1, lon1, lat2, lon2) {
  * @param {string} gpxText Raw GPX XML string
  * @returns {Object} Structured route data
  */
-export function parseGPX(gpxText) {
+export function parseGPX(gpxText, units = "imperial") {
   // Regex parsing for name, desc
   const nameMatch = gpxText.match(/<name>([\s\S]*?)<\/name>/);
   const routeName = nameMatch ? nameMatch[1].trim() : "Imported Route";
@@ -236,7 +236,7 @@ export function parseGPX(gpxText) {
     warnings: [],
   };
 
-  calculateWarnings(parsedRoute);
+  calculateWarnings(parsedRoute, [], units);
   return parsedRoute;
 }
 
@@ -245,7 +245,13 @@ export function parseGPX(gpxText) {
  * Modifies the route object directly by populating `route.warnings`.
  * @param {Object} route The parsed route object
  */
-export function calculateWarnings(route, extraWarnings = []) {
+export function calculateWarnings(route, extraWarnings = [], units = "imperial") {
+  const isImperial = units === "imperial";
+  const distMultiplier = isImperial ? 1 / 1609.344 : 1 / 1000;
+  const distName = isImperial ? "miles" : "km";
+  const elevMultiplier = isImperial ? 3.28084 : 1;
+  const elevName = isImperial ? "ft" : "m";
+
   const warnings = [...extraWarnings];
   const trackpoints = route.trackpoints;
   if (!trackpoints || trackpoints.length === 0) return;
@@ -274,7 +280,7 @@ export function calculateWarnings(route, extraWarnings = []) {
       warnings.push({
         id: "desert-start",
         type: "RESOURCE_DESERT",
-        message: `Resource Desert: No water/food for first ${(firstDist / 1609.344).toFixed(1)} miles of course.`,
+        message: `Resource Desert: No water/food for first ${(firstDist * distMultiplier).toFixed(1)} ${distName} of course.`,
         startDist: 0,
         endDist: firstDist,
         approved: true,
@@ -285,7 +291,7 @@ export function calculateWarnings(route, extraWarnings = []) {
     warnings.push({
       id: "desert-full",
       type: "RESOURCE_DESERT",
-      message: `Resource Desert: No water or aid stations configured on this ${(route.totalDistance / 1609.344).toFixed(1)} mile route!`,
+      message: `Resource Desert: No water or aid stations configured on this ${(route.totalDistance * distMultiplier).toFixed(1)} ${distName} route!`,
       startDist: 0,
       endDist: route.totalDistance,
       approved: true,
@@ -302,7 +308,7 @@ export function calculateWarnings(route, extraWarnings = []) {
       warnings.push({
         id: `desert-gap-${i}`,
         type: "RESOURCE_DESERT",
-        message: `Resource Desert: ${(gap / 1609.344).toFixed(1)} miles between "${startWpt.name}" and "${endWpt.name}".`,
+        message: `Resource Desert: ${(gap * distMultiplier).toFixed(1)} ${distName} between "${startWpt.name}" and "${endWpt.name}".`,
         startDist: startWpt.dist_m,
         endDist: endWpt.dist_m,
         approved: true,
@@ -318,7 +324,7 @@ export function calculateWarnings(route, extraWarnings = []) {
       warnings.push({
         id: "desert-end",
         type: "RESOURCE_DESERT",
-        message: `Resource Desert: No water/food for final ${(finalGap / 1609.344).toFixed(1)} miles to finish.`,
+        message: `Resource Desert: No water/food for final ${(finalGap * distMultiplier).toFixed(1)} ${distName} to finish.`,
         startDist: lastDist,
         endDist: route.totalDistance,
         approved: true,
@@ -350,12 +356,12 @@ export function calculateWarnings(route, extraWarnings = []) {
         const climbDist = tp.dist_m - trackpoints[climbStartIdx].dist_m;
         // Sustained steep climb: >800m horizontal distance or >200m vertical elevation gain
         if (climbDist >= 800 || cumulativeClimbGain >= 200) {
-          const startMi = (trackpoints[climbStartIdx].dist_m / 1609.344).toFixed(1);
-          const endMi = (tp.dist_m / 1609.344).toFixed(1);
+          const startDist = (trackpoints[climbStartIdx].dist_m * distMultiplier).toFixed(1);
+          const endDist = (tp.dist_m * distMultiplier).toFixed(1);
           warnings.push({
             id: `climb-${climbStartIdx}`,
             type: "DIFFICULT_CLIMB",
-            message: `Difficult Climb: Sustained climb from Mile ${startMi} to ${endMi} (+${Math.round(cumulativeClimbGain)}m gain).`,
+            message: `Difficult Climb: Sustained climb from ${startDist} to ${endDist} (+${Math.round(cumulativeClimbGain * elevMultiplier)}${elevName} gain).`,
             startDist: trackpoints[climbStartIdx].dist_m,
             endDist: tp.dist_m,
             approved: true,
@@ -381,12 +387,12 @@ export function calculateWarnings(route, extraWarnings = []) {
       if (exposureStartIdx !== -1) {
         const expDist = tp.dist_m - trackpoints[exposureStartIdx].dist_m;
         if (expDist >= 200) {
-          const startMi = (trackpoints[exposureStartIdx].dist_m / 1609.344).toFixed(1);
-          const endMi = (tp.dist_m / 1609.344).toFixed(1);
+          const startDist = (trackpoints[exposureStartIdx].dist_m * distMultiplier).toFixed(1);
+          const endDist = (tp.dist_m * distMultiplier).toFixed(1);
           warnings.push({
             id: `exposure-${exposureStartIdx}`,
             type: "EXPOSURE_RISK",
-            message: `Exposure Risk: Very steep slopes (>15% grade) from Mile ${startMi} to ${endMi}.`,
+            message: `Exposure Risk: Very steep slopes (>15% grade) from ${startDist} to ${endDist}.`,
             startDist: trackpoints[exposureStartIdx].dist_m,
             endDist: tp.dist_m,
             approved: true,
@@ -521,7 +527,7 @@ function findMultiPassIntersection(trackpoints, cumulativeDistances, passNominal
  * @param {Object} extractionPayload JSON containing parsed stations list
  * @param {number} nominalDistanceM Optional nominal distance of course in meters
  */
-export function reconcileCourse(route, extractionPayload, nominalDistanceM = null) {
+export function reconcileCourse(route, extractionPayload, units = "imperial", nominalDistanceM = null) {
   const trackpoints = route.trackpoints;
   const cumulativeDistances = trackpoints.map((t) => t.dist_m);
   const actualDistanceM = route.totalDistance;
@@ -569,10 +575,12 @@ export function reconcileCourse(route, extractionPayload, nominalDistanceM = nul
       useExactOverride = true;
 
       if (minSpatialDist > 2000) {
+        const distName = units === "imperial" ? "miles" : "km";
+        const distVal = units === "imperial" ? minSpatialDist / 1609.344 : minSpatialDist / 1000;
         spatialWarnings.push({
           id: `spatial-mismatch-${stationId}`,
           type: "SPATIAL_MISMATCH",
-          message: `Spatial Mismatch: Station "${name}" coordinate override is ${(minSpatialDist / 1000).toFixed(1)}km from the nearest trackpoint.`,
+          message: `Spatial Mismatch: Station "${name}" coordinate override is ${distVal.toFixed(1)} ${distName} from the nearest trackpoint.`,
           startDist: trackpoints[closestIdx].dist_m,
           endDist: trackpoints[closestIdx].dist_m,
           approved: true,
@@ -676,7 +684,7 @@ export function reconcileCourse(route, extractionPayload, nominalDistanceM = nul
   route.waypoints = updatedWaypoints;
   
   // Recalculate warnings because adding resources resolves resource deserts
-  calculateWarnings(route, spatialWarnings);
+  calculateWarnings(route, spatialWarnings, units);
 }
 
 /**

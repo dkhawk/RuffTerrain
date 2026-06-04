@@ -1245,6 +1245,8 @@ hr {
   display: flex;
   align-items: center;
   gap: 16px;
+  flex: 1;
+  justify-content: flex-end;
 }
 
 .slider-group {
@@ -1254,6 +1256,8 @@ hr {
   font-size: 10px;
   font-weight: 600;
   color: var(--text-muted);
+  flex: 1;
+  max-width: 250px;
 }
 
 .slider-group label {
@@ -1261,7 +1265,7 @@ hr {
 }
 
 .slider-group input[type="range"] {
-  width: 65px;
+  flex: 1;
   accent-color: var(--primary-color);
   height: 3px;
 }

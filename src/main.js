@@ -24,7 +24,7 @@
  * The preview controller iterates through trackpoint bearings to control camera panning and triggers contextual auto-pauses when approaching points of interest.
  */
 
-import { parseGPX, reconcileCourse, getMetricsForPoint } from "./gpx-parser.js";
+import { parseGPX, reconcileCourse, getMetricsForPoint, calculateWarnings } from "./gpx-parser.js";
 import { writeGPX } from "./gpx-writer.js";
 import { correctRouteElevations } from "./fetch-elevation.js";
 import { sendToGemini } from "./gemini-client.js";
@@ -1068,7 +1068,7 @@ function loadGpxFile(file) {
  * Sets state variables, redraws chart and map overlays, updates stats dashboards.
  */
 function processGpxContent(text, filename) {
-  activeRoute = parseGPX(text);
+  activeRoute = parseGPX(text, units);
   chatHistory = []; // Reset Gemini chatbot context on new course ingestion
   playbackIndex = 0;
   lastPausedPoiIndex = -1;
@@ -1255,6 +1255,10 @@ function setupEventListeners() {
     if (activeRoute) {
       updateRouteStatsUI(activeRoute);
       updateHUD(playbackIndex);
+      
+      const spatialWarnings = activeRoute.warnings ? activeRoute.warnings.filter(w => w.type === "SPATIAL_MISMATCH") : [];
+      calculateWarnings(activeRoute, spatialWarnings, units);
+      renderWarningsUI(activeRoute);
     }
 
     updateUnitLabels();
@@ -1348,7 +1352,7 @@ function setupEventListeners() {
       chatHistory.push(response.assistantMessage);
 
       if (response.stations && response.stations.length > 0) {
-        reconcileCourse(activeRoute, response);
+        reconcileCourse(activeRoute, response, units);
 
         mapController.drawRoute(activeRoute, climbColorsCheckbox.checked);
         elevationChart.setRoute(activeRoute);

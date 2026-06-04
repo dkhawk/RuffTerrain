@@ -225,11 +225,32 @@ export class Map3DController {
     const trackpoints = route.trackpoints;
     if (trackpoints.length < 2) return;
 
-    // Center map on starting coordinate
-    const startPt = trackpoints[0];
-    this.map.center = { lat: startPt.lat, lng: startPt.lon, altitude: startPt.ele };
-    this.map.range = this.cameraRange;
-    this.map.tilt = this.cameraTilt;
+    // Calculate bounds to show the full course overhead
+    let minLat = Infinity, maxLat = -Infinity, minLon = Infinity, maxLon = -Infinity;
+    trackpoints.forEach(pt => {
+      if (pt.lat < minLat) minLat = pt.lat;
+      if (pt.lat > maxLat) maxLat = pt.lat;
+      if (pt.lon < minLon) minLon = pt.lon;
+      if (pt.lon > maxLon) maxLon = pt.lon;
+    });
+
+    const centerLat = (minLat + maxLat) / 2;
+    const centerLon = (minLon + maxLon) / 2;
+
+    // Approximate the distance of the bounding box diagonal using Haversine
+    const R = 6371000;
+    const dLat = (maxLat - minLat) * Math.PI / 180;
+    const dLon = (maxLon - minLon) * Math.PI / 180;
+    const a = Math.sin(dLat/2) * Math.sin(dLat/2) +
+              Math.cos(minLat * Math.PI / 180) * Math.cos(maxLat * Math.PI / 180) *
+              Math.sin(dLon/2) * Math.sin(dLon/2);
+    const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+    const distM = R * c;
+
+    this.map.center = { lat: centerLat, lng: centerLon, altitude: 0 };
+    this.map.range = Math.max(1000, distM * 1.15); // Add padding
+    this.map.tilt = 0; // Look straight down
+    this.map.heading = 0; // North up
 
     // Downsample trackpoints for 3D rendering to prevent WebGL/Browser hangs on massive files
     // 1000 points is enough for visual fidelity at the macro scale without crashing
