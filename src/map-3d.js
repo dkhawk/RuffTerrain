@@ -75,6 +75,29 @@ function slerpHeading(current, target, factor) {
 }
 
 /**
+ * Helper to generate a valid SVGElement (circle/dot) for 3D Marker templates.
+ */
+function createSvgDot(color, size = 24) {
+  const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+  svg.setAttribute("width", size);
+  svg.setAttribute("height", size);
+  svg.setAttribute("viewBox", `0 0 ${size} ${size}`);
+  svg.style.display = "block";
+  svg.style.filter = "drop-shadow(0px 4px 6px rgba(0, 0, 0, 0.6))";
+
+  const circle = document.createElementNS("http://www.w3.org/2000/svg", "circle");
+  circle.setAttribute("cx", size / 2);
+  circle.setAttribute("cy", size / 2);
+  circle.setAttribute("r", size / 2 - 4); // leaving a 4px padding/border margin
+  circle.setAttribute("fill", color);
+  circle.setAttribute("stroke", "#1e293b");
+  circle.setAttribute("stroke-width", "3");
+
+  svg.appendChild(circle);
+  return svg;
+}
+
+/**
  * Visual controller that wraps the Google Maps 3D Element.
  */
 export class Map3DController {
@@ -143,13 +166,7 @@ export class Map3DController {
       label: "Center Test Marker"
     });
 
-    const testDot = document.createElement('div');
-    testDot.style.width = "24px";
-    testDot.style.height = "24px";
-    testDot.style.backgroundColor = "#ff4e4e"; // Red
-    testDot.style.borderRadius = "50%";
-    testDot.style.border = "4px solid #1e293b";
-    testDot.style.boxShadow = "0 4px 8px rgba(0,0,0,0.8)";
+    const testDot = createSvgDot("#ff4e4e", 24);
     const template = document.createElement('template');
     template.content.appendChild(testDot);
     staticMarker.appendChild(template);
@@ -392,24 +409,17 @@ export class Map3DController {
         label: wpt.name
       });
 
-      // Create a simple styled dot matching the cursor dot structure exactly
-      const dot = document.createElement('div');
-      dot.style.width = "24px";
-      dot.style.height = "24px";
-      
+      // Create a simple styled SVG dot matching the cursor dot structure exactly
       const sym = (wpt.sym || "").toLowerCase();
       const name = (wpt.name || "").toLowerCase();
+      let color = "#ffeb3b"; // Yellow
       if (name === "start" || sym.includes("start")) {
-        dot.style.backgroundColor = "#4ade80"; // Green
+        color = "#4ade80"; // Green
       } else if (name === "finish" || sym.includes("finish")) {
-        dot.style.backgroundColor = "#f87171"; // Red
-      } else {
-        dot.style.backgroundColor = "#ffeb3b"; // Yellow
+        color = "#f87171"; // Red
       }
 
-      dot.style.borderRadius = "50%";
-      dot.style.border = "4px solid #1e293b";
-      dot.style.boxShadow = "0 4px 8px rgba(0,0,0,0.8)";
+      const dot = createSvgDot(color, 24);
       
       const template = document.createElement('template');
       template.content.appendChild(dot);
@@ -442,13 +452,7 @@ export class Map3DController {
       drawsWhenOccluded: true
     });
 
-    const cursorDot = document.createElement('div');
-    cursorDot.style.width = "24px";
-    cursorDot.style.height = "24px";
-    cursorDot.style.backgroundColor = "#ffeb3b"; // Bright yellow
-    cursorDot.style.borderRadius = "50%";
-    cursorDot.style.border = "4px solid #1e293b";
-    cursorDot.style.boxShadow = "0 4px 8px rgba(0,0,0,0.8)";
+    const cursorDot = createSvgDot("#ffeb3b", 24);
     
     const template = document.createElement('template');
     template.content.appendChild(cursorDot);
