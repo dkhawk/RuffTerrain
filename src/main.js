@@ -416,7 +416,12 @@ async function initMap3D() {
     }
   } catch (err) {
     console.error(err);
-    const loaderState = document.getElementById("map-loader-state");
+    let loaderState = document.getElementById("map-loader-state");
+    if (!loaderState) {
+      loaderState = document.createElement("div");
+      loaderState.id = "map-loader-state";
+      document.getElementById("map-container")?.appendChild(loaderState);
+    }
     loaderState.innerHTML = `
       <div class="welcome-box">
         <h2 style="color:var(--error-color)">Map Load Failed</h2>
