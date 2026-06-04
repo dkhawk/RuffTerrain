@@ -1,0 +1,18 @@
+# macOS
+.DS_Store
+
+# IDEs
+.idea/
+.vscode/
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.swp
+
+# RuffTerrain bare repo setup files
+# (Even though these are outside the worktree, we include them for safety)
+/.bare/
+/.git
+/main/
+/feature-*/
