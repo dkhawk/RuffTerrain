@@ -49,14 +49,9 @@ export function parseGPX(gpxText, units = "imperial") {
   const descMatch = gpxText.match(/<desc>([\s\S]*?)<\/desc>/);
   const routeDesc = descMatch ? descMatch[1].trim() : "No description provided.";
   
-  const trackpoints = [];
-  let totalDistance = 0;
-  let totalElevationGain = 0;
-  let totalElevationLoss = 0;
-
-  // Trackpoints
+  const rawPts = [];
   const trkptRegex = /<trkpt\s+lat="([^"]+)"\s+lon="([^"]+)">([\s\S]*?)<\/trkpt>/g;
-  let i = 0;
+  let idx = 0;
   let match;
   while ((match = trkptRegex.exec(gpxText)) !== null) {
     const lat = parseFloat(match[1]);
@@ -69,36 +64,79 @@ export function parseGPX(gpxText, units = "imperial") {
     const timeMatch = inner.match(/<time>([^<]+)<\/time>/);
     const time = timeMatch ? timeMatch[1] : null;
 
+    rawPts.push({
+      index: idx,
+      lat,
+      lon,
+      ele,
+      time,
+    });
+    idx++;
+  }
+
+  // Apply an 11-point moving average elevation smoothing pass (5 points on each side)
+  if (rawPts.length >= 3) {
+    const temp = rawPts.map(p => p.ele);
+    const windowSize = 5;
+    for (let k = 0; k < rawPts.length; k++) {
+      let sum = 0;
+      let count = 0;
+      const start = Math.max(0, k - windowSize);
+      const end = Math.min(rawPts.length - 1, k + windowSize);
+      for (let j = start; j <= end; j++) {
+        sum += temp[j];
+        count++;
+      }
+      rawPts[k].ele = sum / count;
+    }
+  }
+
+  const trackpoints = [];
+  let totalDistance = 0;
+  let totalElevationGain = 0;
+  let totalElevationLoss = 0;
+
+  for (let i = 0; i < rawPts.length; i++) {
+    const pt = rawPts[i];
     let segmentDist = 0;
     let grade = 0;
-    
+
     if (i > 0) {
-      const prev = trackpoints[i - 1];
-      segmentDist = haversine(prev.lat, prev.lon, lat, lon);
+      const prev = rawPts[i - 1];
+      segmentDist = haversine(prev.lat, prev.lon, pt.lat, pt.lon);
       totalDistance += segmentDist;
 
-      const eleDiff = ele - prev.ele;
+      const eleDiff = pt.ele - prev.ele;
       if (eleDiff > 0) {
         totalElevationGain += eleDiff;
       } else {
         totalElevationLoss += Math.abs(eleDiff);
       }
 
-      if (segmentDist > 0.1) {
-        grade = (eleDiff / segmentDist) * 100;
+      // Calculate a stable slope grade over a 30-meter baseline to filter out GPS noise
+      let j = i - 1;
+      while (j > 0 && totalDistance - trackpoints[j].dist_m < 30) {
+        j--;
+      }
+      const basePt = trackpoints[j];
+      if (basePt) {
+        const runDist = totalDistance - basePt.dist_m;
+        const riseEle = pt.ele - basePt.ele;
+        if (runDist > 5) {
+          grade = (riseEle / runDist) * 100;
+        }
       }
     }
-    
+
     trackpoints.push({
       index: i,
-      lat,
-      lon,
-      ele,
+      lat: pt.lat,
+      lon: pt.lon,
+      ele: pt.ele,
       dist_m: totalDistance,
       grade,
-      time,
+      time: pt.time,
     });
-    i++;
   }
 
   // Waypoints
@@ -333,75 +371,96 @@ export function calculateWarnings(route, extraWarnings = [], units = "imperial")
   }
 
   // 2. DIFFICULT CLIMBS
-  // A climb is difficult if there is a sustained steep grade (>10%) for a continuous distance of over 800m.
+  // A climb is difficult if it has a high difficulty score based on elevation gain and grade.
+  let inClimb = false;
   let climbStartIdx = -1;
-  let cumulativeClimbGain = 0;
+  let maxEle = -Infinity;
+  let maxEleIdx = -1;
+  let lastPositiveGradeDist = 0;
 
   for (let i = 0; i < trackpoints.length; i++) {
     const tp = trackpoints[i];
-    
-    // Check if we are on a steep climb (> 8% grade to catch sustained climbs)
-    if (tp.grade > 8) {
-      if (climbStartIdx === -1) {
+    const grade = tp.grade;
+
+    if (!inClimb) {
+      if (grade > 3.5) {
+        inClimb = true;
         climbStartIdx = i;
-        cumulativeClimbGain = 0;
-      } else {
-        const prev = trackpoints[i - 1];
-        const gain = tp.ele - prev.ele;
-        if (gain > 0) cumulativeClimbGain += gain;
+        maxEle = tp.ele;
+        maxEleIdx = i;
+        lastPositiveGradeDist = tp.dist_m;
       }
     } else {
-      // End of climb check
-      if (climbStartIdx !== -1) {
-        const climbDist = tp.dist_m - trackpoints[climbStartIdx].dist_m;
-        // Sustained steep climb: >800m horizontal distance or >200m vertical elevation gain
-        if (climbDist >= 800 || cumulativeClimbGain >= 200) {
-          const startDist = (trackpoints[climbStartIdx].dist_m * distMultiplier).toFixed(1);
-          const endDist = (tp.dist_m * distMultiplier).toFixed(1);
-          warnings.push({
-            id: `climb-${climbStartIdx}`,
-            type: "DIFFICULT_CLIMB",
-            message: `Difficult Climb: Sustained climb from ${startDist} to ${endDist} (+${Math.round(cumulativeClimbGain * elevMultiplier)}${elevName} gain).`,
-            startDist: trackpoints[climbStartIdx].dist_m,
-            endDist: tp.dist_m,
-            approved: true,
-          });
+      // Update max elevation seen
+      if (tp.ele > maxEle) {
+        maxEle = tp.ele;
+        maxEleIdx = i;
+      }
+
+      if (grade > 3.5) {
+        lastPositiveGradeDist = tp.dist_m;
+      }
+
+      // Check termination conditions:
+      // 1. Descended more than 20 meters from max elevation seen on this climb.
+      // 2. Traveled more than 200 meters since the last time the grade was > 3.5%.
+      const descendedTooMuch = tp.ele < maxEle - 20;
+      const flatTooLong = tp.dist_m - lastPositiveGradeDist > 200;
+
+      if (descendedTooMuch || flatTooLong || i === trackpoints.length - 1) {
+        // We terminate the climb at the peak (maxEleIdx) or current point
+        const endIdx = descendedTooMuch || flatTooLong ? maxEleIdx : i;
+        const startPt = trackpoints[climbStartIdx];
+        const endPt = trackpoints[endIdx];
+        const climbDist = endPt.dist_m - startPt.dist_m;
+        const climbGain = endPt.ele - startPt.ele;
+
+        // Ensure the climb is at least a quarter mile (400 meters) and has positive gain
+        if (climbDist >= 400 && climbGain > 0) {
+          const avgGrade = (climbGain / climbDist) * 100;
+          
+          // Difficulty Score = Elevation Gain (m) * Average Grade (%)
+          const score = Math.round(climbGain * avgGrade);
+
+          // We warn about climbs with difficulty score >= 100
+          if (score >= 100) {
+            const startDist = (startPt.dist_m * distMultiplier).toFixed(1);
+            const endDist = (endPt.dist_m * distMultiplier).toFixed(1);
+            
+            // Format nice message with difficulty category
+            let difficultyLabel = "Moderate";
+            if (score > 1500) difficultyLabel = "Extreme";
+            else if (score > 600) difficultyLabel = "Severe";
+            else if (score > 250) difficultyLabel = "Difficult";
+
+            warnings.push({
+              id: `climb-${climbStartIdx}`,
+              type: "DIFFICULT_CLIMB",
+              message: `Difficult Climb (${difficultyLabel}, Score: ${score}): Climb from ${startDist} to ${endDist} ${distName} (+${Math.round(climbGain * elevMultiplier)}${elevName} gain, avg grade: ${avgGrade.toFixed(1)}%).`,
+              startDist: startPt.dist_m,
+              endDist: endPt.dist_m,
+              climbScore: score,
+              approved: true,
+            });
+          }
         }
+
+        // Reset climb tracking
+        inClimb = false;
         climbStartIdx = -1;
-      }
-    }
-  }
-
-  // 3. EXPOSURE RISKS
-  // Detect continuous sections of extremely steep slopes (> 15% grade) for at least 200m.
-  let exposureStartIdx = -1;
-  for (let i = 0; i < trackpoints.length; i++) {
-    const tp = trackpoints[i];
-    const absGrade = Math.abs(tp.grade);
-
-    if (absGrade > 15) {
-      if (exposureStartIdx === -1) {
-        exposureStartIdx = i;
-      }
-    } else {
-      if (exposureStartIdx !== -1) {
-        const expDist = tp.dist_m - trackpoints[exposureStartIdx].dist_m;
-        if (expDist >= 200) {
-          const startDist = (trackpoints[exposureStartIdx].dist_m * distMultiplier).toFixed(1);
-          const endDist = (tp.dist_m * distMultiplier).toFixed(1);
-          warnings.push({
-            id: `exposure-${exposureStartIdx}`,
-            type: "EXPOSURE_RISK",
-            message: `Exposure Risk: Very steep slopes (>15% grade) from ${startDist} to ${endDist}.`,
-            startDist: trackpoints[exposureStartIdx].dist_m,
-            endDist: tp.dist_m,
-            approved: true,
-          });
+        maxEle = -Infinity;
+        maxEleIdx = -1;
+        
+        // Retrospectively backtrack the loop if we terminated early due to descent,
+        // so we don't skip the start of a new climb starting right after the peak.
+        if (descendedTooMuch || flatTooLong) {
+          i = endIdx; // loop will increment this to endIdx + 1
         }
-        exposureStartIdx = -1;
       }
     }
   }
+
+
 
   route.warnings = warnings;
 }

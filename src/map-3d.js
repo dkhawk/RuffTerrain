@@ -88,6 +88,7 @@ export class Map3DController {
     this.markers = [];
     this.activeRoute = null;
     this.currentTrackMarker = null; // moving marker when scrubbing elevation profile
+    this.activeWarningPolyline = null;
     
     // Configurable Camera Properties
     this.cameraRange = 1500;
@@ -115,15 +116,19 @@ export class Map3DController {
   async initialize(mapsNamespace, center = { lat: 39.2508, lng: -106.2925, altitude: 3100 }) {
     this.container.innerHTML = ""; // Clear loader message
 
-    await google.maps.importLibrary("maps3d");
+    const { Map3DElement, Marker3DElement, Polyline3DElement } = await google.maps.importLibrary("maps3d");
+    this.Map3DElement = Map3DElement;
+    this.Marker3DElement = Marker3DElement;
+    this.Polyline3DElement = Polyline3DElement;
 
-    this.map = document.createElement('gmp-map-3d');
-    this.map.center = { lat: center.lat, lng: center.lng, altitude: center.altitude + 2000 };
-    this.map.range = this.cameraRange;
-    this.map.tilt = this.cameraTilt;
-    this.map.heading = 0;
+    this.map = new Map3DElement({
+      center: { lat: center.lat, lng: center.lng, altitude: center.altitude + 2000 },
+      range: this.cameraRange,
+      tilt: this.cameraTilt,
+      heading: 0,
+      mode: "HYBRID"
+    });
 
-    this.map.mode = "HYBRID"; // Show 3D building/terrain details plus label overlays
     this.map.style.width = "100%";
     this.map.style.height = "100%";
     this.map.style.display = "block";
@@ -208,6 +213,15 @@ export class Map3DController {
       }
       this.currentTrackMarker = null;
     }
+
+    if (this.activeWarningPolyline) {
+      try {
+        this.map.removeChild(this.activeWarningPolyline);
+      } catch (e) {
+        this.activeWarningPolyline.remove();
+      }
+      this.activeWarningPolyline = null;
+    }
   }
 
   /**
@@ -221,7 +235,9 @@ export class Map3DController {
     this.activeRoute = route;
     this.colorCodeClimbs = colorCodeClimbs;
 
-    await google.maps.importLibrary("maps3d");
+    const { Marker3DElement, Polyline3DElement } = await google.maps.importLibrary("maps3d");
+    this.Marker3DElement = Marker3DElement;
+    this.Polyline3DElement = Polyline3DElement;
 
     const trackpoints = route.trackpoints;
     if (trackpoints.length < 2) return;
@@ -347,27 +363,65 @@ export class Map3DController {
 
     // Add Waypoints
     route.waypoints.forEach((wpt) => {
-      const marker = document.createElement('gmp-marker-3d-interactive');
-      marker.position = { lat: wpt.lat, lng: wpt.lon, altitude: wpt.ele };
-      marker.altitudeMode = "RELATIVE_TO_GROUND";
-      marker.extruded = true;
-      marker.drawsWhenOccluded = true;
-      marker.label = wpt.name;
+      const marker = new this.Marker3DElement({
+        position: { lat: wpt.lat, lng: wpt.lon, altitude: wpt.ele },
+        altitudeMode: "RELATIVE_TO_GROUND",
+        extruded: true,
+        drawsWhenOccluded: true,
+        label: wpt.name
+      });
 
-      const iconImg = document.createElement("img");
-      let iconUrl = wpt.sym || "icons/services.svg";
-      if (!iconUrl.startsWith("/")) iconUrl = "/" + iconUrl; // normalize path
-
-      iconImg.src = iconUrl;
-      iconImg.style.width = "28px";
-      iconImg.style.height = "28px";
-      iconImg.style.filter = "drop-shadow(0px 4px 6px rgba(0, 0, 0, 0.5))";
-
-      const template = document.createElement('template');
-      
       const wrapper = document.createElement("div");
       wrapper.className = "marker-wrapper";
-      wrapper.appendChild(iconImg);
+      wrapper.style.width = "34px";
+      wrapper.style.height = "34px";
+      wrapper.style.borderRadius = "50%";
+      wrapper.style.background = "rgba(15, 23, 42, 0.85)";
+      wrapper.style.border = "2px solid rgba(56, 189, 248, 0.65)";
+      wrapper.style.boxShadow = "0 6px 12px rgba(0, 0, 0, 0.6)";
+      wrapper.style.display = "flex";
+      wrapper.style.alignItems = "center";
+      wrapper.style.justifyContent = "center";
+      wrapper.style.fontSize = "16px";
+      wrapper.style.color = "#fff";
+      wrapper.style.cursor = "pointer";
+      wrapper.style.transition = "transform 0.2s ease, border-color 0.2s ease";
+
+      let emoji = "📍";
+      const sym = (wpt.sym || "").toLowerCase();
+      const name = (wpt.name || "").toLowerCase();
+
+      if (name === "start" || sym.includes("start")) {
+        emoji = "🛫";
+        wrapper.style.borderColor = "rgba(74, 222, 128, 0.8)";
+      } else if (name === "finish" || sym.includes("finish")) {
+        emoji = "🏁";
+        wrapper.style.borderColor = "rgba(248, 113, 113, 0.8)";
+      } else if (sym.includes("aid") || name.includes("aid") || name.includes("station")) {
+        emoji = "🩹";
+        wrapper.style.borderColor = "rgba(251, 146, 60, 0.8)";
+      } else if (sym.includes("water") || name.includes("water") || name.includes("spring") || name.includes("creek")) {
+        emoji = "💧";
+        wrapper.style.borderColor = "rgba(56, 189, 248, 0.8)";
+      } else if (sym.includes("scenic") || name.includes("scenic") || name.includes("overlook") || name.includes("view")) {
+        emoji = "👁️";
+        wrapper.style.borderColor = "rgba(168, 85, 247, 0.8)";
+      } else if (sym.includes("campground") || name.includes("campground") || name.includes("camp")) {
+        emoji = "⛺";
+        wrapper.style.borderColor = "rgba(250, 204, 21, 0.8)";
+      } else if (sym.includes("refuge") || name.includes("refuge") || name.includes("shelter")) {
+        emoji = "🛖";
+        wrapper.style.borderColor = "rgba(45, 212, 191, 0.8)";
+      } else if (sym.includes("summit") || name.includes("summit") || name.includes("peak") || name.includes("pass")) {
+        emoji = "🏔️";
+        wrapper.style.borderColor = "rgba(226, 232, 240, 0.8)";
+      } else {
+        emoji = "📍";
+      }
+
+      const emojiSpan = document.createElement("span");
+      emojiSpan.textContent = emoji;
+      wrapper.appendChild(emojiSpan);
 
       // Boundary detection for edge cutoffs
       if (wpt.name.toLowerCase() === "start" || route.waypoints.indexOf(wpt) === 0) {
@@ -382,8 +436,7 @@ export class Map3DController {
       tooltip.textContent = wpt.name;
       wrapper.appendChild(tooltip);
 
-      template.content.appendChild(wrapper);
-      marker.appendChild(template);
+      marker.appendChild(wrapper);
 
       // Add click popover details
       marker.addEventListener("gmp-click", () => {
@@ -404,14 +457,14 @@ export class Map3DController {
     });
 
     // Create scrubbing tracker cursor
-    this.currentTrackMarker = document.createElement('gmp-marker-3d');
-    this.currentTrackMarker.altitudeMode = "RELATIVE_TO_GROUND";
-    this.currentTrackMarker.position = { lat: startPt.lat, lng: startPt.lon, altitude: 50 };
-    this.currentTrackMarker.extruded = true;
-    this.currentTrackMarker.drawsWhenOccluded = true;
+    const startPt = trackpoints[0];
+    this.currentTrackMarker = new this.Marker3DElement({
+      position: { lat: startPt.lat, lng: startPt.lon, altitude: 50 },
+      altitudeMode: "RELATIVE_TO_GROUND",
+      extruded: true,
+      drawsWhenOccluded: true
+    });
 
-    // Add a highly visible template for the cursor
-    const cursorTemplate = document.createElement('template');
     const cursorDot = document.createElement('div');
     cursorDot.style.width = "24px";
     cursorDot.style.height = "24px";
@@ -419,8 +472,7 @@ export class Map3DController {
     cursorDot.style.borderRadius = "50%";
     cursorDot.style.border = "4px solid #1e293b";
     cursorDot.style.boxShadow = "0 4px 8px rgba(0,0,0,0.8)";
-    cursorTemplate.content.appendChild(cursorDot);
-    this.currentTrackMarker.appendChild(cursorTemplate);
+    this.currentTrackMarker.appendChild(cursorDot);
 
     this.map.append(this.currentTrackMarker);
   }
@@ -429,11 +481,13 @@ export class Map3DController {
    * Helper to draw a single 3D polyline segment.
    */
   addPolylineSegment(coordinates, strokeColor) {
-    const poly = document.createElement('gmp-polyline-3d');
-    poly.strokeColor = strokeColor;
-    poly.strokeWidth = 6;
-    poly.altitudeMode = "CLAMP_TO_GROUND";
-    poly.coordinates = coordinates;
+    if (!this.Polyline3DElement) return;
+    const poly = new this.Polyline3DElement({
+      strokeColor: strokeColor,
+      strokeWidth: 6,
+      altitudeMode: "CLAMP_TO_GROUND",
+      coordinates: coordinates
+    });
     this.map.append(poly);
     this.polylines.push(poly);
   }
@@ -508,5 +562,100 @@ export class Map3DController {
     this.map.range = this.cameraRange;
     this.map.tilt = this.cameraTilt;
     this.map.heading = this.currentCameraHeading;
+  }
+
+  /**
+   * Highlights a safety warning segment with a thicker polyline outline on the 3D map
+   * and smoothly pans/zooms the camera to focus on it.
+   * @param {Object} warn Warning object from activeRoute.warnings
+   */
+  highlightWarning(warn) {
+    if (!this.map || !this.activeRoute) return;
+
+    // 1. Clear previous warning highlight
+    if (this.activeWarningPolyline) {
+      try {
+        this.map.removeChild(this.activeWarningPolyline);
+      } catch (e) {
+        this.activeWarningPolyline.remove();
+      }
+      this.activeWarningPolyline = null;
+    }
+
+    const trackpoints = this.activeRoute.trackpoints;
+    // Extract points within the warning range
+    const warnPts = trackpoints.filter(pt => pt.dist_m >= warn.startDist && pt.dist_m <= warn.endDist);
+    if (warnPts.length === 0) return;
+
+    // 2. Select color based on warning type
+    let strokeColor = "rgba(245, 158, 11, 0.55)"; // default Amber for Resource Deserts
+    if (warn.type === "DIFFICULT_CLIMB" || warn.type === "EXPOSURE_RISK") {
+      strokeColor = "rgba(239, 68, 68, 0.6)"; // Red for terrain hazards
+    } else if (warn.type === "SPATIAL_MISMATCH") {
+      strokeColor = "rgba(168, 85, 247, 0.6)"; // Purple for spatial mismatches
+    }
+
+    // 3. Create a thick highlight polyline
+    if (!this.Polyline3DElement) return;
+    this.activeWarningPolyline = new this.Polyline3DElement({
+      strokeColor: strokeColor,
+      strokeWidth: 14,
+      altitudeMode: "CLAMP_TO_GROUND",
+      coordinates: warnPts.map(pt => ({ lat: pt.lat, lng: pt.lon, altitude: 10 }))
+    });
+    
+    this.map.append(this.activeWarningPolyline);
+
+    // 4. Calculate bounds of the warning segment to fit the camera
+    let minLat = Infinity, maxLat = -Infinity, minLon = Infinity, maxLon = -Infinity;
+    warnPts.forEach(pt => {
+      if (pt.lat < minLat) minLat = pt.lat;
+      if (pt.lat > maxLat) maxLat = pt.lat;
+      if (pt.lon < minLon) minLon = pt.lon;
+      if (pt.lon > maxLon) maxLon = pt.lon;
+    });
+
+    const centerLat = (minLat + maxLat) / 2;
+    const centerLon = (minLon + maxLon) / 2;
+    const latDiff = maxLat - minLat;
+    const lngDiff = maxLon - minLon;
+
+    // Convert degree differences to physical meters
+    const H = latDiff * 111000;
+    const W = lngDiff * 111000 * Math.cos(centerLat * Math.PI / 180);
+
+    let mapWidth = window.innerWidth;
+    let mapHeight = window.innerHeight;
+    const rect = this.map.getBoundingClientRect();
+    if (rect.width && rect.height) {
+      mapWidth = rect.width;
+      mapHeight = rect.height;
+    }
+
+    const tanHalfFov = Math.tan((30 / 2) * Math.PI / 180);
+    const rangeH = H / (2 * tanHalfFov);
+    const aspectRatio = mapWidth / mapHeight;
+    const rangeW = W / (2 * tanHalfFov * aspectRatio);
+    
+    // Safety margin 1.5x, but clamp minimum range to 1000m for viewability
+    const idealRange = Math.max(1000, Math.max(rangeH, rangeW) * 1.5);
+
+    // Compute average elevation of the warning segment to prevent underground camera positioning
+    let sumEle = 0;
+    warnPts.forEach(pt => {
+      sumEle += pt.ele;
+    });
+    const avgEle = sumEle / warnPts.length;
+
+    // Smoothly fly camera to show the warning segment
+    this.map.flyCameraTo({
+      endCamera: {
+        center: { lat: centerLat, lng: centerLon, altitude: avgEle },
+        range: idealRange,
+        tilt: 45, // Tilted view to show terrain details
+        heading: this.map.heading // keep current heading
+      },
+      durationMillis: 1500
+    });
   }
 }

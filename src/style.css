@@ -413,10 +413,11 @@ body, html {
 }
 
 .panel-bottom-left {
-  bottom: 90px;
+  top: 76px;
+  bottom: 156px;
   left: 24px;
   width: 330px;
-  height: 400px;
+  height: auto;
 }
 
 .panel-top-right {
@@ -425,9 +426,10 @@ body, html {
 
 .panel-middle-right {
   top: 220px;
+  bottom: 156px;
   right: 24px;
   width: 300px;
-  max-height: 300px;
+  height: auto;
 }
 
 .panel-bottom-center {
@@ -878,7 +880,14 @@ hr {
   align-items: center;
   justify-content: space-between;
   gap: 10px;
+  cursor: pointer;
+  transition: var(--transition-smooth);
   animation: messageSlide 0.3s cubic-bezier(0.25, 0.8, 0.25, 1);
+}
+
+.warning-item:hover {
+  background-color: rgba(255, 255, 255, 0.05);
+  border-color: rgba(255, 255, 255, 0.2);
 }
 
 .warning-item.climb {

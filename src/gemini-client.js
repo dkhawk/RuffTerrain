@@ -135,14 +135,16 @@ CORE HEURISTICS & RULES:
  * @param {Object} currentRoute Context route containing trackpoints and existing waypoints
  * @param {string} apiKey User's Gemini API key
  * @param {Array} chatHistory List of past message objects { role, parts: [{ text }] }
+ * @param {string} modelName The model to use (default: models/gemini-2.0-flash)
  * @returns {Promise<Object>} The parsed stations JSON output and raw textual explanation
  */
-export async function sendToGemini(userPrompt, currentRoute, apiKey, chatHistory = []) {
+export async function sendToGemini(userPrompt, currentRoute, apiKey, chatHistory = [], modelName = "models/gemini-2.0-flash") {
   if (!apiKey) {
     throw new Error("Gemini API key is required. Please set it in the Settings panel.");
   }
 
-  const endpoint = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${apiKey}`;
+  const cleanModelName = modelName.startsWith("models/") ? modelName : `models/${modelName}`;
+  const endpoint = `https://generativelanguage.googleapis.com/v1beta/${cleanModelName}:generateContent?key=${apiKey}`;
 
   // Condense the current route context to save tokens and provide focused context
   const condensedRoute = currentRoute ? {
@@ -225,4 +227,38 @@ export async function sendToGemini(userPrompt, currentRoute, apiKey, chatHistory
     console.error("Failed to parse Gemini output as JSON:", outputText);
     throw new Error("Gemini returned invalid JSON structure: " + err.message);
   }
+}
+
+/**
+ * Fetches the list of available Gemini models supporting the generateContent method.
+ * @param {string} apiKey Gemini API Key
+ * @returns {Promise<Array<Object>>} List of model objects with name and displayName
+ */
+export async function fetchAvailableModels(apiKey) {
+  if (!apiKey) {
+    throw new Error("Gemini API key is required to retrieve models.");
+  }
+  const endpoint = `https://generativelanguage.googleapis.com/v1beta/models?key=${apiKey}`;
+  const response = await fetch(endpoint);
+  if (!response.ok) {
+    const errorData = await response.json().catch(() => ({}));
+    const message = errorData.error?.message || `HTTP ${response.status}`;
+    throw new Error(`Failed to list models: ${message}`);
+  }
+  const data = await response.json();
+  if (!data.models) return [];
+
+  // Filter to models supporting generateContent and containing 'gemini' and ('flash' or 'pro') in their name
+  return data.models
+    .filter(m => {
+      const name = m.name.toLowerCase();
+      const supportsGenerate = m.supportedGenerationMethods?.includes("generateContent");
+      const isGemini = name.includes("gemini");
+      const isFlashOrPro = name.includes("flash") || name.includes("pro");
+      return supportsGenerate && isGemini && isFlashOrPro;
+    })
+    .map(m => ({
+      name: m.name, // e.g. "models/gemini-2.0-flash"
+      displayName: m.displayName || m.name.split("/").pop()
+    }));
 }

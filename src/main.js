@@ -27,7 +27,7 @@
 import { parseGPX, reconcileCourse, getMetricsForPoint, calculateWarnings } from "./gpx-parser.js";
 import { writeGPX } from "./gpx-writer.js";
 import { correctRouteElevations } from "./fetch-elevation.js";
-import { sendToGemini } from "./gemini-client.js";
+import { sendToGemini, fetchAvailableModels } from "./gemini-client.js";
 import { loadGoogleMaps, Map3DController, calculateBearing } from "./map-3d.js";
 import { ElevationChart } from "./elevation-chart.js";
 
@@ -38,6 +38,7 @@ import { ElevationChart } from "./elevation-chart.js";
 // Credentials (API keys fallback to environment variables from .env.local)
 let apiKeyMaps = localStorage.getItem("gmaps_api_key") || import.meta.env.VITE_GMAPS_API_KEY || "";
 let apiKeyGemini = localStorage.getItem("gemini_api_key") || import.meta.env.VITE_GEMINI_API_KEY || "";
+let geminiModel = localStorage.getItem("gemini_model") || "models/gemini-2.0-flash";
 
 // Active Route details parsed from GPX data
 let activeRoute = null;
@@ -217,7 +218,27 @@ document.addEventListener("DOMContentLoaded", () => {
     if (targetWpt) {
       targetWpt.lat = newPosition.lat;
       targetWpt.lon = newPosition.lng;
+
+      // Snap the waypoint to the closest trackpoint on the route path
+      let minVal = Infinity;
+      let closestIdx = 0;
+      activeRoute.trackpoints.forEach((pt, idx) => {
+        const d = Math.hypot(pt.lat - targetWpt.lat, pt.lon - targetWpt.lon);
+        if (d < minVal) {
+          minVal = d;
+          closestIdx = idx;
+        }
+      });
+      targetWpt.closestTrackpointIndex = closestIdx;
+      targetWpt.dist_m = activeRoute.trackpoints[closestIdx].dist_m;
+      targetWpt.ele = activeRoute.trackpoints[closestIdx].ele;
+
+      // Update related stats & UIs
+      updateRouteStatsUI(activeRoute);
+      elevationChart.setRoute(activeRoute);
+
       showToast(`Updated location for: ${wpt.name}`);
+      saveActiveRouteState();
     }
   };
 
@@ -243,12 +264,6 @@ document.addEventListener("DOMContentLoaded", () => {
       const matchedPoi = activeRoute.waypoints.find(w => w.closestTrackpointIndex === index);
       if (matchedPoi) {
         showPoiDetailDialog(matchedPoi, index);
-      }
-    } else {
-      // Standard mouse hover scrub - pan camera target only when paused to maintain smoothness
-      if (!isPlaying && mapController) {
-        mapController.syncToTrackpoint(index, false);
-        updateHUD(index);
       }
     }
   });
@@ -388,6 +403,11 @@ async function initMap3D() {
       whiskeyCompass.classList.remove("hidden");
     }
     showToast("Satellite terrain data loaded.");
+
+    // Show course importer card on successful map load
+    if (cardImporter) {
+      cardImporter.classList.remove("hidden");
+    }
 
     // Draw pre-existing route if initialized
     if (activeRoute) {
@@ -1012,6 +1032,19 @@ function addRecentCourse(name, gpxText) {
 }
 
 /**
+ * Auto-saves the current active route state back into the local history list.
+ */
+function saveActiveRouteState() {
+  if (!activeRoute) return;
+  try {
+    const updatedGpxText = writeGPX(activeRoute);
+    addRecentCourse(activeRoute.name, updatedGpxText);
+  } catch (err) {
+    console.error("Failed to auto-save course state:", err);
+  }
+}
+
+/**
  * Draws the list of recently loaded routes in the settings modal.
  */
 function renderRecentCoursesList() {
@@ -1106,6 +1139,13 @@ function processGpxContent(text, filename) {
   if (toggleWarningsBtn) toggleWarningsBtn.classList.add("hidden");
   cardElevationScrubber.classList.remove("hidden");
   hudMetrics.classList.remove("hidden");
+  if (cardGeminiChat) {
+    cardGeminiChat.classList.remove("hidden");
+  }
+  const toggleChatBtn = document.getElementById("toggle-chat-btn");
+  if (toggleChatBtn) {
+    toggleChatBtn.classList.add("hidden");
+  }
 
   // Sync components
   elevationChart.units = units;
@@ -1173,6 +1213,15 @@ function renderWarningsUI(route) {
       elevationChart.draw();
     });
 
+    item.addEventListener("click", (e) => {
+      // Don't trigger if they click the approve/reject toggle button
+      if (e.target.closest(".warn-toggle")) return;
+
+      if (typeof mapController !== "undefined" && mapController && warn.approved) {
+        mapController.highlightWarning(warn);
+      }
+    });
+
     actionDiv.appendChild(toggleBtn);
     item.appendChild(textSpan);
     item.appendChild(actionDiv);
@@ -1197,7 +1246,90 @@ function escapeHtml(str) {
  * Configures event triggers for inputs, settings updates, chat submissions, and playbacks.
  */
 function setupEventListeners() {
-  // Settings Overlay display
+  // Gemini chat model selector display
+  const geminiModelSelect = document.getElementById("chat-gemini-model");
+  const fetchModelsLink = document.getElementById("chat-fetch-models-link");
+
+  const populateModelDropdown = async (forceFetch = false) => {
+    if (!geminiModelSelect) return;
+
+    // Standard fallback models
+    const fallbackModels = [
+      { name: "models/gemini-2.0-flash", displayName: "Gemini 2.0 Flash (Default)" },
+      { name: "models/gemini-1.5-flash", displayName: "Gemini 1.5 Flash" },
+      { name: "models/gemini-2.5-pro", displayName: "Gemini 2.5 Pro" }
+    ];
+
+    let models = fallbackModels;
+    const currentKey = apiKeyGemini;
+
+    if (currentKey && (forceFetch || localStorage.getItem("kokopelli_models_fetched") === null)) {
+      try {
+        if (fetchModelsLink) fetchModelsLink.textContent = "Fetching...";
+        const liveModels = await fetchAvailableModels(currentKey);
+        if (liveModels && liveModels.length > 0) {
+          models = liveModels;
+          localStorage.setItem("kokopelli_cached_models", JSON.stringify(liveModels));
+          localStorage.setItem("kokopelli_models_fetched", "true");
+        }
+        if (fetchModelsLink) fetchModelsLink.textContent = "Refresh list";
+      } catch (err) {
+        console.error("Failed to fetch live Gemini models:", err);
+        if (fetchModelsLink) fetchModelsLink.textContent = "Refresh failed";
+        const cached = localStorage.getItem("kokopelli_cached_models");
+        if (cached) {
+          try {
+            models = JSON.parse(cached);
+          } catch (e) {}
+        }
+      }
+    } else {
+      const cached = localStorage.getItem("kokopelli_cached_models");
+      if (cached) {
+        try {
+          models = JSON.parse(cached);
+        } catch (e) {}
+      }
+    }
+
+    geminiModelSelect.innerHTML = "";
+    models.forEach(m => {
+      const opt = document.createElement("option");
+      opt.value = m.name;
+      opt.textContent = m.displayName;
+      if (m.name === geminiModel) {
+        opt.selected = true;
+      }
+      geminiModelSelect.appendChild(opt);
+    });
+
+    if (!models.some(m => m.name === geminiModel)) {
+      const opt = document.createElement("option");
+      opt.value = geminiModel;
+      opt.textContent = geminiModel.split("/").pop();
+      opt.selected = true;
+      geminiModelSelect.appendChild(opt);
+    }
+  };
+
+  if (geminiModelSelect) {
+    geminiModelSelect.addEventListener("change", () => {
+      geminiModel = geminiModelSelect.value;
+      localStorage.setItem("gemini_model", geminiModel);
+      showToast(`Model switched to ${geminiModel.split("/").pop()}`);
+    });
+  }
+
+  if (fetchModelsLink) {
+    fetchModelsLink.addEventListener("click", (e) => {
+      e.preventDefault();
+      populateModelDropdown(true);
+    });
+  }
+
+  // Populate dropdown once on startup
+  populateModelDropdown();
+
   const openSettings = () => {
     mapsApiKeyInput.value = apiKeyMaps;
     geminiApiKeyInput.value = apiKeyGemini;
@@ -1211,10 +1343,54 @@ function setupEventListeners() {
   setupKeysTriggerWelcome.addEventListener("click", openSettings);
   closeSettingsBtn.addEventListener("click", () => settingsOverlay.classList.add("hidden"));
 
-  // Open / Import trigger
+  // Open / Import trigger toggles the importer card panel
   const importTriggerBtn = document.getElementById("import-trigger-btn");
-  if (importTriggerBtn) {
-    importTriggerBtn.addEventListener("click", () => fileSelector.click());
+  if (importTriggerBtn && cardImporter) {
+    importTriggerBtn.addEventListener("click", () => {
+      cardImporter.classList.toggle("hidden");
+    });
+  }
+
+  // Close importer button hides the panel
+  const closeImporterBtn = document.getElementById("close-importer-btn");
+  if (closeImporterBtn && cardImporter) {
+    closeImporterBtn.addEventListener("click", () => {
+      cardImporter.classList.add("hidden");
+    });
+  }
+
+  // Gemini Chat panel toggling
+  const toggleChatBtn = document.getElementById("toggle-chat-btn");
+  const closeChatBtn = document.getElementById("close-chat-btn");
+  const clearChatContextBtn = document.getElementById("clear-chat-context-btn");
+
+  if (toggleChatBtn && cardGeminiChat) {
+    toggleChatBtn.addEventListener("click", () => {
+      cardGeminiChat.classList.remove("hidden");
+      toggleChatBtn.classList.add("hidden");
+    });
+  }
+
+  if (closeChatBtn && cardGeminiChat) {
+    closeChatBtn.addEventListener("click", () => {
+      cardGeminiChat.classList.add("hidden");
+      if (activeRoute) {
+        toggleChatBtn.classList.remove("hidden");
+      }
+    });
+  }
+
+  if (clearChatContextBtn) {
+    clearChatContextBtn.addEventListener("click", () => {
+      chatHistory = [];
+      const routeName = activeRoute ? activeRoute.name : "route";
+      chatMessages.innerHTML = `
+        <div class="message assistant">
+          <p>Cleared conversation history. Ask me to configure aid stations or paste new details for "<strong>${routeName}</strong>".</p>
+        </div>
+      `;
+      showToast("Conversation context cleared.");
+    });
   }
 
   // Course Info Overlay
@@ -1358,7 +1534,7 @@ function setupEventListeners() {
     chatSubmit.disabled = true;
 
     try {
-      const response = await sendToGemini(prompt, activeRoute, apiKeyGemini, chatHistory);
+      const response = await sendToGemini(prompt, activeRoute, apiKeyGemini, chatHistory, geminiModel);
 
       chatHistory.push({ role: "user", parts: [{ text: prompt }] });
       chatHistory.push(response.assistantMessage);
@@ -1373,6 +1549,7 @@ function setupEventListeners() {
 
         appendChatMessage(`Added and snapped ${response.stations.length} milestones onto the route successfully!`, "assistant");
         showToast("Route augmented successfully.");
+        saveActiveRouteState();
       } else {
         appendChatMessage("Analyzed request, but did not extract any specific course waypoints to inject. Try giving explicit distances (e.g., 'add an aid station at mile 10').", "assistant");
       }
@@ -1417,6 +1594,7 @@ function setupEventListeners() {
       renderWarningsUI(activeRoute);
 
       showToast("Route elevations corrected successfully.");
+      saveActiveRouteState();
     } catch (err) {
       showToast("Elevation fetch failed: " + err.message);
     } finally {

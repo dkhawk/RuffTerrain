@@ -152,6 +152,23 @@ export async function correctRouteElevations(route, progressCallback) {
     }
   }
 
+  // Apply an 11-point moving average elevation smoothing pass (5 points on each side)
+  if (N >= 3) {
+    const temp = [...fullElevations];
+    const windowSize = 5;
+    for (let k = 0; k < N; k++) {
+      let sum = 0;
+      let count = 0;
+      const start = Math.max(0, k - windowSize);
+      const end = Math.min(N - 1, k + windowSize);
+      for (let j = start; j <= end; j++) {
+        sum += temp[j];
+        count++;
+      }
+      fullElevations[k] = sum / count;
+    }
+  }
+
   // Write elevations back to trackpoints and recalculate grades
   let totalElevationGain = 0;
   let totalElevationLoss = 0;
@@ -170,8 +187,20 @@ export async function correctRouteElevations(route, progressCallback) {
         totalElevationLoss += Math.abs(eleDiff);
       }
 
-      if (segmentDist > 0.1) {
-        pt.grade = (eleDiff / segmentDist) * 100;
+      // Calculate a stable slope grade over a 30-meter baseline to filter out GPS noise
+      let j = i - 1;
+      while (j > 0 && pt.dist_m - trackpoints[j].dist_m < 30) {
+        j--;
+      }
+      const basePt = trackpoints[j];
+      if (basePt) {
+        const runDist = pt.dist_m - basePt.dist_m;
+        const riseEle = pt.ele - basePt.ele;
+        if (runDist > 5) {
+          pt.grade = (riseEle / runDist) * 100;
+        } else {
+          pt.grade = 0;
+        }
       } else {
         pt.grade = 0;
       }

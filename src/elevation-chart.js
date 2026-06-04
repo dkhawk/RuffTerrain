@@ -322,7 +322,7 @@ export class ElevationChart {
     }
 
     // 3. Draw Fills Under Elevation Profile Line (Indicating Playback Progress)
-    const activeProgressIdx = (this.hoverIdx !== -1) ? this.hoverIdx : (this.progressIndex !== -1 ? this.progressIndex : 0);
+    const activeProgressIdx = (this.progressIndex !== -1) ? this.progressIndex : 0;
 
     // PART A: COMPLETED REGION (Index 0 to activeProgressIdx)
     if (activeProgressIdx > 0) {
