@@ -135,6 +135,25 @@ export class Map3DController {
 
     this.container.appendChild(this.map);
 
+    // Create a simple, static test marker at the center coordinates
+    const staticMarker = new this.Marker3DElement({
+      position: { lat: center.lat, lng: center.lng, altitude: center.altitude },
+      altitudeMode: "RELATIVE_TO_GROUND",
+      extruded: true,
+      label: "Center Test Marker"
+    });
+
+    const testDot = document.createElement('div');
+    testDot.style.width = "24px";
+    testDot.style.height = "24px";
+    testDot.style.backgroundColor = "#ff4e4e"; // Red
+    testDot.style.borderRadius = "50%";
+    testDot.style.border = "4px solid #1e293b";
+    testDot.style.boxShadow = "0 4px 8px rgba(0,0,0,0.8)";
+    staticMarker.appendChild(testDot);
+
+    this.map.append(staticMarker);
+
     // Setup Event Listeners for camera/orientation change to drive the compass
     this.map.addEventListener("gmp-headingchange", () => {
       if (this.onHeadingChange && this.map) {
