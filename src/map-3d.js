@@ -392,10 +392,8 @@ export class Map3DController {
         altitudeMode: "RELATIVE_TO_GROUND",
         extruded: true,
         drawsWhenOccluded: true,
-        label: wpt.name,
-        gmpClickable: true
+        label: wpt.name
       });
-      marker.gmpClickable = true;
       marker.gmpDraggable = !this.isEditLocked;
 
       // Create a standard HTMLImageElement inside a template to hold our custom SVG
