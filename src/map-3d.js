@@ -392,8 +392,10 @@ export class Map3DController {
         altitudeMode: "RELATIVE_TO_GROUND",
         extruded: true,
         drawsWhenOccluded: true,
-        label: wpt.name
+        label: wpt.name,
+        interactive: true
       });
+      marker.interactive = true;
 
       // Create a simple styled SVG dot matching the cursor dot structure exactly
       const sym = (wpt.sym || "").toLowerCase();
@@ -412,6 +414,10 @@ export class Map3DController {
       marker.appendChild(template);
 
       // Add click popover details
+      marker.addEventListener("gmp-click", () => {
+        const event = new CustomEvent("waypoint-click", { detail: wpt });
+        window.dispatchEvent(event);
+      });
       marker.addEventListener("click", () => {
         const event = new CustomEvent("waypoint-click", { detail: wpt });
         window.dispatchEvent(event);
