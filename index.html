@@ -1,0 +1,427 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Kokopelli's Ruff Terrain Explorer</title>
+    
+    <!-- SEO Meta Tags -->
+    <meta name="description" content="KOKOPELLI: A premium 3D route explorer and architect. Visualize and augment remote, high-altitude trail running and hiking courses." />
+    
+    <!-- Google Typography -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600&family=Outfit:wght@400;500;600;700&display=swap" rel="stylesheet">
+    
+    <!-- Main Application Stylesheet -->
+    <link rel="stylesheet" href="/src/style.css">
+  </head>
+  <body>
+    <!-- Top HUD Dashboard (Header Bar matching Screenshot 1) -->
+    <header id="hud-dashboard" class="glass-panel">
+      <div class="hud-logo-section">
+        <span class="hud-logo">🦎 KOKOPELLI</span>
+        <span class="hud-divider">|</span>
+        <span class="hud-subtitle">RUFF TERRAIN EXPLORER</span>
+      </div>
+
+      <button id="import-trigger-btn" class="btn btn-hud-pill">
+        <span class="btn-icon-folder">📂</span> Open / Import
+      </button>
+
+      <!-- HUD Running Metrics (calculated in metric, displayed in active unit) -->
+      <div class="hud-metrics-container hidden" id="hud-metrics">
+        <div class="hud-metric">
+          <span class="hud-metric-label">TIME</span>
+          <span id="hud-val-time" class="hud-metric-value">00:00:00</span>
+        </div>
+        <div class="hud-metric">
+          <span class="hud-metric-label">DIST</span>
+          <span class="hud-metric-value">
+            <span id="hud-val-dist-cur">0.00</span> / <span id="hud-val-dist-tot">0.00</span> <span class="unit-lbl">mi</span>
+          </span>
+        </div>
+        <div class="hud-metric">
+          <span class="hud-metric-label">ELEV</span>
+          <span class="hud-metric-value">
+            <span id="hud-val-elev">0</span> <span class="unit-lbl">ft</span>
+          </span>
+        </div>
+        <div class="hud-metric">
+          <span class="hud-metric-label">GAIN</span>
+          <span class="hud-metric-value">
+            +<span id="hud-val-gain-cur">0</span> / +<span id="hud-val-gain-tot">0</span> <span class="unit-lbl">ft</span>
+          </span>
+        </div>
+        <div class="hud-metric">
+          <span class="hud-metric-label">LOSS</span>
+          <span class="hud-metric-value">
+            -<span id="hud-val-loss-cur">0</span> / -<span id="hud-val-loss-tot">0</span> <span class="unit-lbl">ft</span>
+          </span>
+        </div>
+        <div class="hud-metric highlight">
+          <span class="hud-metric-label">NEXT AS</span>
+          <span id="hud-val-next-as" class="hud-metric-value">Start Line (+0.0 mi)</span>
+        </div>
+      </div>
+
+      <div class="hud-actions-section">
+        <span id="course-name-display" class="course-name-tag">NO ROUTE LOADED</span>
+        <button id="toggle-warnings-btn" class="settings-gear-btn hidden" title="Toggle Course Warnings">⚠️</button>
+        <button id="course-info-btn" class="settings-gear-btn hidden" title="Course Description">ℹ️</button>
+        <button id="global-settings-btn" class="settings-gear-btn" title="Config Settings">⚙️</button>
+      </div>
+    </header>
+
+    <!-- Full-screen 3D Map Container -->
+    <main id="map-viewport">
+      <div id="map-canvas">
+        <div id="map-loader-state">
+          <div class="welcome-box">
+            <h1>Kokopelli's Ruff Terrain Explorer</h1>
+            <h2>3D Course Explorer</h2>
+            <p>Please enter your API Keys to initialize the 3D Satellite Map.</p>
+            <button id="setup-keys-trigger-welcome" class="btn btn-primary">Setup API Keys</button>
+          </div>
+        </div>
+      </div>
+    </main>
+
+    <!-- Premium Spatial Glassmorphic Whiskey Compass Gauge -->
+    <div id="whiskey-compass" class="whiskey-compass-gauge hidden">
+      <!-- Glass glare effect -->
+      <div class="compass-glass"></div>
+      <!-- Lubber Line (Vertical Red line marker at the center front) -->
+      <div class="lubber-line"></div>
+      <!-- Central Dial Housing Window -->
+      <div class="compass-window">
+        <!-- Cylindrical Dial Card containing N, 3, 6, E, 12, 15, S, 21, 24, W, 30, 33 -->
+        <div id="compass-dial" class="compass-dial-card">
+          <span class="dial-mark mark-n" style="--angle: 0deg;">N</span>
+          <span class="dial-mark" style="--angle: 30deg;">3</span>
+          <span class="dial-mark" style="--angle: 60deg;">6</span>
+          <span class="dial-mark mark-e" style="--angle: 90deg;">E</span>
+          <span class="dial-mark" style="--angle: 120deg;">12</span>
+          <span class="dial-mark" style="--angle: 150deg;">15</span>
+          <span class="dial-mark mark-s" style="--angle: 180deg;">S</span>
+          <span class="dial-mark" style="--angle: 210deg;">21</span>
+          <span class="dial-mark" style="--angle: 240deg;">24</span>
+          <span class="dial-mark mark-w" style="--angle: 270deg;">W</span>
+          <span class="dial-mark" style="--angle: 300deg;">30</span>
+          <span class="dial-mark" style="--angle: 330deg;">33</span>
+        </div>
+      </div>
+      <!-- Compass Heading Digital Readout Card -->
+      <div id="compass-degrees" class="compass-digital-readout">045°</div>
+    </div>
+
+    <!-- LEFT SIDEBAR OVERLAYS -->
+
+    <!-- Card 1: Import & Edit Protection Switch (Top Left) -->
+    <section id="card-importer" class="glass-card panel-top-left hidden">
+      <header class="card-header">
+        <span class="icon">📂</span>
+        <div>
+          <h2>Import Course</h2>
+          <p class="subtitle">GPX Tracks Reader</p>
+        </div>
+        <button id="close-importer-btn" class="close-card-btn">&times;</button>
+      </header>
+      
+      <div class="card-body">
+        <div id="drop-zone" class="drop-zone">
+          <p>Drag & Drop a <strong>GPX file</strong></p>
+          <span class="small-label">or click to browse</span>
+          <input type="file" id="file-selector" accept=".gpx" style="display: none;" />
+        </div>
+        <div class="quick-links">
+          <span>Or load demo:</span>
+          <button id="load-leadville-demo" class="btn btn-secondary btn-sm">Leadville Marathon</button>
+        </div>
+
+        <hr/>
+
+        <div class="edit-lock-container">
+          <span class="lock-label">🔒 Lock Modifications</span>
+          <label class="switch-toggle">
+            <input type="checkbox" id="edit-lock-checkbox" />
+            <span class="slider-toggle rounded"></span>
+          </label>
+        </div>
+      </div>
+    </section>
+
+    <!-- Card 2: Gemini Chat panel (Bottom Left) -->
+    <section id="card-gemini-chat" class="glass-card panel-bottom-left hidden">
+      <header class="card-header">
+        <span class="status-indicator online"></span>
+        <h3>Gemini Course Architect</h3>
+      </header>
+      
+      <div class="card-body chat-body">
+        <div id="chat-messages" class="chat-messages">
+          <div class="message assistant">
+            <p>I'm ready! Paste race details or ask me to add/modify stations. I'll snap them to the correct course coordinates.</p>
+          </div>
+        </div>
+        
+        <div id="chat-status" class="chat-status hidden">
+          <span class="spinner"></span> <span id="chat-status-text">Processing...</span>
+        </div>
+
+        <div class="chat-input-area">
+          <textarea id="chat-input" placeholder="Paste aid station list or ask Gemini to add checkpoints..." rows="2"></textarea>
+          <button id="chat-submit" class="btn btn-primary btn-icon" title="Send">➔</button>
+        </div>
+      </div>
+    </section>
+
+    <!-- RIGHT SIDEBAR OVERLAYS -->
+
+    <!-- Card 3: Route Stats Card (Top Right) -->
+    <section id="card-stats" class="glass-card panel-top-right hidden">
+      <header class="card-header">
+        <h3>Course Profile</h3>
+      </header>
+      <div class="card-body">
+        <div class="stats-grid">
+          <div class="stat-box">
+            <span class="label">Distance</span>
+            <span id="stat-dist" class="value">0.0 mi</span>
+          </div>
+          <div class="stat-box">
+            <span class="label">Elev Gain</span>
+            <span id="stat-gain" class="value">+0m</span>
+          </div>
+          <div class="stat-box">
+            <span class="label">Elev Loss</span>
+            <span id="stat-loss" class="value">-0m</span>
+          </div>
+          <div class="stat-box">
+            <span class="label">Waypoints</span>
+            <span id="stat-wpts" class="value">0</span>
+          </div>
+        </div>
+
+        <div id="active-climb-info-box" class="active-climb-info hidden">
+          <span class="badge climb-badge">CLIMB HAZARD</span>
+          <span id="active-climb-text">Remaining: 0.0 mi (+0ft)</span>
+        </div>
+
+        <hr/>
+
+        <div class="action-buttons">
+          <button id="correct-elevation-btn" class="btn btn-secondary w-100 mb-2">
+            <span>⚡ Fetch & Correct Elevations</span>
+          </button>
+          <div id="elevation-progress" class="progress-bar-container hidden">
+            <div class="progress-bar">
+              <div id="elevation-progress-fill" class="progress-fill"></div>
+            </div>
+            <span id="elevation-progress-label" class="progress-label">Fetching: 0%</span>
+          </div>
+          
+          <button id="export-gpx-btn" class="btn btn-primary w-100">
+            <span>📥 Export Enhanced GPX</span>
+          </button>
+        </div>
+      </div>
+    </section>
+
+    <!-- Card 4: Safety Warnings (Middle Right) -->
+    <section id="card-warnings" class="glass-card panel-middle-right hidden">
+      <header class="card-header" style="display: flex; justify-content: space-between; align-items: center;">
+        <div style="display: flex; align-items: center; gap: 0.5rem;">
+          <h3 style="margin: 0;">Course Warnings</h3>
+          <span id="warnings-count" class="badge">0</span>
+        </div>
+        <button id="close-warnings-btn" class="close-card-btn" title="Dismiss Warnings">&times;</button>
+      </header>
+      <div class="card-body scrollable">
+        <div id="warnings-list" class="warnings-list">
+          <!-- Warnings populated dynamically -->
+        </div>
+      </div>
+    </section>
+
+    <!-- Collapsible POI Detail Dialog Card (Screenshot 4) -->
+    <section id="poi-detail-dialog" class="glass-card poi-dialog hidden collapsed">
+      <header class="poi-header">
+        <div class="poi-title-section">
+          <h2 id="poi-val-name">Adelaide</h2>
+          <span id="poi-val-pass-tag" class="poi-pass-tag">Pass 2 of 4</span>
+          <span id="poi-val-cutoff-tag" class="poi-cutoff-badge hidden">CUTOFF: 9:15 AM</span>
+        </div>
+        
+        <div class="poi-quick-metrics">
+          <div class="metric-group">
+            <span class="lbl">ARRIVE</span>
+            <span id="poi-val-arrive" class="val">12.18 km</span>
+          </div>
+          <div class="metric-group">
+            <span class="lbl">PREV</span>
+            <span id="poi-val-prev" class="val">+8.14 km (Adelaide)</span>
+          </div>
+          <div class="metric-group">
+            <span class="lbl">NEXT</span>
+            <span id="poi-val-next" class="val">5.04 km (Resurrection)</span>
+          </div>
+        </div>
+
+        <div class="poi-header-actions">
+          <button id="poi-dialog-playback-pause" class="btn btn-secondary btn-sm btn-poi-action">PAUSE ⏸</button>
+          <button id="poi-dialog-playback-continue" class="btn btn-primary btn-sm btn-poi-action">CONTINUE ➔</button>
+          <button id="poi-dialog-toggle-expand" class="poi-caret-btn" title="Toggle Detail View">▲</button>
+          <button id="poi-dialog-close-header" class="close-card-btn" title="Close Dialog">&times;</button>
+        </div>
+      </header>
+
+      <div class="poi-body" id="poi-body-container">
+        <!-- Renders passes and timeline lists -->
+        <div class="poi-detail-grid">
+          <div class="poi-timeline-list">
+            <h4>Adelaide Aid Station Passes:</h4>
+            <ul id="poi-timeline-passes-list">
+              <!-- Render list of passes e.g. Pass 1: 2.6 Miles, Pass 2: 7.7 Miles (Cutoff: 9:15am)... -->
+            </ul>
+          </div>
+          
+          <div class="poi-services-checklist">
+            <h4>Available Amenities:</h4>
+            <div class="poi-icons-row" id="poi-services-icons-row">
+              <!-- Inline SVGs/emojis representing water, food, aid, sleep, etc. -->
+            </div>
+          </div>
+        </div>
+
+        <!-- Metric Snapped Timeline Grid Table -->
+        <div class="poi-table-container">
+          <table class="poi-table">
+            <thead>
+              <tr>
+                <th>PASS</th>
+                <th>ARRIVE AT</th>
+                <th>FROM PREV</th>
+                <th>TO NEXT</th>
+                <th>CUT-OFF</th>
+              </tr>
+            </thead>
+            <tbody id="poi-table-rows">
+              <!-- Render table rows dynamically -->
+            </tbody>
+          </table>
+        </div>
+
+        <button id="poi-dialog-close-bottom" class="btn btn-secondary w-100 mt-3">Close Info & Resume</button>
+      </div>
+    </section>
+
+    <!-- Card 5: Bottom Elevation Scrubber Panel (Bottom Center matching Screenshot 1) -->
+    <section id="card-elevation-scrubber" class="glass-card panel-bottom-center hidden">
+      <header class="card-header horizontal-header">
+        <div class="left-controls">
+          <button id="btn-playback-rewind" class="playback-secondary-btn" title="Reset Course">⏮</button>
+          <button id="btn-playback" class="playback-btn" title="Start Fly-Through">▶</button>
+          
+          <div class="color-coding-toggle">
+            <label class="checkbox-container">
+              <input type="checkbox" id="climb-colors-checkbox" />
+              <span class="checkmark"></span>
+              Color-code climbs
+            </label>
+          </div>
+        </div>
+
+        <div class="playback-sliders">
+          <div class="slider-group">
+            <label for="playback-speed">SPEED</label>
+            <input type="range" id="playback-speed" min="1" max="10" value="5" />
+            <span id="speed-label-val" class="slider-val">5</span>
+          </div>
+
+          <div class="slider-group">
+            <label for="camera-range-slider">CAM RANGE</label>
+            <input type="range" id="camera-range-slider" min="300" max="6000" step="100" value="1500" />
+            <span id="range-label-val" class="slider-val">1500m</span>
+          </div>
+
+          <div class="slider-group">
+            <label for="camera-tilt-slider">TILT</label>
+            <input type="range" id="camera-tilt-slider" min="10" max="85" value="65" />
+            <span id="tilt-label-val" class="slider-val">65°</span>
+          </div>
+        </div>
+      </header>
+      
+      <div class="chart-container">
+        <canvas id="elevation-canvas"></canvas>
+      </div>
+    </section>
+
+    <!-- GLOBAL CONFIGURATION MODAL DIALOG -->
+    <div id="settings-overlay" class="modal-overlay hidden">
+      <div class="modal-box glass-card">
+        <header class="modal-header">
+          <h3>KOKOPELLI SETTINGS</h3>
+          <button id="close-settings-btn" class="close-btn">&times;</button>
+        </header>
+        <div class="modal-body scrollable-y">
+          <div class="form-group">
+            <label for="maps-api-key">Google Maps API Key (with 3D Maps enabled)</label>
+            <input type="password" id="maps-api-key" placeholder="AIzaSy..." />
+          </div>
+          <div class="form-group">
+            <label for="gemini-api-key">Google Gemini API Key (AI Studio)</label>
+            <input type="password" id="gemini-api-key" placeholder="AIzaSy..." />
+          </div>
+          
+          <hr/>
+          
+          <div class="form-group">
+            <label for="settings-units">Measurement Units</label>
+            <select id="settings-units">
+              <option value="imperial">Imperial (miles, feet)</option>
+              <option value="metric">Metric (kilometers, meters)</option>
+            </select>
+          </div>
+
+          <div class="form-group">
+            <label for="settings-pause-time">POI Auto-Pause Duration (seconds)</label>
+            <input type="number" id="settings-pause-time" min="0" max="30" value="5" />
+            <span class="help-text">Set to 0 to pause indefinitely until manual Continue is clicked.</span>
+          </div>
+
+          <hr/>
+
+          <div class="form-group">
+            <label>Recently Loaded Courses (Last 10)</label>
+            <div id="recent-courses-list" class="recent-list">
+              <span class="empty-list-text">No recently played routes.</span>
+            </div>
+          </div>
+
+          <button id="save-settings-btn" class="btn btn-primary w-100 mt-3">Save Configurations</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- UI TOAST POPUP FOR NOTIFICATIONS -->
+    <div id="toast-notification" class="toast hidden"></div>
+
+    <!-- Course Info Overlay -->
+    <div id="course-info-overlay" class="modal-overlay hidden">
+      <div class="modal-box glass-card" style="max-width: 600px;">
+        <header class="modal-header">
+          <h3>COURSE DESCRIPTION</h3>
+          <button id="close-info-btn" class="close-btn">&times;</button>
+        </header>
+        <div class="modal-body scrollable-y">
+          <p id="course-info-text" style="white-space: pre-wrap; font-family: var(--font-ui); line-height: 1.6;">No description available.</p>
+        </div>
+      </div>
+    </div>
+
+    <script type="module" src="/src/main.js"></script>
+  </body>
+</html>
