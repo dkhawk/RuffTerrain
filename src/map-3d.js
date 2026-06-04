@@ -141,11 +141,9 @@ export class Map3DController {
     this.container.innerHTML = ""; // Clear loader message
 
     const { Map3DElement, Marker3DElement, Polyline3DElement } = await google.maps.importLibrary("maps3d");
-    const { AdvancedMarkerElement } = await google.maps.importLibrary("marker");
     this.Map3DElement = Map3DElement;
     this.Marker3DElement = Marker3DElement;
     this.Polyline3DElement = Polyline3DElement;
-    this.AdvancedMarkerElement = AdvancedMarkerElement;
 
     this.map = new Map3DElement({
       center: { lat: center.lat, lng: center.lng, altitude: center.altitude + 2000 },
@@ -262,10 +260,8 @@ export class Map3DController {
     this.colorCodeClimbs = colorCodeClimbs;
 
     const { Marker3DElement, Polyline3DElement } = await google.maps.importLibrary("maps3d");
-    const { AdvancedMarkerElement } = await google.maps.importLibrary("marker");
     this.Marker3DElement = Marker3DElement;
     this.Polyline3DElement = Polyline3DElement;
-    this.AdvancedMarkerElement = AdvancedMarkerElement;
 
     const trackpoints = route.trackpoints;
     if (trackpoints.length < 2) return;
@@ -391,22 +387,39 @@ export class Map3DController {
 
     // Add Waypoints
     route.waypoints.forEach((wpt) => {
-      const marker = new this.AdvancedMarkerElement({
-        position: { lat: wpt.lat, lng: wpt.lon },
-        title: wpt.name,
-        gmpClickable: true,
-        gmpDraggable: !this.isEditLocked,
-        content: createWaypointSvg(wpt)
+      const marker = new this.Marker3DElement({
+        position: { lat: wpt.lat, lng: wpt.lon, altitude: 10 },
+        altitudeMode: "RELATIVE_TO_GROUND",
+        extruded: true,
+        drawsWhenOccluded: true,
+        label: wpt.name,
+        gmpClickable: true
       });
+      marker.gmpClickable = true;
+      marker.gmpDraggable = !this.isEditLocked;
+
+      // Create a standard HTMLImageElement inside a template to hold our custom SVG
+      const img = document.createElement("img");
+      img.src = "data:image/svg+xml;charset=utf-8," + encodeURIComponent(getWaypointSvgString(wpt));
+      img.style.width = "36px";
+      img.style.height = "36px";
+
+      const template = document.createElement("template");
+      template.content.appendChild(img);
+      marker.appendChild(template);
 
       // Add click popover details
+      marker.addEventListener("gmp-click", () => {
+        const event = new CustomEvent("waypoint-click", { detail: wpt });
+        window.dispatchEvent(event);
+      });
       marker.addEventListener("click", () => {
         const event = new CustomEvent("waypoint-click", { detail: wpt });
         window.dispatchEvent(event);
       });
 
       // Draggable Editing logic
-      marker.addEventListener("dragend", () => {
+      marker.addEventListener("gmp-dragend", () => {
         if (this.onWaypointDragEnd) {
           this.onWaypointDragEnd(wpt, marker.position);
         }
@@ -418,10 +431,26 @@ export class Map3DController {
 
     // Create scrubbing tracker cursor
     const startPt = trackpoints[0];
-    this.currentTrackMarker = new this.AdvancedMarkerElement({
-      position: { lat: startPt.lat, lng: startPt.lon },
-      content: createSvgDot("#ffeb3b", 24)
+    this.currentTrackMarker = new this.Marker3DElement({
+      position: { lat: startPt.lat, lng: startPt.lon, altitude: 15 },
+      altitudeMode: "RELATIVE_TO_GROUND",
+      extruded: true,
+      drawsWhenOccluded: true
     });
+
+    const cursorDotString = `
+      <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24">
+        <circle cx="12" cy="12" r="8" fill="#ffeb3b" stroke="#1e293b" stroke-width="3" />
+      </svg>
+    `;
+    const img = document.createElement("img");
+    img.src = "data:image/svg+xml;charset=utf-8," + encodeURIComponent(cursorDotString);
+    img.style.width = "24px";
+    img.style.height = "24px";
+
+    const template = document.createElement("template");
+    template.content.appendChild(img);
+    this.currentTrackMarker.appendChild(template);
 
     this.map.append(this.currentTrackMarker);
   }
@@ -452,7 +481,7 @@ export class Map3DController {
     if (!pt) return;
 
     if (this.currentTrackMarker) {
-      this.currentTrackMarker.position = { lat: pt.lat, lng: pt.lon };
+      this.currentTrackMarker.position = { lat: pt.lat, lng: pt.lon, altitude: 15 };
     }
 
     this.currentCameraLat = pt.lat;
@@ -610,12 +639,12 @@ export class Map3DController {
 }
 
 /**
- * Generates a premium custom vector SVG node representing the type of waypoint.
+ * Generates a premium custom vector SVG string representing the type of waypoint.
  * Supports Start, Finish, First Aid/Medical, Water, Food/Aid Station, and Default markers.
  * @param {Object} wpt Waypoint details
- * @returns {SVGElement} SVG DOM node
+ * @returns {string} SVG XML string
  */
-function createWaypointSvg(wpt) {
+function getWaypointSvgString(wpt) {
   const sym = (wpt.sym || "").toLowerCase();
   const name = (wpt.name || "").toLowerCase();
   const station = wpt.extensions?.station;
@@ -636,9 +665,6 @@ function createWaypointSvg(wpt) {
   } else if (station?.type === "aid-station" || sym.includes("station") || sym.includes("aid")) {
     type = "aid-station";
   }
-
-  const width = 36;
-  const height = 36;
 
   let bg = "#ffb834"; // default orange-yellow
   let icon = "";
@@ -670,8 +696,8 @@ function createWaypointSvg(wpt) {
     icon = `<circle cx="18" cy="18" r="4.5" fill="white" />`;
   }
 
-  const svgString = `
-    <svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}" viewBox="0 0 36 36">
+  return `
+    <svg xmlns="http://www.w3.org/2000/svg" width="36" height="36" viewBox="0 0 36 36">
       <defs>
         <filter id="marker-shadow" x="-20%" y="-20%" width="140%" height="140%">
           <feDropShadow dx="0" dy="3" stdDeviation="3" flood-color="#000000" flood-opacity="0.4"/>
@@ -681,7 +707,4 @@ function createWaypointSvg(wpt) {
       ${icon}
     </svg>
   `;
-
-  const parser = new DOMParser();
-  return parser.parseFromString(svgString, "image/svg+xml").documentElement;
 }
