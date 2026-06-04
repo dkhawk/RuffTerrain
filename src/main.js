@@ -256,7 +256,7 @@ document.addEventListener("DOMContentLoaded", () => {
 
       // If we are currently showing details of this waypoint, refresh the dialog content
       if (poiDetailDialog && !poiDetailDialog.classList.contains("hidden") && poiValName.textContent === targetWpt.name) {
-        showPoiDetailDialog(targetWpt, targetWpt.closestTrackpointIndex);
+        showPoiDetailDialog(targetWpt, targetWpt.closestTrackpointIndex, targetWpt.dist_m);
       }
     }
   };
@@ -366,7 +366,7 @@ document.addEventListener("DOMContentLoaded", () => {
       // Check if they jumped directly onto an aid station / waypoint POI
       const matchedPoi = activeRoute.waypoints.find(w => w.closestTrackpointIndex === index);
       if (matchedPoi) {
-        showPoiDetailDialog(matchedPoi, index);
+        showPoiDetailDialog(matchedPoi, index, matchedPoi.dist_m);
       }
     }
   });
@@ -849,23 +849,60 @@ function startPlayback() {
 
     // Reset lastPausedPoiId if we move away from it by more than 50 meters
     if (lastPausedPoiId) {
-      const lastPoi = activeRoute.waypoints.find(w => w.id === lastPausedPoiId);
-      if (lastPoi && Math.abs(playbackDistance - lastPoi.dist_m) > 50) {
+      let poiDist = 0;
+      if (lastPausedPoiId.includes("-pass-")) {
+        const parts = lastPausedPoiId.split("-pass-");
+        const wptId = parts[0];
+        const passNum = parseInt(parts[1]);
+        const wpt = activeRoute.waypoints.find(w => w.id === wptId);
+        const pass = wpt?.extensions?.station?.passes?.find(p => p.num === passNum);
+        poiDist = pass ? pass.dist_m : 0;
+      } else {
+        const lastPoi = activeRoute.waypoints.find(w => w.id === lastPausedPoiId);
+        poiDist = lastPoi ? lastPoi.dist_m : 0;
+      }
+      
+      if (Math.abs(playbackDistance - poiDist) > 50) {
         lastPausedPoiId = null;
       }
     }
     
     // Auto-pause preview verification when approaching a waypoint checkpoint
-    const reachedPoi = activeRoute.waypoints.find(
-      w => w.dist_m >= Math.min(prevDist, playbackDistance) && 
-           w.dist_m <= Math.max(prevDist, playbackDistance) && 
-           w.id !== lastPausedPoiId
-    );
+    let reachedPoi = null;
+    let crossedPass = null;
+
+    for (const wpt of activeRoute.waypoints) {
+      const passes = wpt.extensions?.station?.passes || [];
+      if (passes.length > 0) {
+        // Multi-pass waypoint: check if we crossed any of its passes
+        for (const pass of passes) {
+          const passDist = pass.dist_m;
+          const passKey = `${wpt.id}-pass-${pass.num}`;
+          if (passDist >= Math.min(prevDist, playbackDistance) && 
+              passDist <= Math.max(prevDist, playbackDistance) && 
+              passKey !== lastPausedPoiId) {
+            reachedPoi = wpt;
+            crossedPass = pass;
+            break;
+          }
+        }
+      } else {
+        // Single-pass / standard waypoint: check base dist_m
+        if (wpt.dist_m >= Math.min(prevDist, playbackDistance) && 
+            wpt.dist_m <= Math.max(prevDist, playbackDistance) && 
+            wpt.id !== lastPausedPoiId) {
+          reachedPoi = wpt;
+          break;
+        }
+      }
+      if (reachedPoi) break;
+    }
 
     if (reachedPoi) {
-      lastPausedPoiId = reachedPoi.id;
+      const isMultiPass = crossedPass !== null;
+      lastPausedPoiId = isMultiPass ? `${reachedPoi.id}-pass-${crossedPass.num}` : reachedPoi.id;
       pausePlayback();
-      showPoiDetailDialog(reachedPoi, reachedPoi.closestTrackpointIndex);
+      showPoiDetailDialog(reachedPoi, reachedPoi.closestTrackpointIndex, playbackDistance);
       return; 
     }
 
@@ -924,7 +961,7 @@ function pausePlayback() {
  * @param {Object} wpt Waypoint details parsed from GPX schema
  * @param {number} index Trackpoint index snapping point
  */
-function showPoiDetailDialog(wpt, index) {
+function showPoiDetailDialog(wpt, index, referenceDist = null) {
   if (!poiDetailDialog) return;
 
   // Clear any existing active timeouts
@@ -936,7 +973,7 @@ function showPoiDetailDialog(wpt, index) {
   // Title headers
   poiValName.textContent = wpt.name;
 
-  const currentDist = wpt.dist_m;
+  const currentDist = referenceDist !== null ? referenceDist : wpt.dist_m;
   const passes = wpt.extensions?.station?.passes || [];
 
   // Identify active pass index relative to current course location
@@ -2005,6 +2042,6 @@ function setupEventListeners() {
     elevationChart.draw();
     
     updateHUD(playbackIndex);
-    showPoiDetailDialog(wpt, playbackIndex);
+    showPoiDetailDialog(wpt, playbackIndex, playbackDistance);
   });
 }

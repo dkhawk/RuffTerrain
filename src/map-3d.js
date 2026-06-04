@@ -200,6 +200,11 @@ export class Map3DController {
     this.isEditLocked = isLocked;
     this.markers.forEach(marker => {
       marker.gmpDraggable = !isLocked;
+      if (!isLocked) {
+        marker.setAttribute('gmp-draggable', '');
+      } else {
+        marker.removeAttribute('gmp-draggable');
+      }
     });
   }
 
@@ -395,12 +400,23 @@ export class Map3DController {
         label: wpt.name
       });
       marker.gmpDraggable = !this.isEditLocked;
+      
+      // Explicitly set Web Component interactivity attributes
+      marker.setAttribute('interactive', '');
+      marker.setAttribute('gmp-clickable', '');
+      if (!this.isEditLocked) {
+        marker.setAttribute('gmp-draggable', '');
+      }
+      marker.style.cursor = "pointer";
+      marker.style.pointerEvents = "auto";
 
       // Create a standard HTMLImageElement inside a template to hold our custom SVG
       const img = document.createElement("img");
       img.src = "data:image/svg+xml;charset=utf-8," + encodeURIComponent(getWaypointSvgString(wpt));
       img.style.width = "36px";
       img.style.height = "36px";
+      img.style.cursor = "pointer";
+      img.style.pointerEvents = "auto";
 
       const template = document.createElement("template");
       template.content.appendChild(img);
@@ -426,6 +442,26 @@ export class Map3DController {
       this.map.append(marker);
       this.markers.push(marker);
     });
+
+    // Setup delegated click listeners on the map element to catch clicks on 3D markers
+    if (this.mapClickListener) {
+      this.map.removeEventListener("gmp-click", this.mapClickListener);
+      this.map.removeEventListener("click", this.mapClickListener);
+    }
+    
+    this.mapClickListener = (e) => {
+      const clickedMarker = this.markers.find(m => m === e.target);
+      if (clickedMarker) {
+        const wpt = route.waypoints.find(w => w.name === clickedMarker.label);
+        if (wpt) {
+          const event = new CustomEvent("waypoint-click", { detail: wpt });
+          window.dispatchEvent(event);
+        }
+      }
+    };
+
+    this.map.addEventListener("gmp-click", this.mapClickListener);
+    this.map.addEventListener("click", this.mapClickListener);
 
     // Create scrubbing tracker cursor
     const startPt = trackpoints[0];
