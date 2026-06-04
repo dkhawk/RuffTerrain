@@ -412,7 +412,7 @@ export class Map3DController {
       marker.appendChild(template);
 
       // Add click popover details
-      marker.addEventListener("gmp-click", () => {
+      marker.addEventListener("click", () => {
         const event = new CustomEvent("waypoint-click", { detail: wpt });
         window.dispatchEvent(event);
       });

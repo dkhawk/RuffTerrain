@@ -70,6 +70,7 @@ let playbackInterval = null;
 let playbackIndex = 0;
 let isPlaying = false;
 let lastPausedPoiIndex = -1; // Prevents getting stuck in a loop at the same POI trackpoint
+let lastPausedPoiId = null;  // Prevents getting stuck in a loop at the same POI
 let autoResumeTimeout = null; // Handles the timer for auto-continuing the preview
 
 // ==========================================
@@ -746,7 +747,8 @@ function startPlayback() {
 
     const speedScale = parseInt(playbackSpeed.value); // 1-10 slider
     const simSpeed = 20 * speedScale * speedScale; // 20m/s to 2000m/s
-    
+
+    const prevDist = playbackDistance;
     playbackDistance += simSpeed * dt;
 
     if (playbackDistance >= activeRoute.totalDistance) {
@@ -758,17 +760,26 @@ function startPlayback() {
     }
 
     updatePlaybackFrame();
+
+    // Reset lastPausedPoiId if we move away from it by more than 50 meters
+    if (lastPausedPoiId) {
+      const lastPoi = activeRoute.waypoints.find(w => w.id === lastPausedPoiId);
+      if (lastPoi && Math.abs(playbackDistance - lastPoi.dist_m) > 50) {
+        lastPausedPoiId = null;
+      }
+    }
     
     // Auto-pause preview verification when approaching a waypoint checkpoint
-    const currentIdxInt = Math.floor(playbackIndex);
-    const reachedPoiByIndex = activeRoute.waypoints.find(
-      w => w.closestTrackpointIndex === currentIdxInt && w.closestTrackpointIndex !== lastPausedPoiIndex
+    const reachedPoi = activeRoute.waypoints.find(
+      w => w.dist_m >= Math.min(prevDist, playbackDistance) && 
+           w.dist_m <= Math.max(prevDist, playbackDistance) && 
+           w.id !== lastPausedPoiId
     );
 
-    if (reachedPoiByIndex) {
-      lastPausedPoiIndex = currentIdxInt;
+    if (reachedPoi) {
+      lastPausedPoiId = reachedPoi.id;
       pausePlayback();
-      showPoiDetailDialog(reachedPoiByIndex, currentIdxInt);
+      showPoiDetailDialog(reachedPoi, reachedPoi.closestTrackpointIndex);
       return; 
     }
 

@@ -161,7 +161,7 @@ export function parseGPX(gpxText, units = "imperial") {
     const desc = dMatch ? dMatch[1].trim() : "";
 
     let customExtension = null;
-    const stationMatch = inner.match(/<station([^>]*)>([\s\S]*?)<\/station>/);
+    const stationMatch = inner.match(/<(?:ca:)?station([^>]*)>([\s\S]*?)<\/(?:ca:)?station>/);
     if (stationMatch) {
       const attrs = stationMatch[1];
       const stationInner = stationMatch[2];
@@ -175,7 +175,7 @@ export function parseGPX(gpxText, units = "imperial") {
       const subtype = subtypeMatch ? subtypeMatch[1] : null;
 
       const passes = [];
-      const passRegex = /<pass([^>]*)\/?>/g;
+      const passRegex = /<(?:ca:)?pass([^>]*)\/?>/g;
       let pMatch;
       while ((pMatch = passRegex.exec(stationInner)) !== null) {
         const pAttrs = pMatch[1];
@@ -195,7 +195,7 @@ export function parseGPX(gpxText, units = "imperial") {
       }
 
       let accessibility = {};
-      const accessMatch = stationInner.match(/<accessibility([^>]*)\/?>/);
+      const accessMatch = stationInner.match(/<(?:ca:)?accessibility([^>]*)\/?>/);
       if (accessMatch) {
         const aAttrs = accessMatch[1];
         accessibility = {
@@ -207,7 +207,7 @@ export function parseGPX(gpxText, units = "imperial") {
       }
 
       let services = {};
-      const servMatch = stationInner.match(/<services([^>]*)\/?>/);
+      const servMatch = stationInner.match(/<(?:ca:)?services([^>]*)\/?>/);
       if (servMatch) {
         const sAttrs = servMatch[1];
         services = {
@@ -222,7 +222,7 @@ export function parseGPX(gpxText, units = "imperial") {
       }
 
       let navigation_alert = null;
-      const navMatch = stationInner.match(/<navigation_alert([^>]*)\/?>/);
+      const navMatch = stationInner.match(/<(?:ca:)?navigation_alert([^>]*)\/?>/);
       if (navMatch) {
         const nAttrs = navMatch[1];
         navigation_alert = {
@@ -241,24 +241,31 @@ export function parseGPX(gpxText, units = "imperial") {
 
     let closestIdx = 0;
     let minSpatialDist = Infinity;
-    trackpoints.forEach((trk, idx) => {
+    const nameLower = name.toLowerCase();
+    const symLower = sym.toLowerCase();
+    const isFinish = nameLower.includes("finish") || nameLower.includes("end") || symLower.includes("finish") || symLower.includes("end");
+    const startIndex = isFinish ? Math.floor(trackpoints.length / 2) : 0;
+
+    for (let idx = startIndex; idx < trackpoints.length; idx++) {
+      const trk = trackpoints[idx];
       const dist = haversine(lat, lon, trk.lat, trk.lon);
       if (dist < minSpatialDist) {
         minSpatialDist = dist;
         closestIdx = idx;
       }
-    });
+    }
 
     waypoints.push({
-      id: customExtension?.station.id || `wpt-${wptIdx}`,
+      id: customExtension?.station?.id || `wpt-${wptIdx}`,
       name,
       lat,
       lon,
       ele,
       sym,
       desc,
+      closestTrackpointIndex: closestIdx,
       dist_m: trackpoints[closestIdx]?.dist_m || 0,
-      customExtension
+      extensions: customExtension
     });
     wptIdx++;
   }

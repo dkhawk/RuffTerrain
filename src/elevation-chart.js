@@ -284,7 +284,7 @@ export class ElevationChart {
     ctx.strokeStyle = "rgba(255, 255, 255, 0.08)";
     ctx.lineWidth = 1;
     ctx.fillStyle = "rgba(255, 255, 255, 0.4)";
-    ctx.font = "9px Outfit, Inter, sans-serif";
+    ctx.font = "12px Outfit, Inter, sans-serif";
     ctx.textAlign = "right";
     ctx.textBaseline = "middle";
 
@@ -454,13 +454,14 @@ export class ElevationChart {
           ctx.stroke();
 
           ctx.save();
-          ctx.font = "9px Outfit, Inter, sans-serif";
+          ctx.font = "12px Outfit, Inter, sans-serif";
           ctx.fillStyle = "rgba(255, 255, 255, 0.7)";
           ctx.textAlign = "left";
           ctx.translate(x + 5, y - 6);
           ctx.rotate(-Math.PI / 6);
           
-          const labelText = pass.label ? `${wpt.name} (${pass.label})` : (passes.length > 1 ? `${wpt.name} (P${pass.num})` : wpt.name);
+          const baseName = getSimpleName(wpt.name);
+          const labelText = pass.label ? `${baseName} (${pass.label})` : (passes.length > 1 ? `${baseName} (P${pass.num})` : baseName);
           ctx.fillText(labelText.substring(0, 22), 0, 0);
           ctx.restore();
         });
@@ -477,12 +478,12 @@ export class ElevationChart {
         ctx.stroke();
 
         ctx.save();
-        ctx.font = "9px Outfit, Inter, sans-serif";
+        ctx.font = "12px Outfit, Inter, sans-serif";
         ctx.fillStyle = "rgba(255, 255, 255, 0.7)";
         ctx.textAlign = "left";
         ctx.translate(x + 5, y - 6);
         ctx.rotate(-Math.PI / 6);
-        ctx.fillText(wpt.name.substring(0, 22), 0, 0);
+        ctx.fillText(getSimpleName(wpt.name).substring(0, 22), 0, 0);
         ctx.restore();
       }
     });
@@ -519,8 +520,8 @@ export class ElevationChart {
       ctx.strokeStyle = "rgba(255, 255, 255, 0.15)";
       ctx.lineWidth = 1;
       
-      const cardWidth = 110;
-      const cardHeight = 50;
+      const cardWidth = 120;
+      const cardHeight = 62;
       let cardX = hx + 10;
       
       // Prevent edge cutting off (right border constraint)
@@ -539,12 +540,12 @@ export class ElevationChart {
       ctx.fill();
       ctx.stroke();
 
-      ctx.font = "bold 9px Outfit, Inter, sans-serif";
+      ctx.font = "bold 12px Outfit, Inter, sans-serif";
       ctx.fillStyle = "#ffffff";
       ctx.textAlign = "left";
-      ctx.fillText(`Dist: ${distText}`, cardX + 8, cardY + 14);
-      ctx.fillText(`Ele: ${valText}`, cardX + 8, cardY + 28);
-      ctx.fillText(`Grade: ${gradeText}`, cardX + 8, cardY + 42);
+      ctx.fillText(`Dist: ${distText}`, cardX + 8, cardY + 16);
+      ctx.fillText(`Ele: ${valText}`, cardX + 8, cardY + 34);
+      ctx.fillText(`Grade: ${gradeText}`, cardX + 8, cardY + 52);
     }
 
     // 7. Draw Waypoint Hover Popover Pane
@@ -563,8 +564,8 @@ export class ElevationChart {
       ctx.strokeStyle = "rgba(255, 255, 255, 0.2)";
       ctx.lineWidth = 1;
 
-      const cardWidth = 180;
-      const cardHeight = 85;
+      const cardWidth = 230;
+      const cardHeight = 95;
       let cardX = hx + 12;
 
       // Check right boundary
@@ -583,16 +584,16 @@ export class ElevationChart {
       ctx.fill();
       ctx.stroke();
 
-      ctx.font = "bold 11px Outfit, Inter, sans-serif";
+      ctx.font = "bold 14px Outfit, Inter, sans-serif";
       ctx.fillStyle = "#ffffff";
       ctx.textAlign = "left";
-      ctx.fillText(this.hoverWaypoint.name, cardX + 10, cardY + 18);
+      ctx.fillText(getSimpleName(this.hoverWaypoint.name), cardX + 10, cardY + 20);
 
-      ctx.font = "9px Outfit, Inter, sans-serif";
+      ctx.font = "12px Outfit, Inter, sans-serif";
       ctx.fillStyle = "rgba(255, 255, 255, 0.6)";
       const distConverted = (this.hoverWaypoint.dist_m * distScale).toFixed(2);
       const eleConverted = Math.round(this.hoverWaypoint.ele * eleScale);
-      ctx.fillText(`Dist: ${distConverted} ${distUnit} | Ele: ${eleConverted} ${eleUnit}`, cardX + 10, cardY + 33);
+      ctx.fillText(`Dist: ${distConverted} ${distUnit} | Ele: ${eleConverted} ${eleUnit}`, cardX + 10, cardY + 38);
 
       // Display custom services/amenities icons if present
       const station = this.hoverWaypoint.extensions?.station;
@@ -610,15 +611,15 @@ export class ElevationChart {
 
       if (station?.passes?.[0]?.cutoff_clock) {
         ctx.fillStyle = "rgba(255, 78, 78, 1.0)";
-        ctx.fillText(`⚠️ Cutoff: ${station.passes[0].cutoff_clock}`, cardX + 10, cardY + 48);
+        ctx.fillText(`⚠️ Cutoff: ${station.passes[0].cutoff_clock}`, cardX + 10, cardY + 56);
         ctx.fillStyle = "rgba(255, 255, 255, 0.8)";
       } else {
         ctx.fillStyle = "rgba(255, 255, 255, 0.8)";
-        ctx.fillText(this.hoverWaypoint.desc ? this.hoverWaypoint.desc.substring(0, 32) : "POI waypoint description", cardX + 10, cardY + 48);
+        ctx.fillText(this.hoverWaypoint.desc ? this.hoverWaypoint.desc.substring(0, 32) : "POI waypoint description", cardX + 10, cardY + 56);
       }
 
       ctx.fillStyle = "var(--primary-color)";
-      ctx.fillText(serviceIconsText.trim().substring(0, 30) || "POI Waypoint", cardX + 10, cardY + 68);
+      ctx.fillText(serviceIconsText.trim().substring(0, 30) || "POI Waypoint", cardX + 10, cardY + 76);
     }
   }
 
@@ -635,4 +636,16 @@ export class ElevationChart {
     ctx.textBaseline = "middle";
     ctx.fillText("Import a GPX route to visualize the elevation profile", this.canvas.width / 2 / (window.devicePixelRatio || 1), this.canvas.height / 2 / (window.devicePixelRatio || 1));
   }
+}
+
+/**
+ * Strips common suffix labels from waypoint names for cleaner profile rendering.
+ * @param {string} name Original name
+ * @returns {string} Simplified name
+ */
+function getSimpleName(name) {
+  if (!name) return "";
+  return name
+    .replace(/\s+(Out|In|Return|AS|Aid Station|Pass\s+\d+|P\d+)\b/gi, "")
+    .trim();
 }
