@@ -88,9 +88,10 @@ export class ElevationChart {
       const mouseX = clientX - rect.left;
       const mouseY = clientY - rect.top;
 
+      const pts = this.route.trackpoints;
       let minEle = Infinity;
       let maxEle = -Infinity;
-      this.route.trackpoints.forEach((pt) => {
+      pts.forEach((pt) => {
         if (pt.ele < minEle) minEle = pt.ele;
         if (pt.ele > maxEle) maxEle = pt.ele;
       });
@@ -106,11 +107,45 @@ export class ElevationChart {
       const hoverRadius = 15; // 15px radius for easy hover activation
 
       this.route.waypoints.forEach((wpt) => {
-        const wx = getX(wpt.dist_m);
-        const wy = getY(wpt.ele);
-        const distance = Math.hypot(mouseX - wx, mouseY - wy);
-        if (distance < hoverRadius) {
-          hoveredWpt = wpt;
+        const passes = wpt.extensions?.station?.passes || [];
+        if (passes.length > 0) {
+          passes.forEach((pass) => {
+            let low = 0, high = pts.length - 1;
+            let closestIdx = 0;
+            let minDiff = Infinity;
+            while (low <= high) {
+              let mid = Math.floor((low + high) / 2);
+              let diff = Math.abs(pts[mid].dist_m - pass.dist_m);
+              if (diff < minDiff) {
+                minDiff = diff;
+                closestIdx = mid;
+              }
+              if (pts[mid].dist_m < pass.dist_m) {
+                low = mid + 1;
+              } else {
+                high = mid - 1;
+              }
+            }
+            const pt = pts[closestIdx];
+            const wx = getX(pt.dist_m);
+            const wy = getY(pt.ele);
+            const distance = Math.hypot(mouseX - wx, mouseY - wy);
+            if (distance < hoverRadius) {
+              hoveredWpt = {
+                ...wpt,
+                dist_m: pt.dist_m,
+                ele: pt.ele,
+                name: pass.label ? `${wpt.name} (${pass.label})` : (passes.length > 1 ? `${wpt.name} (P${pass.num})` : wpt.name)
+              };
+            }
+          });
+        } else {
+          const wx = getX(wpt.dist_m);
+          const wy = getY(wpt.ele);
+          const distance = Math.hypot(mouseX - wx, mouseY - wy);
+          if (distance < hoverRadius) {
+            hoveredWpt = wpt;
+          }
         }
       });
 
@@ -387,25 +422,69 @@ export class ElevationChart {
 
     // 5. Draw Waypoint / Station Indicators along the line
     this.route.waypoints.forEach((wpt) => {
-      const x = getX(wpt.dist_m);
-      const y = getY(wpt.ele);
+      const passes = wpt.extensions?.station?.passes || [];
+      if (passes.length > 0) {
+        passes.forEach((pass) => {
+          let low = 0, high = pts.length - 1;
+          let closestIdx = 0;
+          let minDiff = Infinity;
+          while (low <= high) {
+            let mid = Math.floor((low + high) / 2);
+            let diff = Math.abs(pts[mid].dist_m - pass.dist_m);
+            if (diff < minDiff) {
+              minDiff = diff;
+              closestIdx = mid;
+            }
+            if (pts[mid].dist_m < pass.dist_m) {
+              low = mid + 1;
+            } else {
+              high = mid - 1;
+            }
+          }
+          const pt = pts[closestIdx];
+          const x = getX(pt.dist_m);
+          const y = getY(pt.ele);
 
-      ctx.beginPath();
-      ctx.arc(x, y, 5, 0, 2 * Math.PI);
-      ctx.fillStyle = wpt.sym.includes("start") ? "#52e098" : wpt.sym.includes("finish") ? "#ff4e4e" : "#ffb834";
-      ctx.strokeStyle = "rgba(0, 0, 0, 0.8)";
-      ctx.lineWidth = 1.5;
-      ctx.fill();
-      ctx.stroke();
+          ctx.beginPath();
+          ctx.arc(x, y, 5, 0, 2 * Math.PI);
+          ctx.fillStyle = wpt.sym.includes("start") ? "#52e098" : wpt.sym.includes("finish") ? "#ff4e4e" : "#ffb834";
+          ctx.strokeStyle = "rgba(0, 0, 0, 0.8)";
+          ctx.lineWidth = 1.5;
+          ctx.fill();
+          ctx.stroke();
 
-      ctx.save();
-      ctx.font = "9px Outfit, Inter, sans-serif";
-      ctx.fillStyle = "rgba(255, 255, 255, 0.7)";
-      ctx.textAlign = "left";
-      ctx.translate(x + 5, y - 6);
-      ctx.rotate(-Math.PI / 6);
-      ctx.fillText(wpt.name.substring(0, 15), 0, 0);
-      ctx.restore();
+          ctx.save();
+          ctx.font = "9px Outfit, Inter, sans-serif";
+          ctx.fillStyle = "rgba(255, 255, 255, 0.7)";
+          ctx.textAlign = "left";
+          ctx.translate(x + 5, y - 6);
+          ctx.rotate(-Math.PI / 6);
+          
+          const labelText = pass.label ? `${wpt.name} (${pass.label})` : (passes.length > 1 ? `${wpt.name} (P${pass.num})` : wpt.name);
+          ctx.fillText(labelText.substring(0, 22), 0, 0);
+          ctx.restore();
+        });
+      } else {
+        const x = getX(wpt.dist_m);
+        const y = getY(wpt.ele);
+
+        ctx.beginPath();
+        ctx.arc(x, y, 5, 0, 2 * Math.PI);
+        ctx.fillStyle = wpt.sym.includes("start") ? "#52e098" : wpt.sym.includes("finish") ? "#ff4e4e" : "#ffb834";
+        ctx.strokeStyle = "rgba(0, 0, 0, 0.8)";
+        ctx.lineWidth = 1.5;
+        ctx.fill();
+        ctx.stroke();
+
+        ctx.save();
+        ctx.font = "9px Outfit, Inter, sans-serif";
+        ctx.fillStyle = "rgba(255, 255, 255, 0.7)";
+        ctx.textAlign = "left";
+        ctx.translate(x + 5, y - 6);
+        ctx.rotate(-Math.PI / 6);
+        ctx.fillText(wpt.name.substring(0, 22), 0, 0);
+        ctx.restore();
+      }
     });
 
     // 6. Draw Interactive Scrub Cursor

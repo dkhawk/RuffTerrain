@@ -160,7 +160,7 @@ export class Map3DController {
 
     // Create a simple, static test marker at the center coordinates
     const staticMarker = new this.Marker3DElement({
-      position: { lat: center.lat, lng: center.lng, altitude: center.altitude },
+      position: { lat: center.lat, lng: center.lng, altitude: 10 },
       altitudeMode: "RELATIVE_TO_GROUND",
       extruded: true,
       label: "Center Test Marker"
@@ -402,7 +402,7 @@ export class Map3DController {
     // Add Waypoints
     route.waypoints.forEach((wpt) => {
       const marker = new this.Marker3DElement({
-        position: { lat: wpt.lat, lng: wpt.lon, altitude: wpt.ele },
+        position: { lat: wpt.lat, lng: wpt.lon, altitude: 10 },
         altitudeMode: "RELATIVE_TO_GROUND",
         extruded: true,
         drawsWhenOccluded: true,
@@ -446,7 +446,7 @@ export class Map3DController {
     // Create scrubbing tracker cursor
     const startPt = trackpoints[0];
     this.currentTrackMarker = new this.Marker3DElement({
-      position: { lat: startPt.lat, lng: startPt.lon, altitude: 50 },
+      position: { lat: startPt.lat, lng: startPt.lon, altitude: 15 },
       altitudeMode: "RELATIVE_TO_GROUND",
       extruded: true,
       drawsWhenOccluded: true
@@ -487,7 +487,7 @@ export class Map3DController {
     if (!pt) return;
 
     if (this.currentTrackMarker) {
-      this.currentTrackMarker.position = { lat: pt.lat, lng: pt.lon, altitude: 50 };
+      this.currentTrackMarker.position = { lat: pt.lat, lng: pt.lon, altitude: 15 };
     }
 
     this.currentCameraLat = pt.lat;
