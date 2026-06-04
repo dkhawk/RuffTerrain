@@ -90,6 +90,17 @@ body, html {
   font-weight: 700;
   letter-spacing: -0.2px;
   color: #ffffff;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.hud-logo-icon {
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  object-fit: cover;
+  box-shadow: 0 2px 4px rgba(0,0,0,0.3);
 }
 
 .hud-divider {
