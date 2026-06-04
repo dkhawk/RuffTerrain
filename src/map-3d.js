@@ -392,9 +392,10 @@ export class Map3DController {
         altitudeMode: "RELATIVE_TO_GROUND",
         extruded: true,
         drawsWhenOccluded: true,
-        label: wpt.name
+        label: wpt.name,
+        gmpClickable: true
       });
-      marker.interactive = true;
+      marker.gmpClickable = true;
 
       // Create a simple styled SVG dot matching the cursor dot structure exactly
       const sym = (wpt.sym || "").toLowerCase();
