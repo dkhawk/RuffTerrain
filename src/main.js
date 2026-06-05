@@ -24,7 +24,7 @@
  * The preview controller iterates through trackpoint bearings to control camera panning and triggers contextual auto-pauses when approaching points of interest.
  */
 
-import { parseGPX, reconcileCourse, getMetricsForPoint, calculateWarnings, haversine, snapToRouteSegments, recalculateRouteMetrics } from "./gpx-parser.js";
+import { parseGPX, parseKML, reconcileCourse, getMetricsForPoint, calculateWarnings, haversine, snapToRouteSegments, recalculateRouteMetrics } from "./gpx-parser.js";
 import { writeGPX } from "./gpx-writer.js";
 import { correctRouteElevations } from "./fetch-elevation.js";
 import { sendToGemini, fetchAvailableModels, generateWaypointFromDescription } from "./gemini-client.js";
@@ -78,6 +78,7 @@ let isPlacingNewPoi = false; // Placement mode flag
 let tempPoiData = null; // Temporary snapped point coordinates
 let cleanupStartIndex = null; // Cleanup start trackpoint index
 let cleanupEndIndex = null; // Cleanup end trackpoint index
+let attachedFiles = []; // Array of attached files for Gemini chat
 
 // ==========================================
 // DOM ELEMENT REFERENCES
@@ -1479,7 +1480,8 @@ function loadGpxFile(file) {
  * Sets state variables, redraws chart and map overlays, updates stats dashboards.
  */
 function processGpxContent(text, filename) {
-  activeRoute = parseGPX(text, units);
+  const isKml = filename.endsWith(".kml") || text.includes("<kml") || text.includes("</kml>");
+  activeRoute = isKml ? parseKML(text, units) : parseGPX(text, units);
   activeRoute.avgSpacing = activeRoute.trackpoints.length > 0 ? (activeRoute.totalDistance / activeRoute.trackpoints.length) : 0;
   chatHistory = []; // Reset Gemini chatbot context on new course ingestion
   playbackIndex = 0;
@@ -1916,7 +1918,7 @@ function setupEventListeners() {
     if (document.body.classList.contains("edit-locked")) return;
 
     const prompt = chatInput.value.trim();
-    if (!prompt) return;
+    if (!prompt && attachedFiles.length === 0) return;
 
     if (!apiKeyGemini) {
       showToast("Please configure Gemini API Key in the settings first.");
@@ -1929,7 +1931,55 @@ function setupEventListeners() {
       return;
     }
 
-    appendChatMessage(prompt, "user");
+    // Compile the user prompt/payload
+    let userPrompt;
+    let chatHistoryPromptText = prompt;
+    let partsForHistory = [];
+
+    if (attachedFiles.length > 0) {
+      const parts = [];
+      let textContent = "";
+
+      if (prompt) {
+        textContent += `${prompt}\n\n`;
+      }
+
+      attachedFiles.forEach(file => {
+        if (!file.isImage) {
+          textContent += `--- Attached File: ${file.name} ---\n${file.content}\n---------------------\n\n`;
+        }
+      });
+
+      if (textContent) {
+        parts.push({ text: textContent });
+        partsForHistory.push({ text: textContent });
+      }
+
+      attachedFiles.forEach(file => {
+        if (file.isImage) {
+          const imgPart = {
+            inlineData: {
+              mimeType: file.type,
+              data: file.content
+            }
+          };
+          parts.push(imgPart);
+          partsForHistory.push(imgPart);
+        }
+      });
+
+      userPrompt = parts;
+      
+      const attachmentNames = attachedFiles.map(f => f.name).join(", ");
+      chatHistoryPromptText = prompt 
+        ? `${prompt}\n[Attached: ${attachmentNames}]` 
+        : `[Attached: ${attachmentNames}]`;
+    } else {
+      userPrompt = prompt;
+      partsForHistory.push({ text: prompt });
+    }
+
+    appendChatMessage(chatHistoryPromptText, "user");
     chatInput.value = "";
 
     chatStatusText.textContent = "Analyzing course & reconciling miles...";
@@ -1949,10 +1999,17 @@ function setupEventListeners() {
     }, 120000);
 
     try {
-      const response = await sendToGemini(prompt, activeRoute, apiKeyGemini, chatHistory, geminiModel, currentAbortController.signal);
+      const response = await sendToGemini(userPrompt, activeRoute, apiKeyGemini, chatHistory, geminiModel, currentAbortController.signal);
 
-      chatHistory.push({ role: "user", parts: [{ text: prompt }] });
+      chatHistory.push({ role: "user", parts: partsForHistory });
       chatHistory.push(response.assistantMessage);
+
+      // Clear attachments
+      attachedFiles = [];
+      const chatAttachedContainer = document.getElementById("chat-attached-files-container");
+      if (chatAttachedContainer) {
+        chatAttachedContainer.innerHTML = "";
+      }
 
       if (response.stations && response.stations.length > 0) {
         reconcileCourse(activeRoute, response, units);
@@ -2591,5 +2648,295 @@ function setupEventListeners() {
       showToast("Track cleaned up successfully!");
       saveActiveRouteState();
     });
+  }
+
+  // Initialize keyboard shortcuts & chat file attachments support
+  setupKeyboardShortcuts();
+  setupChatFileAttachments();
+}
+
+/**
+ * Configure global and local hotkeys for rapid route inspection and control.
+ */
+function setupKeyboardShortcuts() {
+  const shortcutsOverlay = document.getElementById("shortcuts-overlay");
+  const closeShortcutsBtn = document.getElementById("close-shortcuts-btn");
+  const keyboardShortcutsBtn = document.getElementById("keyboard-shortcuts-btn");
+
+  if (keyboardShortcutsBtn && shortcutsOverlay) {
+    keyboardShortcutsBtn.addEventListener("click", () => {
+      shortcutsOverlay.classList.remove("hidden");
+    });
+  }
+
+  if (closeShortcutsBtn && shortcutsOverlay) {
+    closeShortcutsBtn.addEventListener("click", () => {
+      shortcutsOverlay.classList.add("hidden");
+    });
+  }
+
+  window.addEventListener("keydown", (e) => {
+    // Check if focused on input/textarea/editable element
+    const activeEl = document.activeElement;
+    if (activeEl && (
+      activeEl.tagName === "INPUT" ||
+      activeEl.tagName === "TEXTAREA" ||
+      activeEl.isContentEditable
+    )) {
+      return;
+    }
+
+    switch (e.key) {
+      case " ": // Space
+        e.preventDefault();
+        if (isPlaying) {
+          pausePlayback();
+          showToast("Playback paused.");
+        } else {
+          startPlayback();
+          showToast("Playback started.");
+        }
+        break;
+
+      case "[": // Speed down
+        if (playbackSpeed) {
+          let currentVal = parseInt(playbackSpeed.value);
+          if (currentVal > 1) {
+            currentVal--;
+            playbackSpeed.value = currentVal;
+            playbackSpeed.dispatchEvent(new Event("change"));
+            showToast(`Playback speed: ${currentVal}x`);
+          }
+        }
+        break;
+
+      case "]": // Speed up
+        if (playbackSpeed) {
+          let currentVal = parseInt(playbackSpeed.value);
+          if (currentVal < 10) {
+            currentVal++;
+            playbackSpeed.value = currentVal;
+            playbackSpeed.dispatchEvent(new Event("change"));
+            showToast(`Playback speed: ${currentVal}x`);
+          }
+        }
+        break;
+
+      case "c":
+      case "C":
+        // Toggle Gemini chat sidebar
+        const toggleChatBtn = document.getElementById("toggle-chat-btn");
+        if (toggleChatBtn) {
+          toggleChatBtn.click();
+        }
+        break;
+
+      case "l":
+      case "L":
+        // Toggle Lock checkbox
+        if (editLockCheckbox) {
+          editLockCheckbox.checked = !editLockCheckbox.checked;
+          editLockCheckbox.dispatchEvent(new Event("change"));
+        }
+        break;
+
+      case "Home":
+        e.preventDefault();
+        if (activeRoute) {
+          playbackDistance = 0;
+          playbackIndex = 0;
+          updatePlaybackFrame();
+          if (mapController) {
+            mapController.syncToTrackpoint(0, false);
+          }
+          showToast("Jumped to Start");
+        }
+        break;
+
+      case "End":
+        e.preventDefault();
+        if (activeRoute) {
+          playbackDistance = activeRoute.totalDistance;
+          playbackIndex = activeRoute.trackpoints.length - 1;
+          updatePlaybackFrame();
+          if (mapController) {
+            mapController.syncToTrackpoint(activeRoute.trackpoints.length - 1, false);
+          }
+          showToast("Jumped to Finish");
+        }
+        break;
+
+      case "Escape":
+        // Close overlays and dialogs
+        if (shortcutsOverlay && !shortcutsOverlay.classList.contains("hidden")) {
+          shortcutsOverlay.classList.add("hidden");
+        }
+        if (settingsOverlay && !settingsOverlay.classList.contains("hidden")) {
+          settingsOverlay.classList.add("hidden");
+        }
+        if (poiDetailDialog && !poiDetailDialog.classList.contains("hidden")) {
+          poiDetailDialog.classList.add("hidden");
+        }
+        if (courseInfoOverlay && !courseInfoOverlay.classList.contains("hidden")) {
+          courseInfoOverlay.classList.add("hidden");
+        }
+        break;
+
+      case "?":
+        if (shortcutsOverlay) {
+          if (shortcutsOverlay.classList.contains("hidden")) {
+            shortcutsOverlay.classList.remove("hidden");
+          } else {
+            shortcutsOverlay.classList.add("hidden");
+          }
+        }
+        break;
+    }
+  });
+}
+
+/**
+ * Configure attachments handling for Gemini Chat messages.
+ */
+function setupChatFileAttachments() {
+  const chatAttachBtn = document.getElementById("chat-attach-btn");
+  const chatFileInput = document.getElementById("chat-file-input");
+  const chatAttachedContainer = document.getElementById("chat-attached-files-container");
+
+  if (!chatAttachBtn || !chatFileInput || !chatAttachedContainer) return;
+
+  chatAttachBtn.addEventListener("click", () => {
+    if (document.body.classList.contains("edit-locked")) return;
+    chatFileInput.click();
+  });
+
+  chatFileInput.addEventListener("change", async (e) => {
+    if (document.body.classList.contains("edit-locked")) return;
+    const files = e.target.files;
+    if (!files || files.length === 0) return;
+
+    for (const file of files) {
+      // Prevent duplicates
+      if (attachedFiles.some(f => f.name === file.name)) continue;
+
+      try {
+        const fileData = await readFileContent(file);
+        if (fileData) {
+          attachedFiles.push({
+            name: file.name,
+            type: file.type,
+            content: fileData.content,
+            isImage: fileData.isImage
+          });
+        }
+      } catch (err) {
+        showToast(`Error reading file ${file.name}: ${err.message}`);
+      }
+    }
+
+    renderAttachedFiles();
+    chatFileInput.value = ""; // Reset input so same file can be selected again
+  });
+
+  function renderAttachedFiles() {
+    chatAttachedContainer.innerHTML = "";
+    attachedFiles.forEach((file, index) => {
+      const badge = document.createElement("div");
+      badge.style.cssText = `
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        padding: 2px 8px;
+        background: rgba(255, 255, 255, 0.1);
+        border: 1px solid rgba(255, 255, 255, 0.15);
+        border-radius: 4px;
+        font-size: 11px;
+        color: var(--text-color);
+        font-family: var(--font-ui);
+      `;
+
+      const icon = file.isImage ? "🖼️" : file.type.includes("pdf") ? "📄" : "📝";
+      badge.innerHTML = `
+        <span>${icon} ${file.name}</span>
+        <span class="delete-attachment" style="cursor: pointer; font-weight: bold; color: var(--text-muted); margin-left: 4px; font-size: 12px;">×</span>
+      `;
+
+      badge.querySelector(".delete-attachment").addEventListener("click", () => {
+        attachedFiles.splice(index, 1);
+        renderAttachedFiles();
+      });
+
+      chatAttachedContainer.appendChild(badge);
+    });
+  }
+
+  // Helper to read file content based on type
+  async function readFileContent(file) {
+    const isImage = file.type.startsWith("image/");
+    const isPdf = file.type.includes("pdf") || file.name.endsWith(".pdf");
+
+    if (isImage) {
+      // Base64 read for images
+      return new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = () => {
+          // Extract base64 payload from data URL
+          const base64Data = reader.result.split(",")[1];
+          resolve({
+            name: file.name,
+            type: file.type,
+            content: base64Data,
+            isImage: true
+          });
+        };
+        reader.onerror = reject;
+        reader.readAsDataURL(file);
+      });
+    } else if (isPdf) {
+      // PDF text extraction using PDF.js
+      try {
+        const text = await extractTextFromPdf(file);
+        return {
+          name: file.name,
+          type: "text/plain",
+          content: text,
+          isImage: false
+        };
+      } catch (err) {
+        console.error("PDF text extraction failed:", err);
+        throw new Error("Could not extract text from PDF: " + err.message);
+      }
+    } else {
+      // Standard text-based read (TXT, CSV, GPX, JSON, XML)
+      return new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = () => {
+          resolve({
+            name: file.name,
+            type: file.type || "text/plain",
+            content: reader.result,
+            isImage: false
+          });
+        };
+        reader.onerror = reject;
+        reader.readAsText(file);
+      });
+    }
+  }
+
+  async function extractTextFromPdf(file) {
+    const arrayBuffer = await file.arrayBuffer();
+    const pdfjsLib = window['pdfjs-dist/build/pdf'];
+    pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.4.120/pdf.worker.min.js';
+
+    const pdf = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
+    let text = "";
+    for (let i = 1; i <= pdf.numPages; i++) {
+      const page = await pdf.getPage(i);
+      const content = await page.getTextContent();
+      const strings = content.items.map(item => item.str);
+      text += strings.join(" ") + "\n";
+    }
+    return text;
   }
 }

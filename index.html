@@ -16,6 +16,8 @@
     
     <!-- Main Application Stylesheet -->
     <link rel="stylesheet" href="/src/style.css">
+    <!-- PDF.js client-side parser library -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.4.120/pdf.min.js"></script>
   </head>
   <body>
     <!-- Top HUD Dashboard (Header Bar matching Screenshot 1) -->
@@ -71,6 +73,7 @@
         <button id="toggle-chat-btn" class="settings-gear-btn hidden" title="Toggle Gemini Chat">💬</button>
         <button id="toggle-warnings-btn" class="settings-gear-btn hidden" title="Toggle Course Warnings">⚠️</button>
         <button id="course-info-btn" class="settings-gear-btn hidden" title="Course Description">ℹ️</button>
+        <button id="keyboard-shortcuts-btn" class="settings-gear-btn" title="Keyboard Shortcuts (⌨️)">⌨️</button>
         <button id="global-settings-btn" class="settings-gear-btn" title="Config Settings">⚙️</button>
       </div>
     </header>
@@ -133,8 +136,8 @@
       <div class="card-body scrollable" style="max-height: 520px; display: flex; flex-direction: column; gap: 8px;">
         <div class="edit-section-header" style="font-weight: bold; font-size: 11px; text-transform: uppercase; color: var(--text-muted); margin-bottom: 2px;">📁 Course File</div>
         <div id="drop-zone" class="drop-zone" style="padding: 12px 6px; height: auto;">
-          <p style="margin: 0; font-size: 11px;">Drag & Drop GPX or <strong>browse</strong></p>
-          <input type="file" id="file-selector" accept=".gpx" style="display: none;" />
+          <p style="margin: 0; font-size: 11px;">Drag & Drop GPX/KML or <strong>browse</strong></p>
+          <input type="file" id="file-selector" accept=".gpx,.kml" style="display: none;" />
         </div>
 
 
@@ -218,9 +221,15 @@
         </div>
 
         <div class="chat-input-area" style="display: flex; flex-direction: column; gap: 8px; border-top: 1px solid rgba(255,255,255,0.08); padding-top: 12px; margin-top: 8px;">
+          <!-- Attached files list badges -->
+          <div id="chat-attached-files-container" style="display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 2px;"></div>
           <div style="display: flex; gap: 8px; width: 100%;">
             <textarea id="chat-input" placeholder="Paste aid station list or ask Gemini to add checkpoints..." rows="8" style="flex: 1; resize: none; background: rgba(0,0,0,0.2); border: 1px solid rgba(255,255,255,0.1); color: var(--text-color); font-family: var(--font-ui); font-size: 13px; border-radius: 6px; padding: 8px;"></textarea>
-            <button id="chat-submit" class="btn btn-primary btn-icon" title="Send" style="align-self: flex-end; height: 38px; width: 38px; min-width: 38px; display: flex; align-items: center; justify-content: center; font-size: 16px; border-radius: 6px;">➔</button>
+            <div style="display: flex; flex-direction: column; gap: 6px; align-self: flex-end;">
+              <button id="chat-attach-btn" class="btn btn-secondary btn-icon" title="Attach file (Text, PDF, Image)" style="height: 38px; width: 38px; display: flex; align-items: center; justify-content: center; font-size: 16px; border-radius: 6px; background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.1); cursor: pointer; color: var(--text-color);">📎</button>
+              <button id="chat-submit" class="btn btn-primary btn-icon" title="Send" style="height: 38px; width: 38px; min-width: 38px; display: flex; align-items: center; justify-content: center; font-size: 16px; border-radius: 6px;">➔</button>
+            </div>
+            <input type="file" id="chat-file-input" multiple accept=".txt,.csv,.json,.gpx,.xml,.png,.jpg,.jpeg,.webp,.pdf" style="display: none;" />
           </div>
           <div class="chat-model-selector-row" style="display: flex; align-items: center; justify-content: space-between; gap: 8px;">
             <div style="display: flex; align-items: center; gap: 6px;">
@@ -525,6 +534,54 @@
 
     <!-- UI TOAST POPUP FOR NOTIFICATIONS -->
     <div id="toast-notification" class="toast hidden"></div>
+
+    <!-- Keyboard Shortcuts Overlay -->
+    <div id="shortcuts-overlay" class="modal-overlay hidden">
+      <div class="modal-box glass-card" style="max-width: 450px;">
+        <header class="modal-header">
+          <h3>KEYBOARD SHORTCUTS</h3>
+          <button id="close-shortcuts-btn" class="close-btn">&times;</button>
+        </header>
+        <div class="modal-body">
+          <div class="shortcuts-grid" style="display: flex; flex-direction: column; gap: 12px; font-family: var(--font-ui); font-size: 13px;">
+            <div style="display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid rgba(255,255,255,0.05); padding-bottom: 6px;">
+              <span>Toggle Play/Pause</span>
+              <kbd style="background: rgba(255,255,255,0.15); border: 1px solid rgba(255,255,255,0.2); border-radius: 4px; padding: 2px 6px; font-family: monospace; font-size: 11px; font-weight: bold;">Space</kbd>
+            </div>
+            <div style="display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid rgba(255,255,255,0.05); padding-bottom: 6px;">
+              <span>Speed Adjustments</span>
+              <div style="display: flex; gap: 4px;">
+                <kbd style="background: rgba(255,255,255,0.15); border: 1px solid rgba(255,255,255,0.2); border-radius: 4px; padding: 2px 6px; font-family: monospace; font-size: 11px; font-weight: bold;">[</kbd>
+                <kbd style="background: rgba(255,255,255,0.15); border: 1px solid rgba(255,255,255,0.2); border-radius: 4px; padding: 2px 6px; font-family: monospace; font-size: 11px; font-weight: bold;">]</kbd>
+              </div>
+            </div>
+            <div style="display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid rgba(255,255,255,0.05); padding-bottom: 6px;">
+              <span>Toggle Chat Sidebar</span>
+              <kbd style="background: rgba(255,255,255,0.15); border: 1px solid rgba(255,255,255,0.2); border-radius: 4px; padding: 2px 6px; font-family: monospace; font-size: 11px; font-weight: bold;">C</kbd>
+            </div>
+            <div style="display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid rgba(255,255,255,0.05); padding-bottom: 6px;">
+              <span>Toggle Edit Lock</span>
+              <kbd style="background: rgba(255,255,255,0.15); border: 1px solid rgba(255,255,255,0.2); border-radius: 4px; padding: 2px 6px; font-family: monospace; font-size: 11px; font-weight: bold;">L</kbd>
+            </div>
+            <div style="display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid rgba(255,255,255,0.05); padding-bottom: 6px;">
+              <span>Jump to Start / Finish</span>
+              <div style="display: flex; gap: 4px;">
+                <kbd style="background: rgba(255,255,255,0.15); border: 1px solid rgba(255,255,255,0.2); border-radius: 4px; padding: 2px 6px; font-family: monospace; font-size: 11px; font-weight: bold;">Home</kbd>
+                <kbd style="background: rgba(255,255,255,0.15); border: 1px solid rgba(255,255,255,0.2); border-radius: 4px; padding: 2px 6px; font-family: monospace; font-size: 11px; font-weight: bold;">End</kbd>
+              </div>
+            </div>
+            <div style="display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid rgba(255,255,255,0.05); padding-bottom: 6px;">
+              <span>Close Active Dialogs / Modals</span>
+              <kbd style="background: rgba(255,255,255,0.15); border: 1px solid rgba(255,255,255,0.2); border-radius: 4px; padding: 2px 6px; font-family: monospace; font-size: 11px; font-weight: bold;">Esc</kbd>
+            </div>
+            <div style="display: flex; justify-content: space-between; align-items: center;">
+              <span>Show Keyboard Shortcuts Help</span>
+              <kbd style="background: rgba(255,255,255,0.15); border: 1px solid rgba(255,255,255,0.2); border-radius: 4px; padding: 2px 6px; font-family: monospace; font-size: 11px; font-weight: bold;">?</kbd>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
 
     <!-- Course Info Overlay -->
     <div id="course-info-overlay" class="modal-overlay hidden">

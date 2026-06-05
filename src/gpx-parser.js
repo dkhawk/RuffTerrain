@@ -456,6 +456,173 @@ export function parseGPX(gpxText, units = "imperial") {
 }
 
 /**
+ * Parses KML content into a structured route object matching the GPX schema.
+ * @param {string} kmlText Raw KML XML string
+ * @param {string} units Measurement units ("imperial" or "metric")
+ * @returns {Object} Structured route data
+ */
+export function parseKML(kmlText, units = "imperial") {
+  // Extract Document name
+  const docNameMatch = kmlText.match(/<Document>[\s\S]*?<name>([^<]+)<\/name>/);
+  const routeName = docNameMatch ? docNameMatch[1].trim() : "Imported KML Route";
+
+  const descMatch = kmlText.match(/<Document>[\s\S]*?<description>([^<]+)<\/description>/);
+  const routeDesc = descMatch ? descMatch[1].trim() : "No description provided.";
+
+  const coordsMatch = kmlText.match(/<coordinates>([\s\S]*?)<\/coordinates>/);
+  if (!coordsMatch) {
+    throw new Error("No coordinates/path coordinates found in KML file.");
+  }
+  
+  const coordsStr = coordsMatch[1].trim();
+  const rawPts = [];
+  const coordTokens = coordsStr.split(/\s+/);
+  let idx = 0;
+  for (const token of coordTokens) {
+    if (!token) continue;
+    const parts = token.split(",");
+    if (parts.length >= 2) {
+      const lon = parseFloat(parts[0]);
+      const lat = parseFloat(parts[1]);
+      const ele = parts[2] ? parseFloat(parts[2]) : 0;
+      rawPts.push({
+        index: idx++,
+        lat,
+        lon,
+        ele,
+        time: null
+      });
+    }
+  }
+
+  // Waypoints (Placemarks with Point coordinates, ignoring LineString tracks)
+  const waypoints = [];
+  const placemarkRegex = /<Placemark>([\s\S]*?)<\/Placemark>/g;
+  let match;
+  let wptIdx = 0;
+  while ((match = placemarkRegex.exec(kmlText)) !== null) {
+    const inner = match[1];
+    if (inner.includes("<LineString>")) continue;
+
+    const ptMatch = inner.match(/<Point>([\s\S]*?)<\/Point>/);
+    if (!ptMatch) continue;
+
+    const coordMatch = ptMatch[1].match(/<coordinates>([^<]+)<\/coordinates>/);
+    if (!coordMatch) continue;
+
+    const parts = coordMatch[1].trim().split(",");
+    if (parts.length < 2) continue;
+
+    const lon = parseFloat(parts[0]);
+    const lat = parseFloat(parts[1]);
+    const ele = parts[2] ? parseFloat(parts[2]) : 0;
+
+    const nameMatch = inner.match(/<name>([^<]+)<\/name>/);
+    const name = nameMatch ? nameMatch[1].trim() : `Waypoint ${wptIdx + 1}`;
+
+    const descMatch = inner.match(/<description>([^<]+)<\/description>/);
+    const desc = descMatch ? descMatch[1].trim() : "";
+
+    waypoints.push({
+      id: `kml-wpt-${wptIdx}`,
+      name,
+      lat,
+      lon,
+      ele,
+      sym: "icons/services.svg",
+      desc,
+      dist_m: 0,
+      closestTrackpointIndex: 0,
+      extensions: {}
+    });
+    wptIdx++;
+  }
+
+  // Calculate cumulative distances & smooth elevations
+  const trackpoints = [];
+  let totalDistance = 0;
+  let totalElevationGain = 0;
+  let totalElevationLoss = 0;
+
+  // Apply 11-point moving average elevation smoothing
+  if (rawPts.length >= 3) {
+    const temp = rawPts.map(p => p.ele);
+    const windowSize = 5;
+    for (let k = 0; k < rawPts.length; k++) {
+      const start = Math.max(0, k - windowSize);
+      const end = Math.min(rawPts.length - 1, k + windowSize);
+      let sum = 0;
+      for (let j = start; j <= end; j++) {
+        sum += temp[j];
+      }
+      rawPts[k].ele = sum / (end - start + 1);
+    }
+  }
+
+  for (let i = 0; i < rawPts.length; i++) {
+    const pt = rawPts[i];
+    let segmentDist = 0;
+    let grade = 0;
+
+    if (i > 0) {
+      const prev = rawPts[i - 1];
+      segmentDist = haversine(prev.lat, prev.lon, pt.lat, pt.lon);
+      totalDistance += segmentDist;
+
+      const dEle = pt.ele - prev.ele;
+      if (dEle > 0) {
+        totalElevationGain += dEle;
+      } else {
+        totalElevationLoss += Math.abs(dEle);
+      }
+      if (segmentDist > 0) {
+        grade = (dEle / segmentDist) * 100;
+      }
+    }
+
+    trackpoints.push({
+      index: pt.index,
+      lat: pt.lat,
+      lon: pt.lon,
+      ele: pt.ele,
+      dist_m: totalDistance,
+      grade,
+      time: pt.time
+    });
+  }
+
+  // Snap waypoints to closest trackpoints
+  waypoints.forEach((wpt) => {
+    let minDiff = Infinity;
+    let closestIdx = 0;
+    for (let idx = 0; idx < trackpoints.length; idx++) {
+      const pt = trackpoints[idx];
+      const dist = haversine(wpt.lat, wpt.lon, pt.lat, pt.lon);
+      if (dist < minDiff) {
+        minDiff = dist;
+        closestIdx = idx;
+      }
+    }
+    wpt.closestTrackpointIndex = closestIdx;
+    wpt.dist_m = trackpoints[closestIdx]?.dist_m || 0;
+  });
+
+  const parsedRoute = {
+    name: routeName,
+    description: routeDesc,
+    trackpoints,
+    waypoints,
+    totalDistance,
+    totalElevationGain,
+    totalElevationLoss,
+    warnings: []
+  };
+
+  calculateWarnings(parsedRoute, [], units);
+  return parsedRoute;
+}
+
+/**
  * Calculates safety warnings (Resource Deserts, Difficult Climbs, Exposure Risk) for a parsed route.
  * Modifies the route object directly by populating `route.warnings`.
  * @param {Object} route The parsed route object

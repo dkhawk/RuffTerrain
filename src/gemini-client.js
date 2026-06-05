@@ -177,10 +177,21 @@ export async function sendToGemini(userPrompt, currentRoute, apiKey, chatHistory
   const contents = [...chatHistory];
   
   // Append current user message
-  contents.push({
-    role: "user",
-    parts: [{ text: `${contextText}User Request: ${userPrompt}\n\nPlease analyze the request, compile or modify the course stations, and return the output conforming strictly to the requested JSON schema.` }]
-  });
+  if (Array.isArray(userPrompt)) {
+    const parts = [...userPrompt];
+    if (contextText) {
+      parts.unshift({ text: contextText });
+    }
+    contents.push({
+      role: "user",
+      parts
+    });
+  } else {
+    contents.push({
+      role: "user",
+      parts: [{ text: `${contextText}User Request: ${userPrompt}\n\nPlease analyze the request, compile or modify the course stations, and return the output conforming strictly to the requested JSON schema.` }]
+    });
+  }
 
   const requestBody = {
     contents,
