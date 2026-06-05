@@ -74,6 +74,32 @@ export function parseGPX(gpxText, units = "imperial") {
     idx++;
   }
 
+  // Fallback: If no trackpoints (<trkpt>) are found, parse routepoints (<rtept>)
+  if (rawPts.length === 0) {
+    const rteptRegex = /<rtept\s+lat="([^"]+)"\s+lon="([^"]+)">([\s\S]*?)<\/rtept>/g;
+    idx = 0;
+    while ((match = rteptRegex.exec(gpxText)) !== null) {
+      const lat = parseFloat(match[1]);
+      const lon = parseFloat(match[2]);
+      const inner = match[3];
+      
+      const eleMatch = inner.match(/<ele>([^<]+)<\/ele>/);
+      const ele = eleMatch ? parseFloat(eleMatch[1]) : 0;
+      
+      const timeMatch = inner.match(/<time>([^<]+)<\/time>/);
+      const time = timeMatch ? timeMatch[1] : null;
+
+      rawPts.push({
+        index: idx,
+        lat,
+        lon,
+        ele,
+        time,
+      });
+      idx++;
+    }
+  }
+
   // Apply an 11-point moving average elevation smoothing pass (5 points on each side)
   if (rawPts.length >= 3) {
     const temp = rawPts.map(p => p.ele);
