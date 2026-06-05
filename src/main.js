@@ -224,7 +224,7 @@ document.addEventListener("DOMContentLoaded", () => {
 
   mapController.onWaypointDragEnd = (wpt, newPosition) => {
     if (!activeRoute) return;
-    const targetWpt = activeRoute.waypoints.find(w => w.name === wpt.name && w.lat === wpt.lat && w.lon === wpt.lon);
+    const targetWpt = activeRoute.waypoints.find(w => w === wpt);
     if (targetWpt) {
       const shouldSnap = dragSnapCheckbox ? dragSnapCheckbox.checked : true;
       const snapped = snapToRouteSegments(activeRoute, newPosition);

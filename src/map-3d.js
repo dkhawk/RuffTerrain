@@ -140,10 +140,11 @@ export class Map3DController {
   async initialize(mapsNamespace, center = { lat: 39.2508, lng: -106.2925, altitude: 3100 }) {
     this.container.innerHTML = ""; // Clear loader message
 
-    const { Map3DElement, Marker3DElement, Polyline3DElement } = await google.maps.importLibrary("maps3d");
+    const { Map3DElement, Polyline3DElement } = await google.maps.importLibrary("maps3d");
+    const { AdvancedMarkerElement } = await google.maps.importLibrary("marker");
     this.Map3DElement = Map3DElement;
-    this.Marker3DElement = Marker3DElement;
     this.Polyline3DElement = Polyline3DElement;
+    this.AdvancedMarkerElement = AdvancedMarkerElement;
 
     this.map = new Map3DElement({
       center: { lat: center.lat, lng: center.lng, altitude: center.altitude + 2000 },
@@ -200,11 +201,6 @@ export class Map3DController {
     this.isEditLocked = isLocked;
     this.markers.forEach(marker => {
       marker.gmpDraggable = !isLocked;
-      if (!isLocked) {
-        marker.setAttribute('gmp-draggable', '');
-      } else {
-        marker.removeAttribute('gmp-draggable');
-      }
     });
   }
 
@@ -264,9 +260,10 @@ export class Map3DController {
     this.activeRoute = route;
     this.colorCodeClimbs = colorCodeClimbs;
 
-    const { Marker3DElement, Polyline3DElement } = await google.maps.importLibrary("maps3d");
-    this.Marker3DElement = Marker3DElement;
+    const { Polyline3DElement } = await google.maps.importLibrary("maps3d");
+    const { AdvancedMarkerElement } = await google.maps.importLibrary("marker");
     this.Polyline3DElement = Polyline3DElement;
+    this.AdvancedMarkerElement = AdvancedMarkerElement;
 
     const trackpoints = route.trackpoints;
     if (trackpoints.length < 2) return;
@@ -392,26 +389,14 @@ export class Map3DController {
 
     // Add Waypoints
     route.waypoints.forEach((wpt) => {
-      const marker = new this.Marker3DElement({
-        position: { lat: wpt.lat, lng: wpt.lon, altitude: 10 },
-        altitudeMode: "RELATIVE_TO_GROUND",
-        extruded: true,
-        drawsWhenOccluded: true,
-        label: wpt.name
+      const marker = new this.AdvancedMarkerElement({
+        position: { lat: wpt.lat, lng: wpt.lon },
+        title: wpt.name,
+        gmpDraggable: !this.isEditLocked
       });
       marker.waypoint = wpt; // Store direct reference to the waypoint details on the marker DOM instance
-      marker.gmpDraggable = !this.isEditLocked;
-      
-      // Explicitly set Web Component interactivity attributes
-      marker.setAttribute('interactive', '');
-      marker.setAttribute('gmp-clickable', '');
-      if (!this.isEditLocked) {
-        marker.setAttribute('gmp-draggable', '');
-      }
-      marker.style.cursor = "pointer";
-      marker.style.pointerEvents = "auto";
 
-      // Create a standard HTMLImageElement inside a template to hold our custom SVG
+      // Create a standard HTMLImageElement inside a wrapper div to hold our custom SVG
       const img = document.createElement("img");
       img.src = "data:image/svg+xml;charset=utf-8," + encodeURIComponent(getWaypointSvgString(wpt));
       img.style.width = "36px";
@@ -419,24 +404,26 @@ export class Map3DController {
       img.style.cursor = "pointer";
       img.style.pointerEvents = "auto";
 
-      const template = document.createElement("template");
-      template.content.appendChild(img);
-      marker.appendChild(template);
+      const wrapper = document.createElement("div");
+      wrapper.className = "marker-wrapper";
+      wrapper.appendChild(img);
+      marker.content = wrapper;
 
-      // Add click popover details
-      marker.addEventListener("gmp-click", () => {
+      // Click trigger handler
+      const triggerClick = (e) => {
+        if (e) e.stopPropagation(); // prevent triggering map clicks
         const event = new CustomEvent("waypoint-click", { detail: wpt });
         window.dispatchEvent(event);
-      });
-      marker.addEventListener("click", () => {
-        const event = new CustomEvent("waypoint-click", { detail: wpt });
-        window.dispatchEvent(event);
-      });
+      };
+
+      wrapper.addEventListener("click", triggerClick);
+      marker.addListener("click", triggerClick);
 
       // Draggable Editing logic
-      marker.addEventListener("gmp-dragend", () => {
+      marker.addListener("dragend", () => {
+        const newPos = { lat: marker.position.lat, lng: marker.position.lng };
         if (this.onWaypointDragEnd) {
-          this.onWaypointDragEnd(wpt, marker.position);
+          this.onWaypointDragEnd(wpt, newPos);
         }
       });
 
@@ -446,29 +433,25 @@ export class Map3DController {
 
     // Setup delegated click listeners on the map element to catch clicks on 3D markers
     if (this.mapClickListener) {
-      this.map.removeEventListener("gmp-click", this.mapClickListener);
       this.map.removeEventListener("click", this.mapClickListener);
     }
     
     this.mapClickListener = (e) => {
-      // Find if the target is a marker or sits inside a marker (e.g. template children)
-      const clickedMarker = this.markers.find(m => m === e.target || m.contains(e.target));
+      // Find if the target is a marker or sits inside a marker's content
+      const clickedMarker = this.markers.find(m => m === e.target || m.content?.contains(e.target));
       if (clickedMarker && clickedMarker.waypoint) {
         const event = new CustomEvent("waypoint-click", { detail: clickedMarker.waypoint });
         window.dispatchEvent(event);
       }
     };
 
-    this.map.addEventListener("gmp-click", this.mapClickListener);
     this.map.addEventListener("click", this.mapClickListener);
 
     // Create scrubbing tracker cursor
     const startPt = trackpoints[0];
-    this.currentTrackMarker = new this.Marker3DElement({
-      position: { lat: startPt.lat, lng: startPt.lon, altitude: 15 },
-      altitudeMode: "RELATIVE_TO_GROUND",
-      extruded: true,
-      drawsWhenOccluded: true
+    this.currentTrackMarker = new this.AdvancedMarkerElement({
+      position: { lat: startPt.lat, lng: startPt.lon },
+      title: "Cursor"
     });
 
     const cursorDotString = `
@@ -476,14 +459,15 @@ export class Map3DController {
         <circle cx="12" cy="12" r="8" fill="#ffeb3b" stroke="#1e293b" stroke-width="3" />
       </svg>
     `;
-    const img = document.createElement("img");
-    img.src = "data:image/svg+xml;charset=utf-8," + encodeURIComponent(cursorDotString);
-    img.style.width = "24px";
-    img.style.height = "24px";
+    const cursorImg = document.createElement("img");
+    cursorImg.src = "data:image/svg+xml;charset=utf-8," + encodeURIComponent(cursorDotString);
+    cursorImg.style.width = "24px";
+    cursorImg.style.height = "24px";
 
-    const template = document.createElement("template");
-    template.content.appendChild(img);
-    this.currentTrackMarker.appendChild(template);
+    const cursorWrapper = document.createElement("div");
+    cursorWrapper.className = "marker-wrapper";
+    cursorWrapper.appendChild(cursorImg);
+    this.currentTrackMarker.content = cursorWrapper;
 
     this.map.append(this.currentTrackMarker);
   }
@@ -514,7 +498,7 @@ export class Map3DController {
     if (!pt) return;
 
     if (this.currentTrackMarker) {
-      this.currentTrackMarker.position = { lat: pt.lat, lng: pt.lon, altitude: 15 };
+      this.currentTrackMarker.position = { lat: pt.lat, lng: pt.lon };
     }
 
     this.currentCameraLat = pt.lat;
@@ -549,7 +533,7 @@ export class Map3DController {
     if (!this.map || !pt) return;
 
     if (this.currentTrackMarker) {
-      this.currentTrackMarker.position = { lat: pt.lat, lng: pt.lon, altitude: 15 };
+      this.currentTrackMarker.position = { lat: pt.lat, lng: pt.lon };
     }
 
     if (this.currentCameraAltitude === 0) {
