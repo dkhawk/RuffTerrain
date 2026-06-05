@@ -260,8 +260,6 @@ export class Map3DController {
       }
       this.activeWarningPolyline = null;
     }
-
-    this.removeCleanupHighlight();
   }
 
   /**
@@ -725,50 +723,7 @@ export class Map3DController {
     }
   }
 
-  /**
-   * Sets and draws a highlighted red track segment overlay for the de-noise/cleanup range selection.
-   */
-  setCleanupRange(startIndex, endIndex) {
-    this.removeCleanupHighlight();
-    if (startIndex === null || endIndex === null || !this.activeRoute) return;
 
-    const trkpts = this.activeRoute.trackpoints;
-    const start = Math.min(startIndex, endIndex);
-    const end = Math.max(startIndex, endIndex);
-
-    const coords = [];
-    for (let i = start; i <= end; i++) {
-      if (trkpts[i]) {
-        coords.push({ lat: trkpts[i].lat, lng: trkpts[i].lon, altitude: 15 });
-      }
-    }
-
-    if (coords.length < 2) return;
-
-    // Draw thick red highlight line slightly above the path to show selection bounds
-    this.cleanupHighlight = new this.Polyline3DElement({
-      strokeColor: "#ef4444", // Bright red
-      strokeWidth: 10,
-      altitudeMode: "CLAMP_TO_GROUND",
-      path: coords
-    });
-
-    this.map.append(this.cleanupHighlight);
-  }
-
-  /**
-   * Removes the active cleanup selection highlight overlay.
-   */
-  removeCleanupHighlight() {
-    if (this.cleanupHighlight) {
-      try {
-        this.map.removeChild(this.cleanupHighlight);
-      } catch (e) {
-        // ignore
-      }
-      this.cleanupHighlight = null;
-    }
-  }
 }
 
 /**

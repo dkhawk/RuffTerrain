@@ -76,8 +76,6 @@ let isEditingPoiLocation = false; // Manages the edit location mode of the activ
 let currentAbortController = null; // Active Gemini Chat API AbortController
 let isPlacingNewPoi = false; // Placement mode flag
 let tempPoiData = null; // Temporary snapped point coordinates
-let cleanupStartIndex = null; // Cleanup start trackpoint index
-let cleanupEndIndex = null; // Cleanup end trackpoint index
 let attachedFiles = []; // Array of attached files for Gemini chat
 
 // ==========================================
@@ -143,11 +141,6 @@ const addPoiSubmitBtn = document.getElementById("add-poi-submit-btn");
 
 // Cleanup & Waypoint Edit Panel Components
 const editWaypointList = document.getElementById("edit-waypoint-list");
-const cleanupRangeText = document.getElementById("cleanup-range-text");
-const cleanupClearBtn = document.getElementById("cleanup-clear-btn");
-const cleanupSetStartBtn = document.getElementById("cleanup-set-start-btn");
-const cleanupSetEndBtn = document.getElementById("cleanup-set-end-btn");
-const cleanupRunBtn = document.getElementById("cleanup-run-btn");
 
 const cardWarnings = document.getElementById("card-warnings");
 const warningsCount = document.getElementById("warnings-count");
@@ -1405,60 +1398,7 @@ function renderEditWaypointList() {
   });
 }
 
-/**
- * Updates the range text display and button disabled states for Track Clean Up.
- */
-function updateCleanupUI() {
-  if (!cleanupRangeText) return;
 
-  if (cleanupStartIndex === null && cleanupEndIndex === null) {
-    cleanupRangeText.textContent = "No range selected.";
-    cleanupRangeText.style.color = "var(--text-muted)";
-    if (cleanupClearBtn) cleanupClearBtn.style.display = "none";
-    if (cleanupRunBtn) cleanupRunBtn.disabled = true;
-    if (mapController) {
-      mapController.removeCleanupHighlight();
-    }
-    return;
-  }
-
-  const trkpts = activeRoute?.trackpoints || [];
-  const startDist = cleanupStartIndex !== null && trkpts[cleanupStartIndex] 
-    ? trkpts[cleanupStartIndex].dist_m 
-    : null;
-  const endDist = cleanupEndIndex !== null && trkpts[cleanupEndIndex] 
-    ? trkpts[cleanupEndIndex].dist_m 
-    : null;
-
-  let displayString = "";
-  const unitScale = units === "miles" ? 1609.34 : 1000;
-  const unitLabel = units === "miles" ? "mi" : "km";
-
-  if (startDist !== null && endDist !== null) {
-    const s = Math.min(startDist, endDist);
-    const e = Math.max(startDist, endDist);
-    displayString = `Selected: ${(s / unitScale).toFixed(2)} - ${(e / unitScale).toFixed(2)} ${unitLabel}`;
-    cleanupRangeText.style.color = "#ef4444"; // match map highlight red color
-    if (cleanupClearBtn) cleanupClearBtn.style.display = "block";
-    if (cleanupRunBtn) cleanupRunBtn.disabled = false;
-
-    if (mapController) {
-      mapController.setCleanupRange(cleanupStartIndex, cleanupEndIndex);
-    }
-  } else if (startDist !== null) {
-    displayString = `Start: ${(startDist / unitScale).toFixed(2)} ${unitLabel} (Set End)`;
-    cleanupRangeText.style.color = "var(--text-color)";
-    if (cleanupClearBtn) cleanupClearBtn.style.display = "block";
-    if (cleanupRunBtn) cleanupRunBtn.disabled = true;
-  } else {
-    displayString = `End: ${(endDist / unitScale).toFixed(2)} ${unitLabel} (Set Start)`;
-    cleanupRangeText.style.color = "var(--text-color)";
-    if (cleanupClearBtn) cleanupClearBtn.style.display = "block";
-    if (cleanupRunBtn) cleanupRunBtn.disabled = true;
-  }
-
-  cleanupRangeText.textContent = displayString;
-}
 
 // ==========================================
 // FILE HANDLERS & WIDGET EVENTS
@@ -1542,11 +1482,6 @@ function processGpxContent(text, filename) {
   
   // Render sidebar waypoints outline list
   renderEditWaypointList();
-  
-  // Reset cleanup state on course switch
-  cleanupStartIndex = null;
-  cleanupEndIndex = null;
-  updateCleanupUI();
 
   // Save to recently played list
   addRecentCourse(activeRoute.name, text);
@@ -2558,97 +2493,7 @@ function setupEventListeners() {
     });
   }
 
-  // Cleanup Range Buttons Listeners
-  if (cleanupSetStartBtn) {
-    cleanupSetStartBtn.addEventListener("click", () => {
-      if (!activeRoute) return;
-      cleanupStartIndex = playbackIndex;
-      updateCleanupUI();
-      showToast("Cleanup start point set.");
-    });
-  }
 
-  if (cleanupSetEndBtn) {
-    cleanupSetEndBtn.addEventListener("click", () => {
-      if (!activeRoute) return;
-      cleanupEndIndex = playbackIndex;
-      updateCleanupUI();
-      showToast("Cleanup end point set.");
-    });
-  }
-
-  if (cleanupClearBtn) {
-    cleanupClearBtn.addEventListener("click", () => {
-      cleanupStartIndex = null;
-      cleanupEndIndex = null;
-      updateCleanupUI();
-      showToast("Cleanup range cleared.");
-    });
-  }
-
-  if (cleanupRunBtn) {
-    cleanupRunBtn.addEventListener("click", () => {
-      if (cleanupStartIndex === null || cleanupEndIndex === null || !activeRoute) return;
-
-      const start = Math.min(cleanupStartIndex, cleanupEndIndex);
-      const end = Math.max(cleanupStartIndex, cleanupEndIndex);
-
-      const trkpts = activeRoute.trackpoints;
-      if (start === end || trkpts.length < 2) return;
-
-      const startPt = trkpts[start];
-      const endPt = trkpts[end];
-
-      // Geodesic distance
-      const distance = haversine(startPt.lat, startPt.lon, endPt.lat, endPt.lon);
-      // Generate clean points every 15 meters
-      const numSegments = Math.max(1, Math.round(distance / 15));
-
-      const dLat = endPt.lat - startPt.lat;
-      const dLon = endPt.lon - startPt.lon;
-      const dEle = endPt.ele - startPt.ele;
-
-      const newPts = [];
-      for (let i = 0; i <= numSegments; i++) {
-        const fraction = i / numSegments;
-        const lat = startPt.lat + dLat * fraction;
-        const lon = startPt.lon + dLon * fraction;
-        const ele = startPt.ele + dEle * fraction;
-        newPts.push({
-          lat,
-          lon,
-          ele,
-          dist_m: 0,
-          time: startPt.time
-        });
-      }
-
-      // Replace intermediate points with the straight bridged line
-      const deleteCount = (end - start) + 1;
-      activeRoute.trackpoints.splice(start, deleteCount, ...newPts);
-
-      // Recalculate route metrics
-      recalculateRouteMetrics(activeRoute);
-
-      // Adjust current playback index if out of range
-      playbackIndex = Math.min(playbackIndex, activeRoute.trackpoints.length - 1);
-      
-      // Update UI and map
-      mapController.drawRoute(activeRoute, climbColorsCheckbox.checked);
-      if (elevationChart) elevationChart.setRoute(activeRoute);
-      updateRouteStatsUI(activeRoute);
-      renderWarningsUI(activeRoute);
-      renderEditWaypointList();
-
-      // Clear range selection
-      cleanupStartIndex = null;
-      cleanupEndIndex = null;
-      updateCleanupUI();
-
-      showToast("Track cleaned up successfully!");
-      saveActiveRouteState();
-    });
-  }
 
   // Initialize keyboard shortcuts & chat file attachments support
   setupKeyboardShortcuts();
