@@ -562,12 +562,17 @@ export class Map3DController {
     // Apply a loose "bungee" lerp to the camera's focal point.
     // This creates a soft deadzone/hysteresis so the camera isn't jerked around 
     // by every tiny GPS deviation, giving the marker room to move.
-    this.currentCameraLat += (pt.lat - this.currentCameraLat) * 0.05;
-    this.currentCameraLng += (pt.lon - this.currentCameraLng) * 0.05;
-    this.currentCameraAltitude += (pt.ele - this.currentCameraAltitude) * 0.05;
+    const avgSpacing = this.activeRoute?.avgSpacing || 10;
+    // Scale tracking speed based on average spacing to handle sparse routes gracefully
+    const centerFactor = Math.min(0.25, 0.05 + (avgSpacing > 30 ? 0.10 : 0));
+    const turnFactor = Math.min(0.12, this.turnRateFactor + (avgSpacing > 30 ? 0.05 : 0));
+
+    this.currentCameraLat += (pt.lat - this.currentCameraLat) * centerFactor;
+    this.currentCameraLng += (pt.lon - this.currentCameraLng) * centerFactor;
+    this.currentCameraAltitude += (pt.ele - this.currentCameraAltitude) * centerFactor;
 
     // Heavily damp the turn rate
-    this.currentCameraHeading = slerpHeading(this.currentCameraHeading, targetHeading, this.turnRateFactor);
+    this.currentCameraHeading = slerpHeading(this.currentCameraHeading, targetHeading, turnFactor);
 
     this.map.center = { lat: this.currentCameraLat, lng: this.currentCameraLng, altitude: this.currentCameraAltitude };
     this.map.range = this.cameraRange;
