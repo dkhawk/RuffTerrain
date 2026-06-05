@@ -104,7 +104,6 @@ const compassDegrees = document.getElementById("compass-degrees");
 const cardImporter = document.getElementById("card-importer");
 const dropZone = document.getElementById("drop-zone");
 const fileSelector = document.getElementById("file-selector");
-const loadLeadvilleDemo = document.getElementById("load-leadville-demo");
 const editLockCheckbox = document.getElementById("edit-lock-checkbox");
 const dragSnapCheckbox = document.getElementById("drag-snap-checkbox");
 
@@ -376,19 +375,6 @@ document.addEventListener("DOMContentLoaded", () => {
     setTimeout(() => {
       processGpxContent(mostRecent.content, mostRecent.name);
     }, 200);
-  } else {
-    // Automatically load the Leadville Demo course on first launch
-    setTimeout(async () => {
-      try {
-        showToast("Fetching Leadville Marathon GPX demo...");
-        const response = await fetch(`/leadville_sample.gpx?t=${new Date().getTime()}`);
-        if (!response.ok) throw new Error("Failed to fetch demo file");
-        const text = await response.text();
-        processGpxContent(text, "Leadville Marathon Demo");
-      } catch (err) {
-        showToast("Demo failed to load: " + err.message);
-      }
-    }, 200);
   }
 });
 
@@ -467,14 +453,12 @@ function toggleEditLock(isLocked) {
     chatSubmit.disabled = true;
     correctElevationBtn.disabled = true;
     fileSelector.disabled = true;
-    loadLeadvilleDemo.disabled = true;
   } else {
     document.body.classList.remove("edit-locked");
     chatInput.disabled = false;
     chatSubmit.disabled = false;
     correctElevationBtn.disabled = false;
     fileSelector.disabled = false;
-    loadLeadvilleDemo.disabled = false;
   }
   
   if (typeof mapController !== 'undefined' && mapController) {
@@ -1925,19 +1909,7 @@ function setupEventListeners() {
     });
   }
 
-  // Load Leadville Demo Course
-  loadLeadvilleDemo.addEventListener("click", async () => {
-    if (document.body.classList.contains("edit-locked")) return;
-    try {
-      showToast("Fetching Leadville Marathon GPX demo...");
-      const response = await fetch(`/leadville_sample.gpx?t=${new Date().getTime()}`);
-      if (!response.ok) throw new Error("Failed to fetch demo file");
-      const text = await response.text();
-      processGpxContent(text, "Leadville Marathon Demo");
-    } catch (err) {
-      showToast("Demo failed to load: " + err.message);
-    }
-  });
+
 
   // Gemini Chat augmentation submissions
   const handleChatSubmit = async () => {

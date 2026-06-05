@@ -150,7 +150,7 @@ export class Map3DController {
    * @param {Object} mapsNamespace Google Maps namespace
    * @param {Object} center Initial center coordinate { lat, lng, altitude }
    */
-  async initialize(mapsNamespace, center = { lat: 39.2508, lng: -106.2925, altitude: 3100 }) {
+  async initialize(mapsNamespace, center = { lat: 40.0150, lng: -105.2705, altitude: 1624 }) {
     this.container.innerHTML = ""; // Clear loader message
 
     const { Map3DElement, Polyline3DElement, Marker3DElement, Marker3DInteractiveElement } = await google.maps.importLibrary("maps3d");

@@ -136,10 +136,7 @@
           <p style="margin: 0; font-size: 11px;">Drag & Drop GPX or <strong>browse</strong></p>
           <input type="file" id="file-selector" accept=".gpx" style="display: none;" />
         </div>
-        <div class="quick-links" style="margin-top: 2px; font-size: 10px; display: flex; align-items: center; justify-content: space-between;">
-          <span>Demo:</span>
-          <button id="load-leadville-demo" class="btn btn-secondary btn-sm" style="padding: 2px 6px; font-size: 9px;">Leadville Marathon</button>
-        </div>
+
 
         <hr style="border: 0; border-top: 1px solid rgba(255,255,255,0.08); margin: 6px 0;" />
 
@@ -313,23 +310,23 @@
     <section id="poi-detail-dialog" class="glass-card poi-dialog hidden collapsed">
       <header class="poi-header">
         <div class="poi-title-section">
-          <h2 id="poi-val-name">Adelaide</h2>
-          <span id="poi-val-pass-tag" class="poi-pass-tag">Pass 2 of 4</span>
-          <span id="poi-val-cutoff-tag" class="poi-cutoff-badge hidden">CUTOFF: 9:15 AM</span>
+          <h2 id="poi-val-name">Waypoint Details</h2>
+          <span id="poi-val-pass-tag" class="poi-pass-tag">Waypoint</span>
+          <span id="poi-val-cutoff-tag" class="poi-cutoff-badge hidden"></span>
         </div>
         
         <div class="poi-quick-metrics">
           <div class="metric-group">
             <span class="lbl">ARRIVE</span>
-            <span id="poi-val-arrive" class="val">12.18 km</span>
+            <span id="poi-val-arrive" class="val">-</span>
           </div>
           <div class="metric-group">
             <span class="lbl">PREV</span>
-            <span id="poi-val-prev" class="val">+8.14 km (Adelaide)</span>
+            <span id="poi-val-prev" class="val">-</span>
           </div>
           <div class="metric-group">
             <span class="lbl">NEXT</span>
-            <span id="poi-val-next" class="val">5.04 km (Resurrection)</span>
+            <span id="poi-val-next" class="val">-</span>
           </div>
         </div>
 
@@ -345,7 +342,7 @@
         <!-- Renders passes and timeline lists -->
         <div class="poi-detail-grid">
           <div class="poi-timeline-list">
-            <h4>Adelaide Aid Station Passes:</h4>
+            <h4>Waypoint Passes:</h4>
             <ul id="poi-timeline-passes-list">
               <!-- Render list of passes e.g. Pass 1: 2.6 Miles, Pass 2: 7.7 Miles (Cutoff: 9:15am)... -->
             </ul>
