@@ -545,7 +545,7 @@ export class Map3DController {
    * @param {Object} pt Trackpoint coordinate `{lat, lon, ele}`
    * @param {number} targetHeading Math heading angle looking forward
    */
-  updateCamera(pt, targetHeading) {
+  updateCamera(pt, targetHeading, speedScale = 1) {
     if (!this.map || !pt) return;
 
     if (this.currentTrackMarker) {
@@ -565,7 +565,10 @@ export class Map3DController {
     const avgSpacing = this.activeRoute?.avgSpacing || 10;
     // Scale tracking speed based on average spacing to handle sparse routes gracefully
     const centerFactor = Math.min(0.25, 0.05 + (avgSpacing > 30 ? 0.10 : 0));
-    const turnFactor = Math.min(0.12, this.turnRateFactor + (avgSpacing > 30 ? 0.05 : 0));
+    
+    // Scale down the turn rate factor in inverse proportion to the square root of the playback speed scale
+    const baseTurnFactor = Math.min(0.12, this.turnRateFactor + (avgSpacing > 30 ? 0.05 : 0));
+    const turnFactor = baseTurnFactor / Math.sqrt(speedScale);
 
     this.currentCameraLat += (pt.lat - this.currentCameraLat) * centerFactor;
     this.currentCameraLng += (pt.lon - this.currentCameraLng) * centerFactor;

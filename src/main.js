@@ -926,7 +926,8 @@ function updatePlaybackFrame() {
   const targetHeading = calculateBearing(pt.lat, pt.lon, lookaheadPt.lat, lookaheadPt.lon);
 
   if (mapController) {
-    mapController.updateCamera(pt, targetHeading);
+    const speedScale = playbackSpeed ? parseInt(playbackSpeed.value) : 1;
+    mapController.updateCamera(pt, targetHeading, speedScale);
   }
 
   const idxInt = Math.floor(playbackIndex);
