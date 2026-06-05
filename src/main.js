@@ -27,7 +27,7 @@
 import { parseGPX, reconcileCourse, getMetricsForPoint, calculateWarnings } from "./gpx-parser.js";
 import { writeGPX } from "./gpx-writer.js";
 import { correctRouteElevations } from "./fetch-elevation.js";
-import { sendToGemini, fetchAvailableModels } from "./gemini-client.js";
+import { sendToGemini, fetchAvailableModels, generateWaypointFromDescription } from "./gemini-client.js";
 import { loadGoogleMaps, Map3DController, calculateBearing } from "./map-3d.js";
 import { ElevationChart } from "./elevation-chart.js";
 
@@ -74,6 +74,8 @@ let lastPausedPoiId = null;  // Prevents getting stuck in a loop at the same POI
 let autoResumeTimeout = null; // Handles the timer for auto-continuing the preview
 let isEditingPoiLocation = false; // Manages the edit location mode of the active POI
 let currentAbortController = null; // Active Gemini Chat API AbortController
+let isPlacingNewPoi = false; // Placement mode flag
+let tempPoiData = null; // Temporary snapped point coordinates
 
 // ==========================================
 // DOM ELEMENT REFERENCES
@@ -126,6 +128,16 @@ const elevationProgress = document.getElementById("elevation-progress");
 const elevationProgressFill = document.getElementById("elevation-progress-fill");
 const elevationProgressLabel = document.getElementById("elevation-progress-label");
 const exportGpxBtn = document.getElementById("export-gpx-btn");
+
+// Add POI custom control components
+const addPoiStartBtn = document.getElementById("add-poi-start-btn");
+const addPoiPanel = document.getElementById("add-poi-panel");
+const addPoiCloseBtn = document.getElementById("add-poi-close-btn");
+const addPoiLatLng = document.getElementById("add-poi-latlng");
+const addPoiDist = document.getElementById("add-poi-dist");
+const addPoiDesc = document.getElementById("add-poi-desc");
+const addPoiCancelBtn = document.getElementById("add-poi-cancel-btn");
+const addPoiSubmitBtn = document.getElementById("add-poi-submit-btn");
 
 const cardWarnings = document.getElementById("card-warnings");
 const warningsCount = document.getElementById("warnings-count");
@@ -2107,4 +2119,211 @@ function setupEventListeners() {
     updateHUD(playbackIndex);
     showPoiDetailDialog(wpt, playbackIndex, playbackDistance);
   });
+
+  // ==========================================
+  // ADD NEW WAYPOINT (POI) PLACEMENT LOGIC
+  // ==========================================
+
+  const cancelPoiPlacement = () => {
+    isPlacingNewPoi = false;
+    tempPoiData = null;
+    if (addPoiPanel) {
+      addPoiPanel.classList.add("hidden");
+    }
+    if (mapController) {
+      mapController.removeTemporaryMarker();
+      mapController.setEditLock(true);
+    }
+  };
+
+  if (addPoiStartBtn) {
+    addPoiStartBtn.addEventListener("click", () => {
+      if (!activeRoute) {
+        showToast("Please import a GPX file first.");
+        return;
+      }
+      closePoiDetailDialog(true);
+      isPlacingNewPoi = true;
+      tempPoiData = null;
+      
+      if (addPoiPanel) {
+        addPoiPanel.classList.remove("hidden");
+      }
+      if (addPoiLatLng) {
+        addPoiLatLng.textContent = "Click on the map to place the marker.";
+      }
+      if (addPoiDist) {
+        addPoiDist.textContent = "-- mi";
+      }
+      if (addPoiDesc) {
+        addPoiDesc.value = "";
+      }
+      if (addPoiSubmitBtn) {
+        addPoiSubmitBtn.disabled = true;
+        addPoiSubmitBtn.textContent = "Generate Waypoint";
+      }
+
+      if (mapController) {
+        mapController.removeTemporaryMarker();
+        mapController.setEditLock(false); // unlock edit lock during placement/drags
+      }
+
+      showToast("Placement mode enabled. Click anywhere on the map/route to set initial position.");
+    });
+  }
+
+  // Handle map clicks to place the temporary marker
+  if (mapController) {
+    mapController.onMapClick = (pos) => {
+      if (!isPlacingNewPoi) return;
+
+      const snapped = snapToRouteSegments(activeRoute, { lat: pos.lat, lng: pos.lng });
+      if (!snapped) {
+        showToast("Could not snap coordinates. Please click closer to the route line.");
+        return;
+      }
+
+      tempPoiData = {
+        lat: snapped.lat,
+        lon: snapped.lon,
+        ele: snapped.ele,
+        dist_m: snapped.dist_m,
+        closestTrackpointIndex: snapped.closestTrackpointIndex
+      };
+
+      // Show temporary marker on map
+      mapController.showTemporaryMarker(tempPoiData);
+
+      // Enable submit button
+      if (addPoiSubmitBtn) {
+        addPoiSubmitBtn.disabled = false;
+      }
+
+      // Update HUD/panel details
+      const distText = units === "miles" 
+        ? `${(tempPoiData.dist_m / 1609.34).toFixed(2)} mi` 
+        : `${(tempPoiData.dist_m / 1000).toFixed(2)} km`;
+      
+      if (addPoiLatLng) {
+        addPoiLatLng.textContent = `${tempPoiData.lat.toFixed(5)}, ${tempPoiData.lon.toFixed(5)}`;
+      }
+      if (addPoiDist) {
+        addPoiDist.textContent = distText;
+      }
+    };
+
+    // Handle temporary marker dragging
+    mapController.onTempMarkerDragEnd = (newPos) => {
+      if (!isPlacingNewPoi) return;
+
+      const snapped = snapToRouteSegments(activeRoute, newPos);
+      if (snapped) {
+        tempPoiData = {
+          lat: snapped.lat,
+          lon: snapped.lon,
+          ele: snapped.ele,
+          dist_m: snapped.dist_m,
+          closestTrackpointIndex: snapped.closestTrackpointIndex
+        };
+
+        // Snap the marker's visual position to the route line
+        if (mapController.tempMarker) {
+          mapController.tempMarker.position = { lat: snapped.lat, lng: snapped.lon };
+        }
+
+        const distText = units === "miles" 
+          ? `${(tempPoiData.dist_m / 1609.34).toFixed(2)} mi` 
+          : `${(tempPoiData.dist_m / 1000).toFixed(2)} km`;
+        
+        if (addPoiLatLng) {
+          addPoiLatLng.textContent = `${tempPoiData.lat.toFixed(5)}, ${tempPoiData.lon.toFixed(5)}`;
+        }
+        if (addPoiDist) {
+          addPoiDist.textContent = distText;
+        }
+      }
+    };
+  }
+
+  // Cancel buttons listeners
+  if (addPoiCloseBtn) {
+    addPoiCloseBtn.addEventListener("click", cancelPoiPlacement);
+  }
+  if (addPoiCancelBtn) {
+    addPoiCancelBtn.addEventListener("click", cancelPoiPlacement);
+  }
+
+  // Generate & Save Submit Handler
+  if (addPoiSubmitBtn) {
+    addPoiSubmitBtn.addEventListener("click", async () => {
+      if (!isPlacingNewPoi || !tempPoiData || !activeRoute) return;
+
+      const descText = addPoiDesc ? addPoiDesc.value.trim() : "";
+      if (!descText) {
+        showToast("Please provide a description first.");
+        return;
+      }
+
+      if (!apiKeyGemini) {
+        showToast("Please configure Gemini API Key in settings first.");
+        openSettings();
+        return;
+      }
+
+      addPoiSubmitBtn.disabled = true;
+      addPoiSubmitBtn.textContent = "Generating...";
+      showToast("Generating waypoint with Gemini...");
+
+      try {
+        const result = await generateWaypointFromDescription(descText, tempPoiData, apiKeyGemini, geminiModel);
+        
+        // Build new waypoint object
+        const newWpt = {
+          lat: tempPoiData.lat,
+          lon: tempPoiData.lon,
+          ele: tempPoiData.ele,
+          name: result.name || "New Waypoint",
+          desc: result.notes || descText,
+          sym: result.type === "aid_station" ? "Scenic Area" : "Circle",
+          dist_m: tempPoiData.dist_m,
+          closestTrackpointIndex: tempPoiData.closestTrackpointIndex,
+          extensions: {
+            station: {
+              type: result.type || "informational",
+              subtype: result.subtype || null,
+              passes: []
+            }
+          }
+        };
+
+        if (result.cutoffTime) {
+          newWpt.extensions.station.passes.push({
+            passNumber: 1,
+            cutoffTime: result.cutoffTime
+          });
+        }
+
+        // Insert and sort
+        activeRoute.waypoints.push(newWpt);
+        activeRoute.waypoints.sort((a, b) => a.dist_m - b.dist_m);
+
+        // Redraw and update UIs
+        mapController.drawRoute(activeRoute, climbColorsCheckbox.checked);
+        elevationChart.setRoute(activeRoute);
+        updateRouteStatsUI(activeRoute);
+        renderWarningsUI(activeRoute);
+
+        showToast(`Added waypoint: ${newWpt.name}`);
+        saveActiveRouteState();
+
+        // Exit mode and cleanup
+        cancelPoiPlacement();
+      } catch (err) {
+        console.error("Failed to generate waypoint:", err);
+        showToast("Generation failed: " + err.message);
+        addPoiSubmitBtn.disabled = false;
+        addPoiSubmitBtn.textContent = "Generate Waypoint";
+      }
+    });
+  }
 }

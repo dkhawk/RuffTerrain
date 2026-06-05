@@ -243,6 +243,9 @@
         <hr/>
 
         <div class="action-buttons">
+          <button id="add-poi-start-btn" class="btn btn-secondary w-100 mb-2" style="background-color: rgba(59, 130, 246, 0.15); border: 1px solid rgba(59, 130, 246, 0.3); color: #60a5fa; margin-bottom: 8px; display: flex; align-items: center; justify-content: center; gap: 6px;">
+            <span>➕ Add New Waypoint</span>
+          </button>
           <button id="correct-elevation-btn" class="btn btn-secondary w-100 mb-2">
             <span>⚡ Fetch & Correct Elevations</span>
           </button>
@@ -359,6 +362,38 @@
           <button id="poi-dialog-edit-btn" class="btn btn-primary flex-grow-1" style="font-size: 13px; font-weight: bold; background-color: var(--primary-color);">✏️ Edit Location</button>
           <button id="poi-dialog-close-bottom" class="btn btn-secondary flex-grow-1" style="font-size: 13px;">Close Info & Resume</button>
         </div>
+      </div>
+    </section>
+
+    <!-- Add POI Panel (Floating UI) -->
+    <section id="add-poi-panel" class="glass-card hidden" style="position: absolute; bottom: 80px; left: 50%; transform: translateX(-50%); width: 400px; z-index: 1000; padding: 16px; display: flex; flex-direction: column; gap: 12px; background: rgba(15, 23, 42, 0.85); backdrop-filter: blur(12px); border: 1px solid rgba(255,255,255,0.1); border-radius: 12px; box-shadow: 0 10px 25px rgba(0,0,0,0.5);">
+      <header style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px;">
+        <h3 style="margin: 0; font-size: 14px; display: flex; align-items: center; gap: 6px;">📍 Add New Waypoint</h3>
+        <button id="add-poi-close-btn" class="close-card-btn" style="background: none; border: none; font-size: 18px; color: var(--text-muted); cursor: pointer;">&times;</button>
+      </header>
+      
+      <div id="add-poi-instructions" style="font-size: 11px; color: var(--text-muted); line-height: 1.4;">
+        1. Click on the map to place the initial marker.<br/>
+        2. Drag the marker to fine-tune its position.<br/>
+        3. Describe the station below, then click Generate.
+      </div>
+      
+      <div style="display: flex; flex-direction: column; gap: 4px;">
+        <label style="font-size: 10px; color: var(--text-muted); font-weight: bold; text-transform: uppercase;">Location Coordinate</label>
+        <div style="font-size: 11px; font-family: monospace; background: rgba(0,0,0,0.2); padding: 6px; border-radius: 4px; border: 1px solid rgba(255,255,255,0.05); display: flex; justify-content: space-between;">
+          <span id="add-poi-latlng">No point selected. Click on map.</span>
+          <span id="add-poi-dist">-- mi</span>
+        </div>
+      </div>
+      
+      <div style="display: flex; flex-direction: column; gap: 4px;">
+        <label for="add-poi-desc" style="font-size: 10px; color: var(--text-muted); font-weight: bold; text-transform: uppercase;">Station Details / Description</label>
+        <textarea id="add-poi-desc" placeholder="e.g. 'Water station called Twin Lakes, includes 10 gallons of water, snacks, no medical, cutoff is 2:00 PM'" rows="3" style="width: 100%; background: rgba(0,0,0,0.2); border: 1px solid rgba(255,255,255,0.1); color: var(--text-color); font-family: var(--font-ui); font-size: 12px; border-radius: 6px; padding: 8px; box-sizing: border-box; resize: none; outline: none;"></textarea>
+      </div>
+
+      <div style="display: flex; gap: 8px; margin-top: 4px;">
+        <button id="add-poi-cancel-btn" class="btn btn-secondary" style="flex: 1; font-size: 12px; height: 32px; padding: 0;">Cancel</button>
+        <button id="add-poi-submit-btn" class="btn btn-primary" style="flex: 1; font-size: 12px; height: 32px; padding: 0;" disabled>Generate Waypoint</button>
       </div>
     </section>
 

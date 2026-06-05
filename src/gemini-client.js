@@ -275,3 +275,77 @@ export async function fetchAvailableModels(apiKey) {
       displayName: m.displayName || m.name.split("/").pop()
     }));
 }
+
+/**
+ * Sends a waypoint description and coordinates to Gemini to parse into a structured waypoint schema.
+ */
+export async function generateWaypointFromDescription(description, coordinate, apiKey, modelName = "models/gemini-2.0-flash", signal = null) {
+  if (!apiKey) {
+    throw new Error("Gemini API key is required. Please set it in the Settings panel.");
+  }
+
+  const cleanModelName = modelName.startsWith("models/") ? modelName : `models/${modelName}`;
+  const endpoint = `https://generativelanguage.googleapis.com/v1beta/${cleanModelName}:generateContent?key=${apiKey}`;
+
+  const prompt = `Convert the following description of a race course point of interest (POI) / station into a structured JSON object.
+  
+Description: "${description}"
+Coordinate details:
+- latitude: ${coordinate.lat}
+- longitude: ${coordinate.lon}
+- elevation: ${coordinate.ele}
+- distance_meters: ${coordinate.dist_m}
+
+You must return a JSON object containing:
+- name (string, name of the station/POI. Choose a descriptive, clean name)
+- type (string, one of: "aid_station", "checkpoint", "water_source", "landmark", "summit", "informational")
+- subtype (string, one of: "full", "water_only", "snacks", "medical", or null if not applicable)
+- cutoffTime (string, e.g. "14:00" or null if no cutoff time is mentioned in description. Convert relative text like '2:30 PM' to 24h format string)
+- notes (string, summary of resources, crew access, drop bags, or other details extracted from description)`;
+
+  const requestBody = {
+    contents: [{
+      role: "user",
+      parts: [{ text: prompt }]
+    }],
+    generationConfig: {
+      responseMimeType: "application/json",
+      responseSchema: {
+        type: "OBJECT",
+        properties: {
+          name: { type: "STRING" },
+          type: { type: "STRING", enum: ["aid_station", "checkpoint", "water_source", "landmark", "summit", "informational"] },
+          subtype: { type: "STRING", enum: ["full", "water_only", "snacks", "medical"] },
+          cutoffTime: { type: "STRING" },
+          notes: { type: "STRING" }
+        },
+        required: ["name", "type", "notes"]
+      },
+      temperature: 0.1
+    }
+  };
+
+  const response = await fetch(endpoint, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(requestBody),
+    signal
+  });
+
+  if (!response.ok) {
+    const errorData = await response.json().catch(() => ({}));
+    const message = errorData.error?.message || `HTTP ${response.status}`;
+    throw new Error(`Gemini API Error: ${message}`);
+  }
+
+  const data = await response.json();
+  const text = data.candidates?.[0]?.content?.parts?.[0]?.text;
+  if (!text) throw new Error("Empty response from Gemini API.");
+
+  try {
+    return JSON.parse(text);
+  } catch (err) {
+    console.error("Failed to parse Gemini output as JSON:", text);
+    throw new Error("Gemini returned invalid JSON structure: " + err.message);
+  }
+}

@@ -130,6 +130,9 @@ export class Map3DController {
     this.onHeadingChange = null;
     this.onCameraChange = null;
     this.onWaypointDragEnd = null;
+    this.onMapClick = null;
+    this.onTempMarkerDragEnd = null;
+    this.tempMarker = null;
   }
 
   /**
@@ -437,11 +440,22 @@ export class Map3DController {
     }
     
     this.mapClickListener = (e) => {
+      // If they clicked the temporary placement marker, ignore it
+      if (this.tempMarker && (this.tempMarker === e.target || this.tempMarker.content?.contains(e.target))) {
+        return;
+      }
+
       // Find if the target is a marker or sits inside a marker's content
       const clickedMarker = this.markers.find(m => m === e.target || m.content?.contains(e.target));
       if (clickedMarker && clickedMarker.waypoint) {
         const event = new CustomEvent("waypoint-click", { detail: clickedMarker.waypoint });
         window.dispatchEvent(event);
+      } else {
+        // Map background click
+        const pos = e.position || (e.detail && e.detail.position);
+        if (pos && this.onMapClick) {
+          this.onMapClick(pos);
+        }
       }
     };
 
@@ -661,6 +675,65 @@ export class Map3DController {
       durationMillis: 1500
     });
   }
+
+  /**
+   * Displays a temporary draggable marker at the specified coordinate for new waypoint placement.
+   */
+  showTemporaryMarker(pos) {
+    this.removeTemporaryMarker();
+
+    this.tempMarker = new this.AdvancedMarkerElement({
+      position: { lat: pos.lat, lng: pos.lng },
+      title: "New Waypoint Placement",
+      gmpDraggable: true
+    });
+
+    const img = document.createElement("img");
+    img.src = "data:image/svg+xml;charset=utf-8," + encodeURIComponent(getTempMarkerSvg());
+    img.style.width = "36px";
+    img.style.height = "36px";
+    img.style.cursor = "pointer";
+    img.style.pointerEvents = "auto";
+
+    const wrapper = document.createElement("div");
+    wrapper.className = "marker-wrapper";
+    wrapper.appendChild(img);
+    this.tempMarker.content = wrapper;
+
+    this.tempMarker.addListener("dragend", () => {
+      const newPos = { lat: this.tempMarker.position.lat, lng: this.tempMarker.position.lng };
+      if (this.onTempMarkerDragEnd) {
+        this.onTempMarkerDragEnd(newPos);
+      }
+    });
+
+    this.map.append(this.tempMarker);
+  }
+
+  /**
+   * Removes the temporary placement marker from the map.
+   */
+  removeTemporaryMarker() {
+    if (this.tempMarker) {
+      try {
+        this.map.removeChild(this.tempMarker);
+      } catch (e) {
+        // ignore
+      }
+      this.tempMarker = null;
+    }
+  }
+}
+
+/**
+ * Helper to generate the temporary orange placement pin SVG.
+ */
+function getTempMarkerSvg() {
+  return `
+    <svg xmlns="http://www.w3.org/2000/svg" width="36" height="36" viewBox="0 0 24 24">
+      <path d="M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7zm0 9.5c-1.38 0-2.5-1.12-2.5-2.5s1.12-2.5 2.5-2.5 2.5 1.12 2.5 2.5-1.12 2.5-2.5 2.5z" fill="#f97316" stroke="#ffffff" stroke-width="1.5" />
+    </svg>
+  `;
 }
 
 /**
