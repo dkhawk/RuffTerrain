@@ -263,7 +263,9 @@ export async function fetchAvailableModels(apiKey) {
                          name.includes("tts") || 
                          name.includes("nanobanana") || 
                          name.includes("whisper") || 
-                         name.includes("test");
+                         name.includes("test") ||
+                         name.includes("001") ||
+                         name.includes("nano");
       
       return supportsGenerate && isGemini && isFlashOrPro && !isExcluded;
     })

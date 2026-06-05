@@ -1485,8 +1485,23 @@ function setupEventListeners() {
       }
     }
 
+    // Filter models list to exclude tuning, embedding, tts, test, 001, and nano models
+    const filteredModels = models.filter(m => {
+      const name = m.name.toLowerCase();
+      const isExcluded = name.includes("tuning") || 
+                         name.includes("tuned") || 
+                         name.includes("embed") || 
+                         name.includes("tts") || 
+                         name.includes("nanobanana") || 
+                         name.includes("whisper") || 
+                         name.includes("test") ||
+                         name.includes("001") ||
+                         name.includes("nano");
+      return !isExcluded;
+    });
+
     geminiModelSelect.innerHTML = "";
-    models.forEach(m => {
+    filteredModels.forEach(m => {
       const opt = document.createElement("option");
       opt.value = m.name;
       opt.textContent = m.displayName;
@@ -1496,7 +1511,7 @@ function setupEventListeners() {
       geminiModelSelect.appendChild(opt);
     });
 
-    if (!models.some(m => m.name === geminiModel)) {
+    if (!filteredModels.some(m => m.name === geminiModel)) {
       const opt = document.createElement("option");
       opt.value = geminiModel;
       opt.textContent = geminiModel.split("/").pop();
