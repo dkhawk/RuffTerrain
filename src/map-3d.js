@@ -75,7 +75,7 @@ function slerpHeading(current, target, factor) {
 }
 
 /**
- * Helper to generate a valid SVGElement (circle/dot) for 3D Marker templates.
+ * Helper to generate a valid SVGElement (circle/dot) for AdvancedMarkerElement content wrappers.
  */
 function createSvgDot(color, size = 24) {
   const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
