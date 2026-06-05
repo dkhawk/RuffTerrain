@@ -2626,6 +2626,60 @@ function setupEventListeners() {
   // Initialize keyboard shortcuts & chat file attachments support
   setupKeyboardShortcuts();
   setupChatFileAttachments();
+  setupResetBoulderButton();
+}
+
+/**
+ * Configure course reset button logic.
+ */
+function setupResetBoulderButton() {
+  const resetBtn = document.getElementById("reset-boulder-btn");
+  if (resetBtn) {
+    resetBtn.addEventListener("click", () => {
+      // Clear route state variables
+      activeRoute = null;
+      chatHistory = [];
+      playbackIndex = 0;
+      lastPausedPoiIndex = -1;
+
+      // Close open dialogs
+      closePoiDetailDialog(false);
+
+      // Reset HUD/stats
+      const nameDisplay = document.getElementById("course-name-display");
+      if (nameDisplay) {
+        nameDisplay.textContent = "NO ROUTE LOADED";
+      }
+
+      // Hide panels
+      cardStats.classList.add("hidden");
+      cardWarnings.classList.add("hidden");
+      const toggleWarningsBtn = document.getElementById("toggle-warnings-btn");
+      if (toggleWarningsBtn) toggleWarningsBtn.classList.add("hidden");
+      cardElevationScrubber.classList.add("hidden");
+      hudMetrics.classList.add("hidden");
+      
+      if (cardGeminiChat) {
+        cardGeminiChat.classList.add("hidden");
+      }
+      const toggleChatBtn = document.getElementById("toggle-chat-btn");
+      if (toggleChatBtn) {
+        toggleChatBtn.classList.add("hidden");
+      }
+
+      // Reset Map Controller
+      if (mapController) {
+        mapController.resetToBoulder();
+      }
+
+      // Re-enable welcome importer card
+      if (cardImporter) {
+        cardImporter.classList.remove("hidden");
+      }
+
+      showToast("Reset to Boulder.");
+    });
+  }
 }
 
 /**

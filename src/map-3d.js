@@ -159,11 +159,12 @@ export class Map3DController {
     this.Marker3DElement = Marker3DElement;
     this.Marker3DInteractiveElement = Marker3DInteractiveElement;
 
+    this.cameraTilt = 45;
     this.map = new Map3DElement({
       center: { lat: center.lat, lng: center.lng, altitude: center.altitude + 2000 },
       range: this.cameraRange,
       tilt: this.cameraTilt,
-      heading: 0,
+      heading: 235,
       mode: "HYBRID"
     });
 
@@ -259,6 +260,25 @@ export class Map3DController {
         this.activeWarningPolyline.remove();
       }
       this.activeWarningPolyline = null;
+    }
+    this.activeRoute = null;
+  }
+
+  /**
+   * Clears all layers and resets camera back to the default Boulder view.
+   */
+  resetToBoulder() {
+    this.clear();
+    if (this.map) {
+      this.map.flyCameraTo({
+        endCamera: {
+          center: { lat: 40.0150, lng: -105.2705, altitude: 1624 + 2000 },
+          range: 1500,
+          tilt: 45,
+          heading: 235
+        },
+        durationMillis: 1500
+      });
     }
   }
 
