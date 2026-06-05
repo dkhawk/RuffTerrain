@@ -918,7 +918,9 @@ function updatePlaybackFrame() {
 
   playbackIndex = pt.index;
 
-  const lookaheadDist = playbackDistance + 50;
+  // Calculate dynamic lookahead based on average point spacing (pure-pursuit style)
+  const avgSpacing = activeRoute.avgSpacing || 10;
+  const lookaheadDist = playbackDistance + Math.max(50, avgSpacing * 3.5);
   const lookaheadPt = getInterpolatedPoint(lookaheadDist);
   
   const targetHeading = calculateBearing(pt.lat, pt.lon, lookaheadPt.lat, lookaheadPt.lon);
@@ -1292,6 +1294,7 @@ function loadGpxFile(file) {
  */
 function processGpxContent(text, filename) {
   activeRoute = parseGPX(text, units);
+  activeRoute.avgSpacing = activeRoute.trackpoints.length > 0 ? (activeRoute.totalDistance / activeRoute.trackpoints.length) : 0;
   chatHistory = []; // Reset Gemini chatbot context on new course ingestion
   playbackIndex = 0;
   lastPausedPoiIndex = -1;
