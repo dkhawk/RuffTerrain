@@ -50,13 +50,13 @@ export function parseGPX(gpxText, units = "imperial") {
   const routeDesc = descMatch ? descMatch[1].trim() : "No description provided.";
   
   const rawPts = [];
-  const trkptRegex = /<trkpt\s+lat="([^"]+)"\s+lon="([^"]+)">([\s\S]*?)<\/trkpt>/g;
+  const trkptRegex = /<trkpt\s+lat="([^"]+)"\s+lon="([^"]+)"(?:\s*\/|>([\s\S]*?)<\/trkpt>)/g;
   let idx = 0;
   let match;
   while ((match = trkptRegex.exec(gpxText)) !== null) {
     const lat = parseFloat(match[1]);
     const lon = parseFloat(match[2]);
-    const inner = match[3];
+    const inner = match[3] || "";
     
     const eleMatch = inner.match(/<ele>([^<]+)<\/ele>/);
     const ele = eleMatch ? parseFloat(eleMatch[1]) : 0;
@@ -76,12 +76,12 @@ export function parseGPX(gpxText, units = "imperial") {
 
   // Fallback: If no trackpoints (<trkpt>) are found, parse routepoints (<rtept>)
   if (rawPts.length === 0) {
-    const rteptRegex = /<rtept\s+lat="([^"]+)"\s+lon="([^"]+)">([\s\S]*?)<\/rtept>/g;
+    const rteptRegex = /<rtept\s+lat="([^"]+)"\s+lon="([^"]+)"(?:\s*\/|>([\s\S]*?)<\/rtept>)/g;
     idx = 0;
     while ((match = rteptRegex.exec(gpxText)) !== null) {
       const lat = parseFloat(match[1]);
       const lon = parseFloat(match[2]);
-      const inner = match[3];
+      const inner = match[3] || "";
       
       const eleMatch = inner.match(/<ele>([^<]+)<\/ele>/);
       const ele = eleMatch ? parseFloat(eleMatch[1]) : 0;
@@ -167,12 +167,12 @@ export function parseGPX(gpxText, units = "imperial") {
 
   // Waypoints
   const waypoints = [];
-  const wptRegex = /<wpt\s+lat="([^"]+)"\s+lon="([^"]+)">([\s\S]*?)<\/wpt>/g;
+  const wptRegex = /<wpt\s+lat="([^"]+)"\s+lon="([^"]+)"(?:\s*\/|>([\s\S]*?)<\/wpt>)/g;
   let wptIdx = 0;
   while ((match = wptRegex.exec(gpxText)) !== null) {
     const lat = parseFloat(match[1]);
     const lon = parseFloat(match[2]);
-    const inner = match[3];
+    const inner = match[3] || "";
     
     const nMatch = inner.match(/<name>([^<]*)<\/name>/);
     const name = nMatch ? nMatch[1].trim() : `Waypoint ${wptIdx + 1}`;

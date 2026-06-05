@@ -24,7 +24,7 @@
  * The preview controller iterates through trackpoint bearings to control camera panning and triggers contextual auto-pauses when approaching points of interest.
  */
 
-import { parseGPX, reconcileCourse, getMetricsForPoint, calculateWarnings } from "./gpx-parser.js";
+import { parseGPX, reconcileCourse, getMetricsForPoint, calculateWarnings, haversine } from "./gpx-parser.js";
 import { writeGPX } from "./gpx-writer.js";
 import { correctRouteElevations } from "./fetch-elevation.js";
 import { sendToGemini, fetchAvailableModels, generateWaypointFromDescription } from "./gemini-client.js";
@@ -76,6 +76,8 @@ let isEditingPoiLocation = false; // Manages the edit location mode of the activ
 let currentAbortController = null; // Active Gemini Chat API AbortController
 let isPlacingNewPoi = false; // Placement mode flag
 let tempPoiData = null; // Temporary snapped point coordinates
+let cleanupStartIndex = null; // Cleanup start trackpoint index
+let cleanupEndIndex = null; // Cleanup end trackpoint index
 
 // ==========================================
 // DOM ELEMENT REFERENCES
@@ -138,6 +140,14 @@ const addPoiDist = document.getElementById("add-poi-dist");
 const addPoiDesc = document.getElementById("add-poi-desc");
 const addPoiCancelBtn = document.getElementById("add-poi-cancel-btn");
 const addPoiSubmitBtn = document.getElementById("add-poi-submit-btn");
+
+// Cleanup & Waypoint Edit Panel Components
+const editWaypointList = document.getElementById("edit-waypoint-list");
+const cleanupRangeText = document.getElementById("cleanup-range-text");
+const cleanupClearBtn = document.getElementById("cleanup-clear-btn");
+const cleanupSetStartBtn = document.getElementById("cleanup-set-start-btn");
+const cleanupSetEndBtn = document.getElementById("cleanup-set-end-btn");
+const cleanupRunBtn = document.getElementById("cleanup-run-btn");
 
 const cardWarnings = document.getElementById("card-warnings");
 const warningsCount = document.getElementById("warnings-count");
@@ -257,9 +267,13 @@ document.addEventListener("DOMContentLoaded", () => {
         }
       }
 
+      // Sort waypoints after distance update
+      activeRoute.waypoints.sort((a, b) => a.dist_m - b.dist_m);
+
       // Update related stats & UIs
       updateRouteStatsUI(activeRoute);
       elevationChart.setRoute(activeRoute);
+      renderEditWaypointList();
 
       showToast(`Updated location for: ${wpt.name}`);
       saveActiveRouteState();
@@ -273,90 +287,6 @@ document.addEventListener("DOMContentLoaded", () => {
       }
     }
   };
-
-  /**
-   * Projects a point onto the closest line segment of the route trackpoints.
-   * Returns snapped coordinates, interpolated elevation, and distance along course.
-   * @param {Object} route Active route
-   * @param {Object} pos Target coordinate {lat, lng}
-   * @returns {Object} Snapped details
-   */
-  function snapToRouteSegments(route, pos) {
-    const pts = route.trackpoints;
-    if (!pts || pts.length === 0) return null;
-    if (pts.length === 1) {
-      return {
-        lat: pts[0].lat,
-        lon: pts[0].lon,
-        ele: pts[0].ele,
-        dist_m: pts[0].dist_m,
-        closestTrackpointIndex: 0
-      };
-    }
-
-    let minSqDist = Infinity;
-    let bestLat = pts[0].lat;
-    let bestLon = pts[0].lon;
-    let bestEle = pts[0].ele;
-    let bestDist = pts[0].dist_m;
-    let bestIdx = 0;
-
-    const latToMeters = 111320; // Meters per degree latitude
-
-    for (let i = 0; i < pts.length - 1; i++) {
-      const A = pts[i];
-      const B = pts[i + 1];
-
-      // Flat latitude scaling projection approximation
-      const cosLat = Math.cos((A.lat + B.lat) * Math.PI / 360);
-      
-      const ax = A.lon * cosLat;
-      const ay = A.lat;
-      const bx = B.lon * cosLat;
-      const by = B.lat;
-      const px = pos.lng * cosLat;
-      const py = pos.lat;
-
-      const vx = bx - ax;
-      const vy = by - ay;
-      const wx = px - ax;
-      const wy = py - ay;
-
-      const lensq = vx * vx + vy * vy;
-      let t = 0;
-      if (lensq > 0) {
-        t = (wx * vx + wy * vy) / lensq;
-        t = Math.max(0, Math.min(1, t));
-      }
-
-      const cx = ax + t * vx;
-      const cy = ay + t * vy;
-
-      const projLon = cx / cosLat;
-      const projLat = cy;
-
-      const dx = (px - cx) * latToMeters;
-      const dy = (py - cy) * latToMeters;
-      const sqDist = dx * dx + dy * dy;
-
-      if (sqDist < minSqDist) {
-        minSqDist = sqDist;
-        bestLat = projLat;
-        bestLon = projLon;
-        bestEle = A.ele + t * (B.ele - A.ele);
-        bestDist = A.dist_m + t * (B.dist_m - A.dist_m);
-        bestIdx = i;
-      }
-    }
-
-    return {
-      lat: bestLat,
-      lon: bestLon,
-      ele: bestEle,
-      dist_m: bestDist,
-      closestTrackpointIndex: bestIdx
-    };
-  }
 
   // Initialize dynamic canvas-based elevation chart profile scrubber
   elevationChart = new ElevationChart(elevationCanvas, (index, isClick) => {
@@ -1303,6 +1233,305 @@ function renderRecentCoursesList() {
   });
 }
 
+/**
+ * Projects a point onto the closest line segment of the route trackpoints.
+ * Returns snapped coordinates, interpolated elevation, and distance along course.
+ */
+function snapToRouteSegments(route, pos) {
+  const pts = route.trackpoints;
+  if (!pts || pts.length === 0) return null;
+  if (pts.length === 1) {
+    return {
+      lat: pts[0].lat,
+      lon: pts[0].lon,
+      ele: pts[0].ele,
+      dist_m: pts[0].dist_m,
+      closestTrackpointIndex: 0
+    };
+  }
+
+  let minSqDist = Infinity;
+  let bestLat = pts[0].lat;
+  let bestLon = pts[0].lon;
+  let bestEle = pts[0].ele;
+  let bestDist = pts[0].dist_m;
+  let bestIdx = 0;
+
+  const latToMeters = 111320;
+
+  for (let i = 0; i < pts.length - 1; i++) {
+    const A = pts[i];
+    const B = pts[i + 1];
+
+    const cosLat = Math.cos((A.lat + B.lat) * Math.PI / 360);
+    
+    const ax = A.lon * cosLat;
+    const ay = A.lat;
+    const bx = B.lon * cosLat;
+    const by = B.lat;
+    const px = pos.lng * cosLat;
+    const py = pos.lat;
+
+    const vx = bx - ax;
+    const vy = by - ay;
+    const wx = px - ax;
+    const wy = py - ay;
+
+    const lensq = vx * vx + vy * vy;
+    let t = 0;
+    if (lensq > 0) {
+      t = (wx * vx + wy * vy) / lensq;
+      t = Math.max(0, Math.min(1, t));
+    }
+
+    const cx = ax + t * vx;
+    const cy = ay + t * vy;
+
+    const projLon = cx / cosLat;
+    const projLat = cy;
+
+    const dx = (px - cx) * latToMeters;
+    const dy = (py - cy) * latToMeters;
+    const sqDist = dx * dx + dy * dy;
+
+    if (sqDist < minSqDist) {
+      minSqDist = sqDist;
+      bestLat = projLat;
+      bestLon = projLon;
+      bestEle = A.ele + t * (B.ele - A.ele);
+      bestDist = A.dist_m + t * (B.dist_m - A.dist_m);
+      bestIdx = i;
+    }
+  }
+
+  return {
+    lat: bestLat,
+    lon: bestLon,
+    ele: bestEle,
+    dist_m: bestDist,
+    closestTrackpointIndex: bestIdx
+  };
+}
+
+/**
+ * Re-calculates indices, cumulative distances, elevations and snap links on course modifications.
+ */
+function recalculateRouteMetrics(route) {
+  const pts = route.trackpoints;
+  if (!pts || pts.length === 0) return;
+
+  let totalDistance = 0;
+  let totalElevationGain = 0;
+  let totalElevationLoss = 0;
+
+  for (let i = 0; i < pts.length; i++) {
+    const pt = pts[i];
+    pt.index = i;
+    
+    let grade = 0;
+    if (i > 0) {
+      const prev = pts[i - 1];
+      const segmentDist = haversine(prev.lat, prev.lon, pt.lat, pt.lon);
+      totalDistance += segmentDist;
+
+      const eleDiff = pt.ele - prev.ele;
+      if (eleDiff > 0) {
+        totalElevationGain += eleDiff;
+      } else {
+        totalElevationLoss += Math.abs(eleDiff);
+      }
+
+      let j = i - 1;
+      while (j > 0 && totalDistance - pts[j].dist_m < 30) {
+        j--;
+      }
+      const basePt = pts[j];
+      if (basePt) {
+        const runDist = totalDistance - basePt.dist_m;
+        const riseEle = pt.ele - basePt.ele;
+        if (runDist > 5) {
+          grade = (riseEle / runDist) * 100;
+        }
+      }
+    }
+
+    pt.dist_m = totalDistance;
+    pt.grade = grade;
+  }
+
+  route.totalDistance = totalDistance;
+  route.totalElevationGain = totalElevationGain;
+  route.totalElevationLoss = totalElevationLoss;
+  route.avgSpacing = pts.length > 0 ? (totalDistance / pts.length) : 0;
+
+  // Re-snap waypoints
+  route.waypoints.forEach((wpt) => {
+    const snapped = snapToRouteSegments(route, { lat: wpt.lat, lng: wpt.lon });
+    if (snapped) {
+      wpt.ele = snapped.ele;
+      wpt.dist_m = snapped.dist_m;
+      wpt.closestTrackpointIndex = snapped.closestTrackpointIndex;
+    }
+  });
+
+  route.waypoints.sort((a, b) => a.dist_m - b.dist_m);
+}
+
+/**
+ * Renders the waypoint list in the Edit Course sidebar panel.
+ */
+function renderEditWaypointList() {
+  if (!editWaypointList) return;
+
+  if (!activeRoute || activeRoute.waypoints.length === 0) {
+    editWaypointList.innerHTML = `<span style="font-size: 10px; color: var(--text-muted); text-align: center; font-style: italic; padding: 6px 0; display: block; width: 100%;">No waypoints loaded.</span>`;
+    return;
+  }
+
+  editWaypointList.innerHTML = "";
+  activeRoute.waypoints.forEach((wpt, index) => {
+    const item = document.createElement("div");
+    item.style.display = "flex";
+    item.style.alignItems = "center";
+    item.style.justifyContent = "space-between";
+    item.style.padding = "4px 6px";
+    item.style.background = "rgba(255,255,255,0.03)";
+    item.style.border = "1px solid rgba(255,255,255,0.05)";
+    item.style.borderRadius = "4px";
+    item.style.fontSize = "11px";
+    item.style.gap = "6px";
+    item.style.boxSizing = "border-box";
+
+    const nameSpan = document.createElement("span");
+    nameSpan.style.flex = "1";
+    nameSpan.style.whiteSpace = "nowrap";
+    nameSpan.style.overflow = "hidden";
+    nameSpan.style.textOverflow = "ellipsis";
+    const distVal = units === "miles" 
+      ? `${(wpt.dist_m / 1609.34).toFixed(1)} mi` 
+      : `${(wpt.dist_m / 1000).toFixed(1)} km`;
+    nameSpan.textContent = `${wpt.name} (${distVal})`;
+    nameSpan.style.cursor = "pointer";
+    nameSpan.style.color = "var(--text-color)";
+    nameSpan.title = "Click to jump to waypoint";
+    nameSpan.addEventListener("click", () => {
+      const event = new CustomEvent("waypoint-click", { detail: wpt });
+      window.dispatchEvent(event);
+    });
+
+    const actionDiv = document.createElement("div");
+    actionDiv.style.display = "flex";
+    actionDiv.style.gap = "4px";
+
+    // Edit button
+    const editBtn = document.createElement("button");
+    editBtn.textContent = "✏️";
+    editBtn.style.background = "none";
+    editBtn.style.border = "none";
+    editBtn.style.cursor = "pointer";
+    editBtn.style.fontSize = "10px";
+    editBtn.style.padding = "0 2px";
+    editBtn.title = "Edit location";
+    editBtn.addEventListener("click", (e) => {
+      e.stopPropagation();
+      const event = new CustomEvent("waypoint-click", { detail: wpt });
+      window.dispatchEvent(event);
+      setTimeout(() => {
+        if (poiDialogEditBtn && !isEditingPoiLocation) {
+          poiDialogEditBtn.click();
+        }
+      }, 150);
+    });
+
+    // Delete button
+    const delBtn = document.createElement("button");
+    delBtn.textContent = "❌";
+    delBtn.style.background = "none";
+    delBtn.style.border = "none";
+    delBtn.style.cursor = "pointer";
+    delBtn.style.fontSize = "10px";
+    delBtn.style.padding = "0 2px";
+    delBtn.title = "Delete waypoint";
+    delBtn.addEventListener("click", (e) => {
+      e.stopPropagation();
+      if (confirm(`Are you sure you want to delete ${wpt.name}?`)) {
+        activeRoute.waypoints.splice(index, 1);
+        
+        mapController.drawRoute(activeRoute, climbColorsCheckbox.checked);
+        if (elevationChart) elevationChart.setRoute(activeRoute);
+        updateRouteStatsUI(activeRoute);
+        renderWarningsUI(activeRoute);
+        
+        showToast(`Removed waypoint: ${wpt.name}`);
+        saveActiveRouteState();
+        renderEditWaypointList();
+        closePoiDetailDialog(true);
+      }
+    });
+
+    actionDiv.appendChild(editBtn);
+    actionDiv.appendChild(delBtn);
+    item.appendChild(nameSpan);
+    item.appendChild(actionDiv);
+    editWaypointList.appendChild(item);
+  });
+}
+
+/**
+ * Updates the range text display and button disabled states for Track Clean Up.
+ */
+function updateCleanupUI() {
+  if (!cleanupRangeText) return;
+
+  if (cleanupStartIndex === null && cleanupEndIndex === null) {
+    cleanupRangeText.textContent = "No range selected.";
+    cleanupRangeText.style.color = "var(--text-muted)";
+    if (cleanupClearBtn) cleanupClearBtn.style.display = "none";
+    if (cleanupRunBtn) cleanupRunBtn.disabled = true;
+    if (mapController) {
+      mapController.removeCleanupHighlight();
+    }
+    return;
+  }
+
+  const trkpts = activeRoute?.trackpoints || [];
+  const startDist = cleanupStartIndex !== null && trkpts[cleanupStartIndex] 
+    ? trkpts[cleanupStartIndex].dist_m 
+    : null;
+  const endDist = cleanupEndIndex !== null && trkpts[cleanupEndIndex] 
+    ? trkpts[cleanupEndIndex].dist_m 
+    : null;
+
+  let displayString = "";
+  const unitScale = units === "miles" ? 1609.34 : 1000;
+  const unitLabel = units === "miles" ? "mi" : "km";
+
+  if (startDist !== null && endDist !== null) {
+    const s = Math.min(startDist, endDist);
+    const e = Math.max(startDist, endDist);
+    displayString = `Selected: ${(s / unitScale).toFixed(2)} - ${(e / unitScale).toFixed(2)} ${unitLabel}`;
+    cleanupRangeText.style.color = "#ef4444"; // match map highlight red color
+    if (cleanupClearBtn) cleanupClearBtn.style.display = "block";
+    if (cleanupRunBtn) cleanupRunBtn.disabled = false;
+
+    if (mapController) {
+      mapController.setCleanupRange(cleanupStartIndex, cleanupEndIndex);
+    }
+  } else if (startDist !== null) {
+    displayString = `Start: ${(startDist / unitScale).toFixed(2)} ${unitLabel} (Set End)`;
+    cleanupRangeText.style.color = "var(--text-color)";
+    if (cleanupClearBtn) cleanupClearBtn.style.display = "block";
+    if (cleanupRunBtn) cleanupRunBtn.disabled = true;
+  } else {
+    displayString = `End: ${(endDist / unitScale).toFixed(2)} ${unitLabel} (Set Start)`;
+    cleanupRangeText.style.color = "var(--text-color)";
+    if (cleanupClearBtn) cleanupClearBtn.style.display = "block";
+    if (cleanupRunBtn) cleanupRunBtn.disabled = true;
+  }
+
+  cleanupRangeText.textContent = displayString;
+}
+
 // ==========================================
 // FILE HANDLERS & WIDGET EVENTS
 // ==========================================
@@ -1381,6 +1610,14 @@ function processGpxContent(text, filename) {
   renderWarningsUI(activeRoute);
   updateUnitLabels();
   updateHUD(0);
+  
+  // Render sidebar waypoints outline list
+  renderEditWaypointList();
+  
+  // Reset cleanup state on course switch
+  cleanupStartIndex = null;
+  cleanupEndIndex = null;
+  updateCleanupUI();
 
   // Save to recently played list
   addRecentCourse(activeRoute.name, text);
@@ -2312,6 +2549,7 @@ function setupEventListeners() {
         elevationChart.setRoute(activeRoute);
         updateRouteStatsUI(activeRoute);
         renderWarningsUI(activeRoute);
+        renderEditWaypointList();
 
         showToast(`Added waypoint: ${newWpt.name}`);
         saveActiveRouteState();
@@ -2324,6 +2562,98 @@ function setupEventListeners() {
         addPoiSubmitBtn.disabled = false;
         addPoiSubmitBtn.textContent = "Generate Waypoint";
       }
+    });
+  }
+
+  // Cleanup Range Buttons Listeners
+  if (cleanupSetStartBtn) {
+    cleanupSetStartBtn.addEventListener("click", () => {
+      if (!activeRoute) return;
+      cleanupStartIndex = playbackIndex;
+      updateCleanupUI();
+      showToast("Cleanup start point set.");
+    });
+  }
+
+  if (cleanupSetEndBtn) {
+    cleanupSetEndBtn.addEventListener("click", () => {
+      if (!activeRoute) return;
+      cleanupEndIndex = playbackIndex;
+      updateCleanupUI();
+      showToast("Cleanup end point set.");
+    });
+  }
+
+  if (cleanupClearBtn) {
+    cleanupClearBtn.addEventListener("click", () => {
+      cleanupStartIndex = null;
+      cleanupEndIndex = null;
+      updateCleanupUI();
+      showToast("Cleanup range cleared.");
+    });
+  }
+
+  if (cleanupRunBtn) {
+    cleanupRunBtn.addEventListener("click", () => {
+      if (cleanupStartIndex === null || cleanupEndIndex === null || !activeRoute) return;
+
+      const start = Math.min(cleanupStartIndex, cleanupEndIndex);
+      const end = Math.max(cleanupStartIndex, cleanupEndIndex);
+
+      const trkpts = activeRoute.trackpoints;
+      if (start === end || trkpts.length < 2) return;
+
+      const startPt = trkpts[start];
+      const endPt = trkpts[end];
+
+      // Geodesic distance
+      const distance = haversine(startPt.lat, startPt.lon, endPt.lat, endPt.lon);
+      // Generate clean points every 15 meters
+      const numSegments = Math.max(1, Math.round(distance / 15));
+
+      const dLat = endPt.lat - startPt.lat;
+      const dLon = endPt.lon - startPt.lon;
+      const dEle = endPt.ele - startPt.ele;
+
+      const newPts = [];
+      for (let i = 0; i <= numSegments; i++) {
+        const fraction = i / numSegments;
+        const lat = startPt.lat + dLat * fraction;
+        const lon = startPt.lon + dLon * fraction;
+        const ele = startPt.ele + dEle * fraction;
+        newPts.push({
+          lat,
+          lon,
+          ele,
+          dist_m: 0,
+          time: startPt.time
+        });
+      }
+
+      // Replace intermediate points with the straight bridged line
+      const deleteCount = (end - start) + 1;
+      activeRoute.trackpoints.splice(start, deleteCount, ...newPts);
+
+      // Recalculate route metrics
+      recalculateRouteMetrics(activeRoute);
+
+      // Adjust current playback index if out of range
+      playbackIndex = Math.min(playbackIndex, activeRoute.trackpoints.length - 1);
+      
+      // Update UI and map
+      mapController.drawRoute(activeRoute, climbColorsCheckbox.checked);
+      if (elevationChart) elevationChart.setRoute(activeRoute);
+      updateRouteStatsUI(activeRoute);
+      renderWarningsUI(activeRoute);
+      renderEditWaypointList();
+
+      // Clear range selection
+      cleanupStartIndex = null;
+      cleanupEndIndex = null;
+      updateCleanupUI();
+
+      showToast("Track cleaned up successfully!");
+      saveActiveRouteState();
     });
   }
 }

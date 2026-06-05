@@ -98,6 +98,15 @@ function createSvgDot(color, size = 24) {
 }
 
 /**
+ * Helper to parse an SVG string into a valid SVGElement.
+ */
+function parseSvgStringToElement(svgString) {
+  const parser = new DOMParser();
+  const doc = parser.parseFromString(svgString, "image/svg+xml");
+  return doc.documentElement;
+}
+
+/**
  * Visual controller that wraps the Google Maps 3D Element.
  */
 export class Map3DController {
@@ -111,6 +120,7 @@ export class Map3DController {
     this.markers = [];
     this.activeRoute = null;
     this.currentTrackMarker = null; // moving marker when scrubbing elevation profile
+    this.currentTrackpointIndex = 0;
     this.activeWarningPolyline = null;
     
     // Configurable Camera Properties
@@ -143,11 +153,11 @@ export class Map3DController {
   async initialize(mapsNamespace, center = { lat: 39.2508, lng: -106.2925, altitude: 3100 }) {
     this.container.innerHTML = ""; // Clear loader message
 
-    const { Map3DElement, Polyline3DElement } = await google.maps.importLibrary("maps3d");
-    const { AdvancedMarkerElement } = await google.maps.importLibrary("marker");
+    const { Map3DElement, Polyline3DElement, Marker3DElement, Marker3DInteractiveElement } = await google.maps.importLibrary("maps3d");
     this.Map3DElement = Map3DElement;
     this.Polyline3DElement = Polyline3DElement;
-    this.AdvancedMarkerElement = AdvancedMarkerElement;
+    this.Marker3DElement = Marker3DElement;
+    this.Marker3DInteractiveElement = Marker3DInteractiveElement;
 
     this.map = new Map3DElement({
       center: { lat: center.lat, lng: center.lng, altitude: center.altitude + 2000 },
@@ -250,6 +260,8 @@ export class Map3DController {
       }
       this.activeWarningPolyline = null;
     }
+
+    this.removeCleanupHighlight();
   }
 
   /**
@@ -263,10 +275,10 @@ export class Map3DController {
     this.activeRoute = route;
     this.colorCodeClimbs = colorCodeClimbs;
 
-    const { Polyline3DElement } = await google.maps.importLibrary("maps3d");
-    const { AdvancedMarkerElement } = await google.maps.importLibrary("marker");
+    const { Polyline3DElement, Marker3DElement, Marker3DInteractiveElement } = await google.maps.importLibrary("maps3d");
     this.Polyline3DElement = Polyline3DElement;
-    this.AdvancedMarkerElement = AdvancedMarkerElement;
+    this.Marker3DElement = Marker3DElement;
+    this.Marker3DInteractiveElement = Marker3DInteractiveElement;
 
     const trackpoints = route.trackpoints;
     if (trackpoints.length < 2) return;
@@ -390,27 +402,22 @@ export class Map3DController {
       this.addPolylineSegment(coords, "#00d2ff");
     }
 
-    // Add Waypoints
     route.waypoints.forEach((wpt) => {
-      const marker = new this.AdvancedMarkerElement({
-        position: { lat: wpt.lat, lng: wpt.lon },
-        title: wpt.name,
-        gmpDraggable: !this.isEditLocked
+      const marker = new this.Marker3DInteractiveElement({
+        position: { lat: wpt.lat, lng: wpt.lon, altitude: 10 },
+        altitudeMode: "RELATIVE_TO_GROUND",
+        extruded: true,
+        drawsWhenOccluded: true
       });
       marker.waypoint = wpt; // Store direct reference to the waypoint details on the marker DOM instance
+      marker.gmpDraggable = !this.isEditLocked;
 
-      // Create a standard HTMLImageElement inside a wrapper div to hold our custom SVG
-      const img = document.createElement("img");
-      img.src = "data:image/svg+xml;charset=utf-8," + encodeURIComponent(getWaypointSvgString(wpt));
-      img.style.width = "36px";
-      img.style.height = "36px";
-      img.style.cursor = "pointer";
-      img.style.pointerEvents = "auto";
+      const svgElement = parseSvgStringToElement(getWaypointSvgString(wpt));
+      svgElement.style.cursor = "pointer";
 
-      const wrapper = document.createElement("div");
-      wrapper.className = "marker-wrapper";
-      wrapper.appendChild(img);
-      marker.content = wrapper;
+      const template = document.createElement("template");
+      template.content.appendChild(svgElement);
+      marker.appendChild(template);
 
       // Click trigger handler
       const triggerClick = (e) => {
@@ -419,11 +426,11 @@ export class Map3DController {
         window.dispatchEvent(event);
       };
 
-      wrapper.addEventListener("click", triggerClick);
-      marker.addListener("click", triggerClick);
+      marker.addEventListener("click", triggerClick);
+      marker.addEventListener("gmp-click", triggerClick);
 
       // Draggable Editing logic
-      marker.addListener("dragend", () => {
+      marker.addEventListener("gmp-dragend", () => {
         const newPos = { lat: marker.position.lat, lng: marker.position.lng };
         if (this.onWaypointDragEnd) {
           this.onWaypointDragEnd(wpt, newPos);
@@ -441,12 +448,12 @@ export class Map3DController {
     
     this.mapClickListener = (e) => {
       // If they clicked the temporary placement marker, ignore it
-      if (this.tempMarker && (this.tempMarker === e.target || this.tempMarker.content?.contains(e.target))) {
+      if (this.tempMarker && (this.tempMarker === e.target || this.tempMarker.contains(e.target))) {
         return;
       }
 
-      // Find if the target is a marker or sits inside a marker's content
-      const clickedMarker = this.markers.find(m => m === e.target || m.content?.contains(e.target));
+      // Find if the target is a marker
+      const clickedMarker = this.markers.find(m => m === e.target || m.contains(e.target));
       if (clickedMarker && clickedMarker.waypoint) {
         const event = new CustomEvent("waypoint-click", { detail: clickedMarker.waypoint });
         window.dispatchEvent(event);
@@ -461,27 +468,20 @@ export class Map3DController {
 
     this.map.addEventListener("click", this.mapClickListener);
 
-    // Create scrubbing tracker cursor
-    const startPt = trackpoints[0];
-    this.currentTrackMarker = new this.AdvancedMarkerElement({
-      position: { lat: startPt.lat, lng: startPt.lon },
-      title: "Cursor"
+    // Create scrubbing tracker cursor at the last known trackpoint progress index
+    const cursorIdx = Math.min(Math.max(0, this.currentTrackpointIndex || 0), trackpoints.length - 1);
+    const cursorPt = trackpoints[cursorIdx] || trackpoints[0];
+    this.currentTrackMarker = new this.Marker3DElement({
+      position: { lat: cursorPt.lat, lng: cursorPt.lon, altitude: 15 },
+      altitudeMode: "RELATIVE_TO_GROUND",
+      extruded: true,
+      drawsWhenOccluded: true
     });
 
-    const cursorDotString = `
-      <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24">
-        <circle cx="12" cy="12" r="8" fill="#ffeb3b" stroke="#1e293b" stroke-width="3" />
-      </svg>
-    `;
-    const cursorImg = document.createElement("img");
-    cursorImg.src = "data:image/svg+xml;charset=utf-8," + encodeURIComponent(cursorDotString);
-    cursorImg.style.width = "24px";
-    cursorImg.style.height = "24px";
-
-    const cursorWrapper = document.createElement("div");
-    cursorWrapper.className = "marker-wrapper";
-    cursorWrapper.appendChild(cursorImg);
-    this.currentTrackMarker.content = cursorWrapper;
+    const cursorSvg = createSvgDot("#ffeb3b", 24);
+    const template = document.createElement("template");
+    template.content.appendChild(cursorSvg);
+    this.currentTrackMarker.appendChild(template);
 
     this.map.append(this.currentTrackMarker);
   }
@@ -511,8 +511,10 @@ export class Map3DController {
     const pt = this.activeRoute.trackpoints[trkptIndex];
     if (!pt) return;
 
+    this.currentTrackpointIndex = trkptIndex;
+
     if (this.currentTrackMarker) {
-      this.currentTrackMarker.position = { lat: pt.lat, lng: pt.lon };
+      this.currentTrackMarker.position = { lat: pt.lat, lng: pt.lon, altitude: 15 };
     }
 
     this.currentCameraLat = pt.lat;
@@ -546,8 +548,12 @@ export class Map3DController {
   updateCamera(pt, targetHeading, speedScale = 1) {
     if (!this.map || !pt) return;
 
+    if (pt && typeof pt.index === "number") {
+      this.currentTrackpointIndex = Math.floor(pt.index);
+    }
+
     if (this.currentTrackMarker) {
-      this.currentTrackMarker.position = { lat: pt.lat, lng: pt.lon };
+      this.currentTrackMarker.position = { lat: pt.lat, lng: pt.lon, altitude: 15 };
     }
 
     if (this.currentCameraAltitude === 0) {
@@ -682,25 +688,20 @@ export class Map3DController {
   showTemporaryMarker(pos) {
     this.removeTemporaryMarker();
 
-    this.tempMarker = new this.AdvancedMarkerElement({
-      position: { lat: pos.lat, lng: pos.lng },
-      title: "New Waypoint Placement",
-      gmpDraggable: true
+    this.tempMarker = new this.Marker3DInteractiveElement({
+      position: { lat: pos.lat, lng: pos.lng, altitude: 10 },
+      altitudeMode: "RELATIVE_TO_GROUND",
+      extruded: true,
+      drawsWhenOccluded: true
     });
+    this.tempMarker.gmpDraggable = true;
 
-    const img = document.createElement("img");
-    img.src = "data:image/svg+xml;charset=utf-8," + encodeURIComponent(getTempMarkerSvg());
-    img.style.width = "36px";
-    img.style.height = "36px";
-    img.style.cursor = "pointer";
-    img.style.pointerEvents = "auto";
+    const svgElement = parseSvgStringToElement(getTempMarkerSvg());
+    const template = document.createElement("template");
+    template.content.appendChild(svgElement);
+    this.tempMarker.appendChild(template);
 
-    const wrapper = document.createElement("div");
-    wrapper.className = "marker-wrapper";
-    wrapper.appendChild(img);
-    this.tempMarker.content = wrapper;
-
-    this.tempMarker.addListener("dragend", () => {
+    this.tempMarker.addEventListener("gmp-dragend", () => {
       const newPos = { lat: this.tempMarker.position.lat, lng: this.tempMarker.position.lng };
       if (this.onTempMarkerDragEnd) {
         this.onTempMarkerDragEnd(newPos);
@@ -721,6 +722,51 @@ export class Map3DController {
         // ignore
       }
       this.tempMarker = null;
+    }
+  }
+
+  /**
+   * Sets and draws a highlighted red track segment overlay for the de-noise/cleanup range selection.
+   */
+  setCleanupRange(startIndex, endIndex) {
+    this.removeCleanupHighlight();
+    if (startIndex === null || endIndex === null || !this.activeRoute) return;
+
+    const trkpts = this.activeRoute.trackpoints;
+    const start = Math.min(startIndex, endIndex);
+    const end = Math.max(startIndex, endIndex);
+
+    const coords = [];
+    for (let i = start; i <= end; i++) {
+      if (trkpts[i]) {
+        coords.push({ lat: trkpts[i].lat, lng: trkpts[i].lon, altitude: 15 });
+      }
+    }
+
+    if (coords.length < 2) return;
+
+    // Draw thick red highlight line slightly above the path to show selection bounds
+    this.cleanupHighlight = new this.Polyline3DElement({
+      strokeColor: "#ef4444", // Bright red
+      strokeWidth: 10,
+      altitudeMode: "CLAMP_TO_GROUND",
+      path: coords
+    });
+
+    this.map.append(this.cleanupHighlight);
+  }
+
+  /**
+   * Removes the active cleanup selection highlight overlay.
+   */
+  removeCleanupHighlight() {
+    if (this.cleanupHighlight) {
+      try {
+        this.map.removeChild(this.cleanupHighlight);
+      } catch (e) {
+        // ignore
+      }
+      this.cleanupHighlight = null;
     }
   }
 }
