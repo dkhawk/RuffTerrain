@@ -249,13 +249,23 @@ export async function fetchAvailableModels(apiKey) {
   if (!data.models) return [];
 
   // Filter to models supporting generateContent and containing 'gemini' and ('flash' or 'pro') in their name
+  // Exclude tuning, embedding, tts, test, and other specialized models like nanobanana
   return data.models
     .filter(m => {
       const name = m.name.toLowerCase();
       const supportsGenerate = m.supportedGenerationMethods?.includes("generateContent");
       const isGemini = name.includes("gemini");
       const isFlashOrPro = name.includes("flash") || name.includes("pro");
-      return supportsGenerate && isGemini && isFlashOrPro;
+      
+      const isExcluded = name.includes("tuning") || 
+                         name.includes("tuned") || 
+                         name.includes("embed") || 
+                         name.includes("tts") || 
+                         name.includes("nanobanana") || 
+                         name.includes("whisper") || 
+                         name.includes("test");
+      
+      return supportsGenerate && isGemini && isFlashOrPro && !isExcluded;
     })
     .map(m => ({
       name: m.name, // e.g. "models/gemini-2.0-flash"
