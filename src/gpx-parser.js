@@ -1296,3 +1296,96 @@ export function getMetricsForPoint(route, currentIdx) {
   return { nextAid, activeClimb };
 }
 
+export function serializeGPX(route) {
+  let xml = `<?xml version="1.0" encoding="utf-8"?>\n`;
+  xml += `<gpx version="1.1" creator="RuffTerrain Explorer" xmlns="http://www.topografix.com/GPX/1/1" xmlns:ca="http://coursearchitect.com/schema/v1">\n`;
+  xml += `  <metadata>\n`;
+  xml += `    <name>${escapeXml(route.name || "Course")}</name>\n`;
+  xml += `  </metadata>\n`;
+
+  // Write Waypoints
+  (route.waypoints || []).forEach((w) => {
+    xml += `  <wpt lat="${w.lat}" lon="${w.lon}">\n`;
+    if (w.ele !== undefined) xml += `    <ele>${w.ele}</ele>\n`;
+    xml += `    <name>${escapeXml(w.name)}</name>\n`;
+    if (w.sym) xml += `    <sym>${escapeXml(w.sym)}</sym>\n`;
+    if (w.desc) xml += `    <desc>${escapeXml(w.desc)}</desc>\n`;
+
+    const station = w.extensions?.station;
+    if (station) {
+      xml += `    <extensions>\n`;
+      xml += `      <ca:station type="${escapeXml(station.type || "segmenting")}" id="${escapeXml(w.id || station.id)}"${station.subtype ? ` subtype="${escapeXml(station.subtype)}"` : ""}>\n`;
+      
+      const passes = station.passes || [];
+      if (passes.length > 0) {
+        xml += `        <ca:passes>\n`;
+        passes.forEach((p) => {
+          xml += `          <ca:pass num="${p.num}" dist_m="${p.dist_m.toFixed(1)}"${p.label ? ` label="${escapeXml(p.label)}"` : ""}${p.cutoff_clock ? ` cutoff_clock="${escapeXml(p.cutoff_clock)}"` : ""}${p.cutoff_elapsed ? ` cutoff_elapsed="${escapeXml(p.cutoff_elapsed)}"` : ""}/>\n`;
+        });
+        xml += `        </ca:passes>\n`;
+      }
+
+      const services = station.services || {};
+      if (Object.keys(services).length > 0) {
+        xml += `        <ca:services`;
+        Object.entries(services).forEach(([k, v]) => {
+          xml += ` ${k}="${v}"`;
+        });
+        xml += `/>\n`;
+      }
+
+      const access = station.accessibility || {};
+      if (Object.keys(access).length > 0) {
+        xml += `        <ca:accessibility`;
+        Object.entries(access).forEach(([k, v]) => {
+          xml += ` ${k}="${v}"`;
+        });
+        xml += `/>\n`;
+      }
+
+      const navAlert = station.navigation_alert || {};
+      if (Object.keys(navAlert).length > 0) {
+        xml += `        <ca:navigation_alert`;
+        Object.entries(navAlert).forEach(([k, v]) => {
+          xml += ` ${k}="${escapeXml(String(v))}"`;
+        });
+        xml += `/>\n`;
+      }
+
+      xml += `      </ca:station>\n`;
+      xml += `    </extensions>\n`;
+    }
+    xml += `  </wpt>\n`;
+  });
+
+  // Write Track
+  xml += `  <trk>\n`;
+  xml += `    <name>${escapeXml(route.name || "Track")}</name>\n`;
+  xml += `    <trkseg>\n`;
+  (route.trackpoints || []).forEach((pt) => {
+    xml += `      <trkpt lat="${pt.lat}" lon="${pt.lon}">\n`;
+    if (pt.ele !== undefined) xml += `        <ele>${pt.ele}</ele>\n`;
+    if (pt.time) xml += `        <time>${pt.time}</time>\n`;
+    xml += `      </trkpt>\n`;
+  });
+  xml += `    </trkseg>\n`;
+  xml += `  </trk>\n`;
+  xml += `</gpx>\n`;
+
+  return xml;
+}
+
+function escapeXml(unsafe) {
+  if (!unsafe) return "";
+  return unsafe.replace(/[<>&'"]/g, (c) => {
+    switch (c) {
+      case '<': return '&lt;';
+      case '>': return '&gt;';
+      case '&': return '&amp;';
+      case '\'': return '&apos;';
+      case '"': return '&quot;';
+      default: return c;
+    }
+  });
+}
+
