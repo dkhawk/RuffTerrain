@@ -1219,7 +1219,23 @@ function addRecentCourse(name, gpxText) {
     recentCourses = recentCourses.slice(0, 10);
   }
 
-  localStorage.setItem("recent_courses", JSON.stringify(recentCourses));
+  // Attempt to write to localStorage, trimming oldest entries if the quota is exceeded
+  let success = false;
+  while (!success && recentCourses.length > 0) {
+    try {
+      localStorage.setItem("recent_courses", JSON.stringify(recentCourses));
+      success = true;
+    } catch (err) {
+      if (err.name === "QuotaExceededError" || err.code === 22) {
+        console.warn("Storage quota exceeded. Removing oldest course from history cache:", recentCourses[recentCourses.length - 1].name);
+        recentCourses.pop(); // Remove the oldest item and try again
+      } else {
+        console.error("Failed to write recent courses to localStorage:", err);
+        break; // break to prevent infinite loops on other errors
+      }
+    }
+  }
+
   renderRecentCoursesList();
 }
 
@@ -1781,7 +1797,7 @@ function setupEventListeners() {
       showToast("Failed to process request.");
     } finally {
       chatStatus.classList.add("hidden");
-      chatSubmit.disabled = !document.body.classList.contains("edit-locked");
+      chatSubmit.disabled = document.body.classList.contains("edit-locked");
     }
   };
 
@@ -1820,7 +1836,7 @@ function setupEventListeners() {
     } catch (err) {
       showToast("Elevation fetch failed: " + err.message);
     } finally {
-      correctElevationBtn.disabled = !document.body.classList.contains("edit-locked");
+      correctElevationBtn.disabled = document.body.classList.contains("edit-locked");
       elevationProgress.classList.add("hidden");
     }
   });
