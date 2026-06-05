@@ -986,46 +986,78 @@ export function reconcileCourse(route, extractionPayload, units = "imperial", no
       const overrideLat = parseFloat(override.lat);
       const overrideLon = parseFloat(override.lon);
 
-      const firstPass = passes[0];
-      const nominalPassDistM = firstPass ? firstPass.dist_m : 0;
-      const snappedPassDistM = nominalPassDistM * scaleFactor;
+      // Automatic Multi-Pass Detection along the trackpoints
+      const distances = trackpoints.map(pt => haversine(overrideLat, overrideLon, pt.lat, pt.lon));
+      const detectedPasses = [];
+      const thresholdM = 200;
 
-      // Find closest trackpoint spatially, prioritizing those within 3000m of the nominal distance
-      let minSpatialDist = Infinity;
-      let bestIdxWithinWindow = -1;
-      let minSpatialDistWithinWindow = Infinity;
-      const windowSizeM = 3000;
+      for (let i = 1; i < distances.length - 1; i++) {
+        const prev = distances[i - 1];
+        const curr = distances[i];
+        const next = distances[i + 1];
 
-      trackpoints.forEach((pt, idx) => {
-        const dist = haversine(overrideLat, overrideLon, pt.lat, pt.lon);
-
-        // Check if within nominal distance window
-        const distFromNominal = Math.abs(pt.dist_m - snappedPassDistM);
-        if (distFromNominal <= windowSizeM) {
-          if (dist < minSpatialDistWithinWindow) {
-            minSpatialDistWithinWindow = dist;
-            bestIdxWithinWindow = idx;
-          }
+        if (curr < prev && curr < next && curr < thresholdM) {
+          detectedPasses.push({
+            idx: i,
+            dist_m: trackpoints[i].dist_m,
+            spatial_dist: curr
+          });
         }
+      }
 
-        if (dist < minSpatialDist) {
-          minSpatialDist = dist;
-          closestIdx = idx;
+      // Collapse duplicate/adjacent passes within 2000m
+      const mergedPasses = [];
+      detectedPasses.forEach(p => {
+        if (mergedPasses.length === 0) {
+          mergedPasses.push(p);
+        } else {
+          const last = mergedPasses[mergedPasses.length - 1];
+          if (p.dist_m - last.dist_m < 2000) {
+            if (p.spatial_dist < last.spatial_dist) {
+              mergedPasses[mergedPasses.length - 1] = p;
+            }
+          } else {
+            mergedPasses.push(p);
+          }
         }
       });
 
-      if (bestIdxWithinWindow !== -1 && minSpatialDistWithinWindow < 200) {
-        closestIdx = bestIdxWithinWindow;
-        minSpatialDist = minSpatialDistWithinWindow;
+      // Update passes array using the detected passes
+      if (mergedPasses.length > 0) {
+        passes = mergedPasses.map((mp, index) => {
+          const originalPass = station.passes?.[index];
+          return {
+            num: index + 1,
+            dist_m: mp.dist_m,
+            label: originalPass?.label || (mergedPasses.length > 1 ? (index === 0 ? "Outbound" : "Inbound") : ""),
+            cutoff_clock: originalPass?.cutoff_clock || null,
+            cutoff_elapsed: originalPass?.cutoff_elapsed || null
+          };
+        });
+        
+        closestIdx = mergedPasses[0].idx;
+      } else {
+        // Fallback to absolute closest if no local minimum under 200m was found
+        let minSpatialDist = Infinity;
+        trackpoints.forEach((pt, idx) => {
+          const dist = haversine(overrideLat, overrideLon, pt.lat, pt.lon);
+          if (dist < minSpatialDist) {
+            minSpatialDist = dist;
+            closestIdx = idx;
+          }
+        });
       }
+
+      // Calculate spatial mismatch warning using the final selected closestIdx
+      const finalSpatialDist = haversine(overrideLat, overrideLon, trackpoints[closestIdx].lat, trackpoints[closestIdx].lon);
 
       lat = overrideLat;
       lon = overrideLon;
       useExactOverride = true;
 
-      if (minSpatialDist > 2000) {
+      if (finalSpatialDist > 2000) {
         const distName = units === "imperial" ? "miles" : "km";
-        const distVal = units === "imperial" ? minSpatialDist / 1609.344 : minSpatialDist / 1000;
+        const distVal = units === "imperial" ? finalSpatialDist / 1609.344 : finalSpatialDist / 1000;
         spatialWarnings.push({
           id: `spatial-mismatch-${stationId}`,
           type: "SPATIAL_MISMATCH",
@@ -1141,7 +1173,7 @@ export function reconcileCourse(route, extractionPayload, units = "imperial", no
     if (matchIdx === -1) {
       // No trackpoint exists at the waypoint's exact coordinates.
       // Find the closest segment and insert a detour
-      const snapped = snapToRouteSegments(route, { lat: wpt.lat, lng: wpt.lon });
+      const snapped = snapToRouteSegments(route, { lat: wpt.lat, lng: wpt.lon }, wpt.dist_m);
       if (snapped) {
         const insertIdx = snapped.closestTrackpointIndex;
         const newTrackPt = {

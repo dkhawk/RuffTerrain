@@ -127,6 +127,9 @@ CORE HEURISTICS & RULES:
 7. INTERACTIVE CHAT EDITS:
    - The user may send follow-up instructions to add, remove, or modify waypoints (e.g., "Change the cutoff at dry-fork to 4:00 PM" or "Add a scenic overlook at mile 15").
    - Adjust the JSON payload accordingly to reflect these changes in the list of stations.
+
+8. COORDINATE OVERRIDES (CRITICAL):
+   - If the user request, text description, or files contain specific lat/lon coordinates for a waypoint (e.g., 'located at 38.8477, -105.0069'), you MUST parse these coordinates and output them in the "coordinate_override" object with fields "lat" and "lon". Do not ignore coordinates provided in the input text.
 `;
 
 /**
