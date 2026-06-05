@@ -37,6 +37,150 @@ export function haversine(lat1, lon1, lat2, lon2) {
 }
 
 /**
+ * Snaps a lat/lng position to the nearest segment of a route's trackpoints.
+ */
+export function snapToRouteSegments(route, pos) {
+  const pts = route.trackpoints;
+  if (!pts || pts.length === 0) return null;
+  if (pts.length === 1) {
+    return {
+      lat: pts[0].lat,
+      lon: pts[0].lon,
+      ele: pts[0].ele,
+      dist_m: pts[0].dist_m,
+      closestTrackpointIndex: 0
+    };
+  }
+
+  let minSqDist = Infinity;
+  let bestLat = pts[0].lat;
+  let bestLon = pts[0].lon;
+  let bestEle = pts[0].ele;
+  let bestDist = pts[0].dist_m;
+  let bestIdx = 0;
+
+  const latToMeters = 111320;
+
+  for (let i = 0; i < pts.length - 1; i++) {
+    const A = pts[i];
+    const B = pts[i + 1];
+
+    const cosLat = Math.cos((A.lat + B.lat) * Math.PI / 360);
+    
+    const ax = A.lon * cosLat;
+    const ay = A.lat;
+    const bx = B.lon * cosLat;
+    const by = B.lat;
+    const px = pos.lng * cosLat;
+    const py = pos.lat;
+
+    const vx = bx - ax;
+    const vy = by - ay;
+    const wx = px - ax;
+    const wy = py - ay;
+
+    const lensq = vx * vx + vy * vy;
+    let t = 0;
+    if (lensq > 0) {
+      t = (wx * vx + wy * vy) / lensq;
+      t = Math.max(0, Math.min(1, t));
+    }
+
+    const cx = ax + t * vx;
+    const cy = ay + t * vy;
+
+    const projLon = cx / cosLat;
+    const projLat = cy;
+
+    const dx = (px - cx) * latToMeters;
+    const dy = (py - cy) * latToMeters;
+    const sqDist = dx * dx + dy * dy;
+
+    if (sqDist < minSqDist) {
+      minSqDist = sqDist;
+      bestLat = projLat;
+      bestLon = projLon;
+      bestEle = A.ele + t * (B.ele - A.ele);
+      bestDist = A.dist_m + t * (B.dist_m - A.dist_m);
+      bestIdx = i;
+    }
+  }
+
+  return {
+    lat: bestLat,
+    lon: bestLon,
+    ele: bestEle,
+    dist_m: bestDist,
+    closestTrackpointIndex: bestIdx
+  };
+}
+
+/**
+ * Re-calculates indices, cumulative distances, elevations and snap links on course modifications.
+ */
+export function recalculateRouteMetrics(route) {
+  const pts = route.trackpoints;
+  if (!pts || pts.length === 0) return;
+
+  let totalDistance = 0;
+  let totalElevationGain = 0;
+  let totalElevationLoss = 0;
+
+  for (let i = 0; i < pts.length; i++) {
+    const pt = pts[i];
+    pt.index = i;
+    
+    let grade = 0;
+    if (i > 0) {
+      const prev = pts[i - 1];
+      const segmentDist = haversine(prev.lat, prev.lon, pt.lat, pt.lon);
+      totalDistance += segmentDist;
+
+      const eleDiff = pt.ele - prev.ele;
+      if (eleDiff > 0) {
+        totalElevationGain += eleDiff;
+      } else {
+        totalElevationLoss += Math.abs(eleDiff);
+      }
+
+      let j = i - 1;
+      while (j > 0 && totalDistance - pts[j].dist_m < 30) {
+        j--;
+      }
+      const basePt = pts[j];
+      if (basePt) {
+        const runDist = totalDistance - basePt.dist_m;
+        const riseEle = pt.ele - basePt.ele;
+        if (runDist > 5) {
+          grade = (riseEle / runDist) * 100;
+        }
+      }
+    }
+
+    pt.dist_m = totalDistance;
+    pt.grade = grade;
+  }
+
+  route.totalDistance = totalDistance;
+  route.totalElevationGain = totalElevationGain;
+  route.totalElevationLoss = totalElevationLoss;
+  route.avgSpacing = pts.length > 0 ? (totalDistance / pts.length) : 0;
+
+  // Re-snap waypoints
+  route.waypoints.forEach((wpt) => {
+    const snapped = snapToRouteSegments(route, { lat: wpt.lat, lng: wpt.lon });
+    if (snapped) {
+      wpt.ele = snapped.ele;
+      wpt.dist_m = snapped.dist_m;
+      wpt.closestTrackpointIndex = snapped.closestTrackpointIndex;
+    }
+  });
+
+  route.waypoints.sort((a, b) => a.dist_m - b.dist_m);
+}
+
+
+/**
  * Parses GPX XML content into a structured route object.
  * @param {string} gpxText Raw GPX XML string
  * @returns {Object} Structured route data
@@ -774,6 +918,39 @@ export function reconcileCourse(route, extractionPayload, units = "imperial", no
   });
 
   route.waypoints = updatedWaypoints;
+  
+  // Ensure every waypoint has a corresponding trackpoint detour
+  route.waypoints.forEach((wpt) => {
+    const pts = route.trackpoints;
+    const matchIdx = pts.findIndex(
+      (pt) => Math.abs(pt.lat - wpt.lat) < 0.000001 && Math.abs(pt.lon - wpt.lon) < 0.000001
+    );
+    if (matchIdx === -1) {
+      // No trackpoint exists at the waypoint's exact coordinates.
+      // Find the closest segment and insert a detour
+      const snapped = snapToRouteSegments(route, { lat: wpt.lat, lng: wpt.lon });
+      if (snapped) {
+        const insertIdx = snapped.closestTrackpointIndex;
+        const newTrackPt = {
+          lat: wpt.lat,
+          lon: wpt.lon,
+          ele: snapped.ele,
+          dist_m: snapped.dist_m,
+          time: pts[insertIdx]?.time || null,
+        };
+        if (insertIdx === 0 && snapped.dist_m === 0) {
+          pts.unshift(newTrackPt);
+        } else if (insertIdx === pts.length - 2 && Math.abs(snapped.dist_m - pts[pts.length - 1].dist_m) < 0.1) {
+          pts.push(newTrackPt);
+        } else {
+          pts.splice(insertIdx + 1, 0, newTrackPt);
+        }
+      }
+    }
+  });
+
+  // Recalculate route metrics (gains, distances, grades) after modifying trackpoints
+  recalculateRouteMetrics(route);
   
   // Recalculate warnings because adding resources resolves resource deserts
   calculateWarnings(route, spatialWarnings, units);

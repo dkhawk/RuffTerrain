@@ -24,7 +24,7 @@
  * The preview controller iterates through trackpoint bearings to control camera panning and triggers contextual auto-pauses when approaching points of interest.
  */
 
-import { parseGPX, reconcileCourse, getMetricsForPoint, calculateWarnings, haversine } from "./gpx-parser.js";
+import { parseGPX, reconcileCourse, getMetricsForPoint, calculateWarnings, haversine, snapToRouteSegments, recalculateRouteMetrics } from "./gpx-parser.js";
 import { writeGPX } from "./gpx-writer.js";
 import { correctRouteElevations } from "./fetch-elevation.js";
 import { sendToGemini, fetchAvailableModels, generateWaypointFromDescription } from "./gemini-client.js";
@@ -248,10 +248,18 @@ document.addEventListener("DOMContentLoaded", () => {
     if (!activeRoute) return;
     const targetWpt = activeRoute.waypoints.find(w => w === wpt);
     if (targetWpt) {
+      const prevLat = targetWpt.lat;
+      const prevLon = targetWpt.lon;
+
       const shouldSnap = dragSnapCheckbox ? dragSnapCheckbox.checked : true;
       const snapped = snapToRouteSegments(activeRoute, newPosition);
       
+      let finalLat = newPosition.lat;
+      let finalLng = newPosition.lng;
+
       if (shouldSnap && snapped) {
+        finalLat = snapped.lat;
+        finalLng = snapped.lon;
         targetWpt.lat = snapped.lat;
         targetWpt.lon = snapped.lon;
         targetWpt.ele = snapped.ele;
@@ -267,12 +275,45 @@ document.addEventListener("DOMContentLoaded", () => {
         }
       }
 
-      // Sort waypoints after distance update
-      activeRoute.waypoints.sort((a, b) => a.dist_m - b.dist_m);
+      // Update detour trackpoint
+      const pts = activeRoute.trackpoints;
+      const matchIdx = pts.findIndex(
+        pt => Math.abs(pt.lat - prevLat) < 0.000001 && Math.abs(pt.lon - prevLon) < 0.000001
+      );
 
-      // Update related stats & UIs
-      updateRouteStatsUI(activeRoute);
+      if (matchIdx !== -1) {
+        // Update existing detour trackpoint
+        pts[matchIdx].lat = finalLat;
+        pts[matchIdx].lon = finalLng;
+      } else {
+        // Create new detour trackpoint
+        const snappedNew = snapToRouteSegments(activeRoute, { lat: finalLat, lng: finalLng });
+        if (snappedNew) {
+          const insertIdx = snappedNew.closestTrackpointIndex;
+          const newTrackPt = {
+            lat: finalLat,
+            lon: finalLng,
+            ele: snappedNew.ele,
+            dist_m: snappedNew.dist_m,
+            time: pts[insertIdx]?.time || null
+          };
+          if (insertIdx === 0 && snappedNew.dist_m === 0) {
+            pts.unshift(newTrackPt);
+          } else if (insertIdx === pts.length - 2 && Math.abs(snappedNew.dist_m - pts[pts.length - 1].dist_m) < 0.1) {
+            pts.push(newTrackPt);
+          } else {
+            pts.splice(insertIdx + 1, 0, newTrackPt);
+          }
+        }
+      }
+
+      // Recalculate route metrics
+      recalculateRouteMetrics(activeRoute);
+
+      // Redraw map & chart
+      mapController.drawRoute(activeRoute, climbColorsCheckbox.checked);
       elevationChart.setRoute(activeRoute);
+      updateRouteStatsUI(activeRoute);
       renderEditWaypointList();
 
       showToast(`Updated location for: ${wpt.name}`);
@@ -1237,145 +1278,7 @@ function renderRecentCoursesList() {
  * Projects a point onto the closest line segment of the route trackpoints.
  * Returns snapped coordinates, interpolated elevation, and distance along course.
  */
-function snapToRouteSegments(route, pos) {
-  const pts = route.trackpoints;
-  if (!pts || pts.length === 0) return null;
-  if (pts.length === 1) {
-    return {
-      lat: pts[0].lat,
-      lon: pts[0].lon,
-      ele: pts[0].ele,
-      dist_m: pts[0].dist_m,
-      closestTrackpointIndex: 0
-    };
-  }
 
-  let minSqDist = Infinity;
-  let bestLat = pts[0].lat;
-  let bestLon = pts[0].lon;
-  let bestEle = pts[0].ele;
-  let bestDist = pts[0].dist_m;
-  let bestIdx = 0;
-
-  const latToMeters = 111320;
-
-  for (let i = 0; i < pts.length - 1; i++) {
-    const A = pts[i];
-    const B = pts[i + 1];
-
-    const cosLat = Math.cos((A.lat + B.lat) * Math.PI / 360);
-    
-    const ax = A.lon * cosLat;
-    const ay = A.lat;
-    const bx = B.lon * cosLat;
-    const by = B.lat;
-    const px = pos.lng * cosLat;
-    const py = pos.lat;
-
-    const vx = bx - ax;
-    const vy = by - ay;
-    const wx = px - ax;
-    const wy = py - ay;
-
-    const lensq = vx * vx + vy * vy;
-    let t = 0;
-    if (lensq > 0) {
-      t = (wx * vx + wy * vy) / lensq;
-      t = Math.max(0, Math.min(1, t));
-    }
-
-    const cx = ax + t * vx;
-    const cy = ay + t * vy;
-
-    const projLon = cx / cosLat;
-    const projLat = cy;
-
-    const dx = (px - cx) * latToMeters;
-    const dy = (py - cy) * latToMeters;
-    const sqDist = dx * dx + dy * dy;
-
-    if (sqDist < minSqDist) {
-      minSqDist = sqDist;
-      bestLat = projLat;
-      bestLon = projLon;
-      bestEle = A.ele + t * (B.ele - A.ele);
-      bestDist = A.dist_m + t * (B.dist_m - A.dist_m);
-      bestIdx = i;
-    }
-  }
-
-  return {
-    lat: bestLat,
-    lon: bestLon,
-    ele: bestEle,
-    dist_m: bestDist,
-    closestTrackpointIndex: bestIdx
-  };
-}
-
-/**
- * Re-calculates indices, cumulative distances, elevations and snap links on course modifications.
- */
-function recalculateRouteMetrics(route) {
-  const pts = route.trackpoints;
-  if (!pts || pts.length === 0) return;
-
-  let totalDistance = 0;
-  let totalElevationGain = 0;
-  let totalElevationLoss = 0;
-
-  for (let i = 0; i < pts.length; i++) {
-    const pt = pts[i];
-    pt.index = i;
-    
-    let grade = 0;
-    if (i > 0) {
-      const prev = pts[i - 1];
-      const segmentDist = haversine(prev.lat, prev.lon, pt.lat, pt.lon);
-      totalDistance += segmentDist;
-
-      const eleDiff = pt.ele - prev.ele;
-      if (eleDiff > 0) {
-        totalElevationGain += eleDiff;
-      } else {
-        totalElevationLoss += Math.abs(eleDiff);
-      }
-
-      let j = i - 1;
-      while (j > 0 && totalDistance - pts[j].dist_m < 30) {
-        j--;
-      }
-      const basePt = pts[j];
-      if (basePt) {
-        const runDist = totalDistance - basePt.dist_m;
-        const riseEle = pt.ele - basePt.ele;
-        if (runDist > 5) {
-          grade = (riseEle / runDist) * 100;
-        }
-      }
-    }
-
-    pt.dist_m = totalDistance;
-    pt.grade = grade;
-  }
-
-  route.totalDistance = totalDistance;
-  route.totalElevationGain = totalElevationGain;
-  route.totalElevationLoss = totalElevationLoss;
-  route.avgSpacing = pts.length > 0 ? (totalDistance / pts.length) : 0;
-
-  // Re-snap waypoints
-  route.waypoints.forEach((wpt) => {
-    const snapped = snapToRouteSegments(route, { lat: wpt.lat, lng: wpt.lon });
-    if (snapped) {
-      wpt.ele = snapped.ele;
-      wpt.dist_m = snapped.dist_m;
-      wpt.closestTrackpointIndex = snapped.closestTrackpointIndex;
-    }
-  });
-
-  route.waypoints.sort((a, b) => a.dist_m - b.dist_m);
-}
 
 /**
  * Renders the waypoint list in the Edit Course sidebar panel.
@@ -1394,13 +1297,23 @@ function renderEditWaypointList() {
     item.style.display = "flex";
     item.style.alignItems = "center";
     item.style.justifyContent = "space-between";
-    item.style.padding = "4px 6px";
-    item.style.background = "rgba(255,255,255,0.03)";
-    item.style.border = "1px solid rgba(255,255,255,0.05)";
-    item.style.borderRadius = "4px";
-    item.style.fontSize = "11px";
-    item.style.gap = "6px";
+    item.style.padding = "8px 10px";
+    item.style.background = "rgba(255,255,255,0.05)";
+    item.style.border = "1px solid rgba(255,255,255,0.08)";
+    item.style.borderRadius = "6px";
+    item.style.fontSize = "12px";
+    item.style.gap = "8px";
     item.style.boxSizing = "border-box";
+    item.style.transition = "background-color 0.15s, border-color 0.15s";
+
+    item.addEventListener("mouseenter", () => {
+      item.style.background = "rgba(255,255,255,0.08)";
+      item.style.borderColor = "rgba(255,255,255,0.15)";
+    });
+    item.addEventListener("mouseleave", () => {
+      item.style.background = "rgba(255,255,255,0.05)";
+      item.style.borderColor = "rgba(255,255,255,0.08)";
+    });
 
     const nameSpan = document.createElement("span");
     nameSpan.style.flex = "1";
@@ -1413,6 +1326,7 @@ function renderEditWaypointList() {
     nameSpan.textContent = `${wpt.name} (${distVal})`;
     nameSpan.style.cursor = "pointer";
     nameSpan.style.color = "var(--text-color)";
+    nameSpan.style.fontWeight = "500";
     nameSpan.title = "Click to jump to waypoint";
     nameSpan.addEventListener("click", () => {
       const event = new CustomEvent("waypoint-click", { detail: wpt });
@@ -1421,7 +1335,7 @@ function renderEditWaypointList() {
 
     const actionDiv = document.createElement("div");
     actionDiv.style.display = "flex";
-    actionDiv.style.gap = "4px";
+    actionDiv.style.gap = "6px";
 
     // Edit button
     const editBtn = document.createElement("button");
@@ -1429,8 +1343,16 @@ function renderEditWaypointList() {
     editBtn.style.background = "none";
     editBtn.style.border = "none";
     editBtn.style.cursor = "pointer";
-    editBtn.style.fontSize = "10px";
-    editBtn.style.padding = "0 2px";
+    editBtn.style.fontSize = "12px";
+    editBtn.style.padding = "4px";
+    editBtn.style.borderRadius = "4px";
+    editBtn.style.transition = "background-color 0.15s";
+    editBtn.addEventListener("mouseenter", () => {
+      editBtn.style.background = "rgba(255,255,255,0.1)";
+    });
+    editBtn.addEventListener("mouseleave", () => {
+      editBtn.style.background = "none";
+    });
     editBtn.title = "Edit location";
     editBtn.addEventListener("click", (e) => {
       e.stopPropagation();
@@ -1449,13 +1371,34 @@ function renderEditWaypointList() {
     delBtn.style.background = "none";
     delBtn.style.border = "none";
     delBtn.style.cursor = "pointer";
-    delBtn.style.fontSize = "10px";
-    delBtn.style.padding = "0 2px";
+    delBtn.style.fontSize = "11px";
+    delBtn.style.padding = "4px";
+    delBtn.style.borderRadius = "4px";
+    delBtn.style.transition = "background-color 0.15s";
+    delBtn.addEventListener("mouseenter", () => {
+      delBtn.style.background = "rgba(239,68,68,0.15)";
+    });
+    delBtn.addEventListener("mouseleave", () => {
+      delBtn.style.background = "none";
+    });
     delBtn.title = "Delete waypoint";
     delBtn.addEventListener("click", (e) => {
       e.stopPropagation();
       if (confirm(`Are you sure you want to delete ${wpt.name}?`)) {
+        const prevLat = wpt.lat;
+        const prevLon = wpt.lon;
+
         activeRoute.waypoints.splice(index, 1);
+        
+        // Remove matching detour trackpoint
+        const matchIdx = activeRoute.trackpoints.findIndex(
+          pt => Math.abs(pt.lat - prevLat) < 0.000001 && Math.abs(pt.lon - prevLon) < 0.000001
+        );
+        if (matchIdx !== -1) {
+          activeRoute.trackpoints.splice(matchIdx, 1);
+        }
+
+        recalculateRouteMetrics(activeRoute);
         
         mapController.drawRoute(activeRoute, climbColorsCheckbox.checked);
         if (elevationChart) elevationChart.setRoute(activeRoute);
@@ -2540,17 +2483,38 @@ function setupEventListeners() {
           });
         }
 
-        // Insert and sort
+        // Insert waypoint
         activeRoute.waypoints.push(newWpt);
-        activeRoute.waypoints.sort((a, b) => a.dist_m - b.dist_m);
 
+        // Insert detour / extension points in trackpoints
+        const insertIdx = tempPoiData.closestTrackpointIndex;
+        const pts = activeRoute.trackpoints;
+        const newTrackPt = {
+          lat: tempPoiData.lat,
+          lon: tempPoiData.lon,
+          ele: tempPoiData.ele,
+          dist_m: tempPoiData.dist_m,
+          time: pts[insertIdx]?.time || null
+        };
+
+        if (insertIdx === 0 && tempPoiData.dist_m === 0) {
+          activeRoute.trackpoints.unshift(newTrackPt);
+        } else if (insertIdx === pts.length - 2 && Math.abs(tempPoiData.dist_m - pts[pts.length - 1].dist_m) < 0.1) {
+          activeRoute.trackpoints.push(newTrackPt);
+        } else {
+          activeRoute.trackpoints.splice(insertIdx + 1, 0, newTrackPt);
+        }
+
+        // Recalculate route metrics
+        recalculateRouteMetrics(activeRoute);
+ 
         // Redraw and update UIs
         mapController.drawRoute(activeRoute, climbColorsCheckbox.checked);
         elevationChart.setRoute(activeRoute);
         updateRouteStatsUI(activeRoute);
         renderWarningsUI(activeRoute);
         renderEditWaypointList();
-
+ 
         showToast(`Added waypoint: ${newWpt.name}`);
         saveActiveRouteState();
 
