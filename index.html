@@ -181,8 +181,11 @@
           </div>
         </div>
         
-        <div id="chat-status" class="chat-status hidden">
-          <span class="spinner"></span> <span id="chat-status-text">Processing...</span>
+        <div id="chat-status" class="chat-status hidden" style="display: flex; align-items: center; justify-content: space-between; gap: 8px;">
+          <div style="display: flex; align-items: center; gap: 8px;">
+            <span class="spinner"></span> <span id="chat-status-text">Processing...</span>
+          </div>
+          <button id="chat-cancel-btn" class="btn btn-secondary" style="font-size: 10px; padding: 2px 8px; height: 22px; border-radius: 4px; border: 1px solid rgba(255,255,255,0.15); background: rgba(255,255,255,0.05); color: var(--text-color); cursor: pointer;">Cancel</button>
         </div>
 
         <div class="chat-input-area" style="display: flex; flex-direction: column; gap: 8px; border-top: 1px solid rgba(255,255,255,0.08); padding-top: 12px; margin-top: 8px;">

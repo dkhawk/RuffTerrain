@@ -138,7 +138,7 @@ CORE HEURISTICS & RULES:
  * @param {string} modelName The model to use (default: models/gemini-2.0-flash)
  * @returns {Promise<Object>} The parsed stations JSON output and raw textual explanation
  */
-export async function sendToGemini(userPrompt, currentRoute, apiKey, chatHistory = [], modelName = "models/gemini-2.0-flash") {
+export async function sendToGemini(userPrompt, currentRoute, apiKey, chatHistory = [], modelName = "models/gemini-2.0-flash", signal = null) {
   if (!apiKey) {
     throw new Error("Gemini API key is required. Please set it in the Settings panel.");
   }
@@ -197,7 +197,8 @@ export async function sendToGemini(userPrompt, currentRoute, apiKey, chatHistory
     headers: {
       "Content-Type": "application/json"
     },
-    body: JSON.stringify(requestBody)
+    body: JSON.stringify(requestBody),
+    signal
   });
 
   if (!response.ok) {

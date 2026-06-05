@@ -73,6 +73,7 @@ let lastPausedPoiIndex = -1; // Prevents getting stuck in a loop at the same POI
 let lastPausedPoiId = null;  // Prevents getting stuck in a loop at the same POI
 let autoResumeTimeout = null; // Handles the timer for auto-continuing the preview
 let isEditingPoiLocation = false; // Manages the edit location mode of the active POI
+let currentAbortController = null; // Active Gemini Chat API AbortController
 
 // ==========================================
 // DOM ELEMENT REFERENCES
@@ -1771,8 +1772,20 @@ function setupEventListeners() {
     chatStatus.classList.remove("hidden");
     chatSubmit.disabled = true;
 
+    // Instantiate new AbortController
+    currentAbortController = new AbortController();
+
+    // Set up manual timeout for 2 minutes (120,000 ms)
+    const timeoutId = setTimeout(() => {
+      if (currentAbortController) {
+        console.warn("Gemini request timed out after 2 minutes.");
+        currentAbortController.abort();
+        showToast("Request timed out after 2 minutes.");
+      }
+    }, 120000);
+
     try {
-      const response = await sendToGemini(prompt, activeRoute, apiKeyGemini, chatHistory, geminiModel);
+      const response = await sendToGemini(prompt, activeRoute, apiKeyGemini, chatHistory, geminiModel, currentAbortController.signal);
 
       chatHistory.push({ role: "user", parts: [{ text: prompt }] });
       chatHistory.push(response.assistantMessage);
@@ -1793,15 +1806,30 @@ function setupEventListeners() {
       }
     } catch (err) {
       console.error(err);
-      appendChatMessage(`Reconcilation Error: ${err.message}`, "assistant");
-      showToast("Failed to process request.");
+      if (err.name === "AbortError") {
+        appendChatMessage("Request was cancelled or timed out after 2 minutes.", "assistant");
+      } else {
+        appendChatMessage(`Reconciliation Error: ${err.message}`, "assistant");
+        showToast("Failed to process request.");
+      }
     } finally {
+      clearTimeout(timeoutId);
+      currentAbortController = null;
       chatStatus.classList.add("hidden");
       chatSubmit.disabled = document.body.classList.contains("edit-locked");
     }
   };
 
   chatSubmit.addEventListener("click", handleChatSubmit);
+  
+  const chatCancelBtn = document.getElementById("chat-cancel-btn");
+  if (chatCancelBtn) {
+    chatCancelBtn.addEventListener("click", () => {
+      if (currentAbortController) {
+        currentAbortController.abort();
+      }
+    });
+  }
   chatInput.addEventListener("keydown", (e) => {
     if (e.key === "Enter" && !e.shiftKey) {
       e.preventDefault();
