@@ -73,6 +73,7 @@ let lastPausedPoiIndex = -1; // Prevents getting stuck in a loop at the same POI
 let lastPausedPoiId = null;  // Prevents getting stuck in a loop at the same POI
 let autoResumeTimeout = null; // Handles the timer for auto-continuing the preview
 let isEditingPoiLocation = false; // Manages the edit location mode of the active POI
+let activeDialogWpt = null; // Waypoint currently loaded in the POI dialog
 let currentAbortController = null; // Active Gemini Chat API AbortController
 let isPlacingNewPoi = false; // Placement mode flag
 let tempPoiData = null; // Temporary snapped point coordinates
@@ -152,6 +153,7 @@ const regenerateWarningsBtn = document.getElementById("regenerate-warnings-btn")
 // Collapsible POI Detail Dialog Panel
 const poiDetailDialog = document.getElementById("poi-detail-dialog");
 const poiValName = document.getElementById("poi-val-name");
+const poiValNameInput = document.getElementById("poi-val-name-input");
 const poiValPassTag = document.getElementById("poi-val-pass-tag");
 const poiValCutoffTag = document.getElementById("poi-val-cutoff-tag");
 const poiValArrive = document.getElementById("poi-val-arrive");
@@ -245,7 +247,7 @@ document.addEventListener("DOMContentLoaded", () => {
       const prevLon = targetWpt.lon;
 
       const shouldSnap = dragSnapCheckbox ? dragSnapCheckbox.checked : true;
-      const snapped = snapToRouteSegments(activeRoute, newPosition);
+      const snapped = snapToRouteSegments(activeRoute, newPosition, targetWpt.dist_m);
       
       let finalLat = newPosition.lat;
       let finalLng = newPosition.lng;
@@ -922,12 +924,102 @@ function pausePlayback() {
 // ==========================================
 
 /**
+ * Renders interactive toggle buttons inside the amenities row for editing services.
+ */
+function renderEditAmenities(wpt) {
+  if (!poiServicesIconsRow || !wpt) return;
+  poiServicesIconsRow.innerHTML = "";
+
+  if (!wpt.extensions) wpt.extensions = {};
+  if (!wpt.extensions.station) {
+    wpt.extensions.station = { type: "informational", passes: [], services: {}, accessibility: {} };
+  }
+  const station = wpt.extensions.station;
+  if (!station.services) station.services = {};
+  if (!station.accessibility) station.accessibility = {};
+
+  const AMENITIES_LIST = [
+    { key: "water", icon: "💧", label: "Water", category: "services" },
+    { key: "food", icon: "🍔", label: "Food", category: "services" },
+    { key: "toilets", icon: "🚾", label: "Restrooms", category: "services" },
+    { key: "medical", icon: "➕", label: "Aid", category: "services" },
+    { key: "sleep_area", icon: "🛌", label: "Sleep", category: "services" },
+    { key: "crew_allowed", icon: "🚗", label: "Crew Access", category: "accessibility" },
+    { key: "pacer_allowed", icon: "🏃", label: "Pacer Exchange", category: "accessibility" },
+    { key: "drop_bag_allowed", icon: "🎒", label: "Drop Bag", category: "accessibility" }
+  ];
+
+  AMENITIES_LIST.forEach(item => {
+    const badge = document.createElement("button");
+    badge.className = "btn btn-secondary btn-sm";
+    badge.style.display = "inline-flex";
+    badge.style.alignItems = "center";
+    badge.style.gap = "4px";
+    badge.style.padding = "4px 8px";
+    badge.style.borderRadius = "4px";
+    badge.style.fontSize = "11px";
+    badge.style.cursor = "pointer";
+    badge.style.border = "1px solid rgba(255,255,255,0.15)";
+    badge.style.margin = "2px";
+
+    const store = item.category === "services" ? station.services : station.accessibility;
+    let isActive = !!store[item.key];
+
+    const updateStyle = () => {
+      if (isActive) {
+        badge.style.backgroundColor = "rgba(59, 130, 246, 0.25)";
+        badge.style.borderColor = "var(--primary-color)";
+        badge.style.color = "var(--text-color)";
+        badge.style.opacity = "1";
+      } else {
+        badge.style.backgroundColor = "rgba(255, 255, 255, 0.02)";
+        badge.style.borderColor = "rgba(255,255,255,0.05)";
+        badge.style.color = "var(--text-muted)";
+        badge.style.opacity = "0.5";
+      }
+    };
+
+    updateStyle();
+
+    badge.innerHTML = `<span>${item.icon}</span> <span>${item.label}</span>`;
+
+    badge.addEventListener("click", (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      isActive = !isActive;
+      store[item.key] = isActive;
+      updateStyle();
+    });
+
+    poiServicesIconsRow.appendChild(badge);
+  });
+}
+
+/**
  * Displays POI detail dialog window populated with services and multi-pass timeline metrics.
  * @param {Object} wpt Waypoint details parsed from GPX schema
  * @param {number} index Trackpoint index snapping point
  */
 function showPoiDetailDialog(wpt, index, referenceDist = null) {
   if (!poiDetailDialog) return;
+
+  activeDialogWpt = wpt;
+  isEditingPoiLocation = false;
+  if (poiValNameInput) {
+    poiValNameInput.classList.add("hidden");
+    poiValNameInput.value = wpt.name;
+  }
+  if (poiValName) poiValName.classList.remove("hidden");
+  if (poiDialogEditBtn) {
+    poiDialogEditBtn.textContent = "✏️ Edit Waypoint";
+    poiDialogEditBtn.style.backgroundColor = "var(--primary-color)";
+  }
+  if (poiEditModeSelector) {
+    poiEditModeSelector.classList.add("hidden");
+  }
+  if (mapController) {
+    mapController.setEditLock(true);
+  }
 
   // Clear any existing active timeouts
   if (autoResumeTimeout) {
@@ -2178,16 +2270,29 @@ function setupEventListeners() {
     closePoiDetailDialog(true);
   });
 
-  // Edit Location Button Handler
+  // Edit Waypoint Button Handler
   if (poiDialogEditBtn) {
     poiDialogEditBtn.addEventListener("click", () => {
       if (!isEditingPoiLocation) {
         // Enter Edit Mode
         isEditingPoiLocation = true;
-        poiDialogEditBtn.textContent = "💾 Save Position";
+        poiDialogEditBtn.textContent = "💾 Save Waypoint";
         poiDialogEditBtn.style.backgroundColor = "#10b981"; // Emerald Green
         if (poiEditModeSelector) {
           poiEditModeSelector.classList.remove("hidden");
+        }
+
+        // Toggle name input visibility
+        if (poiValNameInput && poiValName) {
+          poiValNameInput.value = activeDialogWpt ? activeDialogWpt.name : "";
+          poiValNameInput.classList.remove("hidden");
+          poiValName.classList.add("hidden");
+          poiValNameInput.focus();
+        }
+
+        // Render interactive amenities badges
+        if (activeDialogWpt) {
+          renderEditAmenities(activeDialogWpt);
         }
         
         // Sync active state from current preference
@@ -2203,19 +2308,40 @@ function setupEventListeners() {
         if (mapController) {
           mapController.setEditLock(false); // unlock draggable markers
         }
-        showToast("Edit mode enabled. Drag the marker on the map to relocate it.");
+        showToast("Edit mode enabled. Edit name, amenities, or drag marker on map to relocate.");
       } else {
         // Exit/Save Edit Mode
         isEditingPoiLocation = false;
-        poiDialogEditBtn.textContent = "✏️ Edit Location";
+        poiDialogEditBtn.textContent = "✏️ Edit Waypoint";
         poiDialogEditBtn.style.backgroundColor = "var(--primary-color)";
         if (poiEditModeSelector) {
           poiEditModeSelector.classList.add("hidden");
         }
+
+        // Save name input
+        if (poiValNameInput && poiValName && activeDialogWpt) {
+          const newName = poiValNameInput.value.trim();
+          if (newName) {
+            activeDialogWpt.name = newName;
+            poiValName.textContent = newName;
+          }
+          poiValNameInput.classList.add("hidden");
+          poiValName.classList.remove("hidden");
+        }
+
         if (mapController) {
           mapController.setEditLock(true); // lock markers
+          mapController.drawRoute(activeRoute, climbColorsCheckbox.checked); // Redraw icons & text labels
         }
-        showToast("Position saved successfully.");
+
+        renderEditWaypointList();
+
+        // Refresh POI static details panel view
+        if (activeDialogWpt) {
+          showPoiDetailDialog(activeDialogWpt, playbackIndex);
+        }
+
+        showToast("Waypoint details saved successfully.");
         saveActiveRouteState();
       }
     });
@@ -2442,8 +2568,10 @@ function setupEventListeners() {
 
         if (result.cutoffTime) {
           newWpt.extensions.station.passes.push({
-            passNumber: 1,
-            cutoffTime: result.cutoffTime
+            num: 1,
+            dist_m: tempPoiData.dist_m,
+            cutoff_clock: result.cutoffTime,
+            label: ""
           });
         }
 

@@ -39,7 +39,7 @@ export function haversine(lat1, lon1, lat2, lon2) {
 /**
  * Snaps a lat/lng position to the nearest segment of a route's trackpoints.
  */
-export function snapToRouteSegments(route, pos) {
+export function snapToRouteSegments(route, pos, nominalDistM = null) {
   const pts = route.trackpoints;
   if (!pts || pts.length === 0) return null;
   if (pts.length === 1) {
@@ -52,67 +52,74 @@ export function snapToRouteSegments(route, pos) {
     };
   }
 
-  let minSqDist = Infinity;
-  let bestLat = pts[0].lat;
-  let bestLon = pts[0].lon;
-  let bestEle = pts[0].ele;
-  let bestDist = pts[0].dist_m;
-  let bestIdx = 0;
+  const search = (windowLimit) => {
+    let minSqDist = Infinity;
+    let result = null;
+    const latToMeters = 111320;
 
-  const latToMeters = 111320;
+    for (let i = 0; i < pts.length - 1; i++) {
+      const A = pts[i];
+      const B = pts[i + 1];
 
-  for (let i = 0; i < pts.length - 1; i++) {
-    const A = pts[i];
-    const B = pts[i + 1];
+      if (windowLimit !== null && nominalDistM !== null) {
+        const avgDist = (A.dist_m + B.dist_m) / 2;
+        if (Math.abs(avgDist - nominalDistM) > windowLimit) {
+          continue;
+        }
+      }
 
-    const cosLat = Math.cos((A.lat + B.lat) * Math.PI / 360);
-    
-    const ax = A.lon * cosLat;
-    const ay = A.lat;
-    const bx = B.lon * cosLat;
-    const by = B.lat;
-    const px = pos.lng * cosLat;
-    const py = pos.lat;
+      const cosLat = Math.cos((A.lat + B.lat) * Math.PI / 360);
+      const ax = A.lon * cosLat;
+      const ay = A.lat;
+      const bx = B.lon * cosLat;
+      const by = B.lat;
+      const px = pos.lng * cosLat;
+      const py = pos.lat;
 
-    const vx = bx - ax;
-    const vy = by - ay;
-    const wx = px - ax;
-    const wy = py - ay;
+      const vx = bx - ax;
+      const vy = by - ay;
+      const wx = px - ax;
+      const wy = py - ay;
 
-    const lensq = vx * vx + vy * vy;
-    let t = 0;
-    if (lensq > 0) {
-      t = (wx * vx + wy * vy) / lensq;
-      t = Math.max(0, Math.min(1, t));
+      const lensq = vx * vx + vy * vy;
+      let t = 0;
+      if (lensq > 0) {
+        t = (wx * vx + wy * vy) / lensq;
+        t = Math.max(0, Math.min(1, t));
+      }
+
+      const cx = ax + t * vx;
+      const cy = ay + t * vy;
+
+      const projLon = cx / cosLat;
+      const projLat = cy;
+
+      const dx = (px - cx) * latToMeters;
+      const dy = (py - cy) * latToMeters;
+      const sqDist = dx * dx + dy * dy;
+
+      if (sqDist < minSqDist) {
+        minSqDist = sqDist;
+        result = {
+          lat: projLat,
+          lon: projLon,
+          ele: A.ele + t * (B.ele - A.ele),
+          dist_m: A.dist_m + t * (B.dist_m - A.dist_m),
+          closestTrackpointIndex: i
+        };
+      }
     }
-
-    const cx = ax + t * vx;
-    const cy = ay + t * vy;
-
-    const projLon = cx / cosLat;
-    const projLat = cy;
-
-    const dx = (px - cx) * latToMeters;
-    const dy = (py - cy) * latToMeters;
-    const sqDist = dx * dx + dy * dy;
-
-    if (sqDist < minSqDist) {
-      minSqDist = sqDist;
-      bestLat = projLat;
-      bestLon = projLon;
-      bestEle = A.ele + t * (B.ele - A.ele);
-      bestDist = A.dist_m + t * (B.dist_m - A.dist_m);
-      bestIdx = i;
-    }
-  }
-
-  return {
-    lat: bestLat,
-    lon: bestLon,
-    ele: bestEle,
-    dist_m: bestDist,
-    closestTrackpointIndex: bestIdx
+    return result;
   };
+
+  let snapped = null;
+  if (nominalDistM !== null) {
+    snapped = search(3000); // Try ±3km window first to preserve correct pass (outbound vs inbound)
+  }
+  if (!snapped) {
+    snapped = search(null); // Fallback to full course search
+  }
+  return snapped;
 }
 
 /**
@@ -949,7 +956,23 @@ export function reconcileCourse(route, extractionPayload, units = "imperial", no
     const name = station.name;
     const type = station.type;
     const subtype = station.subtype;
-    const passes = station.passes || [];
+    let passes = station.passes || [];
+
+    // Deduplicate passes that are at the same distance and have the same pass number
+    const uniquePasses = [];
+    passes.forEach((p) => {
+      const duplicate = uniquePasses.find(
+        (up) => up.num === p.num && Math.abs(up.dist_m - p.dist_m) < 10
+      );
+      if (!duplicate) {
+        uniquePasses.push(p);
+      } else {
+        if (!duplicate.label && p.label) duplicate.label = p.label;
+        if (!duplicate.cutoff_clock && p.cutoff_clock) duplicate.cutoff_clock = p.cutoff_clock;
+        if (!duplicate.cutoff_elapsed && p.cutoff_elapsed) duplicate.cutoff_elapsed = p.cutoff_elapsed;
+      }
+    });
+    passes = uniquePasses;
 
     if (passes.length === 0) return;
 
@@ -963,15 +986,38 @@ export function reconcileCourse(route, extractionPayload, units = "imperial", no
       const overrideLat = parseFloat(override.lat);
       const overrideLon = parseFloat(override.lon);
 
-      // Find closest trackpoint to lock elevation
+      const firstPass = passes[0];
+      const nominalPassDistM = firstPass ? firstPass.dist_m : 0;
+      const snappedPassDistM = nominalPassDistM * scaleFactor;
+
+      // Find closest trackpoint spatially, prioritizing those within 3000m of the nominal distance
       let minSpatialDist = Infinity;
+      let bestIdxWithinWindow = -1;
+      let minSpatialDistWithinWindow = Infinity;
+      const windowSizeM = 3000;
+
       trackpoints.forEach((pt, idx) => {
         const dist = haversine(overrideLat, overrideLon, pt.lat, pt.lon);
+
+        // Check if within nominal distance window
+        const distFromNominal = Math.abs(pt.dist_m - snappedPassDistM);
+        if (distFromNominal <= windowSizeM) {
+          if (dist < minSpatialDistWithinWindow) {
+            minSpatialDistWithinWindow = dist;
+            bestIdxWithinWindow = idx;
+          }
+        }
+
         if (dist < minSpatialDist) {
           minSpatialDist = dist;
           closestIdx = idx;
         }
       });
+
+      if (bestIdxWithinWindow !== -1 && minSpatialDistWithinWindow < 200) {
+        closestIdx = bestIdxWithinWindow;
+        minSpatialDist = minSpatialDistWithinWindow;
+      }
 
       lat = overrideLat;
       lon = overrideLon;
