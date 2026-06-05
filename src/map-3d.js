@@ -399,6 +399,7 @@ export class Map3DController {
         drawsWhenOccluded: true,
         label: wpt.name
       });
+      marker.waypoint = wpt; // Store direct reference to the waypoint details on the marker DOM instance
       marker.gmpDraggable = !this.isEditLocked;
       
       // Explicitly set Web Component interactivity attributes
@@ -450,13 +451,11 @@ export class Map3DController {
     }
     
     this.mapClickListener = (e) => {
-      const clickedMarker = this.markers.find(m => m === e.target);
-      if (clickedMarker) {
-        const wpt = route.waypoints.find(w => w.name === clickedMarker.label);
-        if (wpt) {
-          const event = new CustomEvent("waypoint-click", { detail: wpt });
-          window.dispatchEvent(event);
-        }
+      // Find if the target is a marker or sits inside a marker (e.g. template children)
+      const clickedMarker = this.markers.find(m => m === e.target || m.contains(e.target));
+      if (clickedMarker && clickedMarker.waypoint) {
+        const event = new CustomEvent("waypoint-click", { detail: clickedMarker.waypoint });
+        window.dispatchEvent(event);
       }
     };
 

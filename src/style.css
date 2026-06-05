@@ -407,9 +407,12 @@ body, html {
   flex-direction: column;
 }
 
-/* CARD POSITIONAL PANELS */
 .panel-top-left {
-  display: none !important; /* Hide bulky left panel */
+  top: 76px;
+  left: 24px;
+  width: 330px;
+  height: auto;
+  z-index: 12; /* Float above the chatbot panel (z-index 5) */
 }
 
 .panel-bottom-left {
