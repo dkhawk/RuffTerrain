@@ -194,3 +194,14 @@ This journal records all design decisions, architecture patterns, development st
     *   Added sorting logic in `parseGPX` and `parseKML` functions.
     *   Wrote unit test `"Sorts waypoints by course distance chronologically"` in `test/gpx.test.js` to ensure out-of-order XML waypoints are returned in chronological distance order.
     *   Ran test suite and committed changes.
+
+---
+
+### 🚀 Session 15: Enhancing Elevation Profile Chart Sizing
+*   **Goal**: Make the bottom elevation profile chart taller so that climb slopes and elevation gradients are more easily readable.
+*   **Decisions & Rationale**:
+    *   **Increase Profile Height**: Expanded the bottom panel (`.panel-bottom-center`) height from `140px` to `200px`. The inner `.chart-container` automatically scales using flexbox, resulting in a taller and more detailed elevation canvas layout.
+    *   **Offsite Side Panels bottom constraint**: Adjusted adjacent bottom-left and middle-right panels' `bottom` offset from `156px` to `216px`. This preserves the uniform `16px` visual padding threshold and prevents panels from overlapping when the taller bottom profile card is open.
+*   **Key Actions Taken**:
+    *   Modified `.panel-bottom-center`, `.panel-bottom-left`, and `.panel-middle-right` layout constraints inside `src/style.css`.
+    *   Compiled clean production assets with `npm run build` and committed changes.
