@@ -165,4 +165,33 @@ describe("GPX Parser & Writer Tests", () => {
     assert.strictEqual(passes[0].label, "Start");
   });
 
+  test("Sorts waypoints by course distance chronologically", () => {
+    const mockGpx = `<?xml version="1.0" encoding="utf-8"?>
+<gpx version="1.1" creator="Test" xmlns="http://www.topografix.com/GPX/1/1">
+  <wpt lat="45.2" lon="6.2">
+    <name>Finish Line</name>
+  </wpt>
+  <wpt lat="45.0" lon="6.0">
+    <name>Start Line</name>
+  </wpt>
+  <wpt lat="45.1" lon="6.1">
+    <name>Midpoint Aid</name>
+  </wpt>
+  <trk>
+    <trkseg>
+      <trkpt lat="45.0" lon="6.0"><ele>1000.0</ele></trkpt>
+      <trkpt lat="45.1" lon="6.1"><ele>1100.0</ele></trkpt>
+      <trkpt lat="45.2" lon="6.2"><ele>1200.0</ele></trkpt>
+    </trkseg>
+  </trk>
+</gpx>`;
+
+    const route = parseGPX(mockGpx, "imperial");
+    
+    assert.strictEqual(route.waypoints.length, 3);
+    assert.strictEqual(route.waypoints[0].name, "Start Line");
+    assert.strictEqual(route.waypoints[1].name, "Midpoint Aid");
+    assert.strictEqual(route.waypoints[2].name, "Finish Line");
+  });
+
 });

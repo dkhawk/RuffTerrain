@@ -601,6 +601,9 @@ export function parseGPX(gpxText, units = "imperial") {
     wptIdx++;
   }
 
+  // Sort waypoints by course distance
+  waypoints.sort((a, b) => a.dist_m - b.dist_m);
+
   // Map segment distances using the final snapped trackpoint distances
   segments.forEach((seg) => {
     seg.startDist = trackpoints[seg.startIndex]?.dist_m || 0;
@@ -787,6 +790,9 @@ export function parseKML(kmlText, units = "imperial") {
     wpt.closestTrackpointIndex = closestIdx;
     wpt.dist_m = trackpoints[closestIdx]?.dist_m || 0;
   });
+
+  // Sort waypoints by course distance
+  waypoints.sort((a, b) => a.dist_m - b.dist_m);
 
   let minElevation = Infinity;
   let maxElevation = -Infinity;
