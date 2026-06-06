@@ -183,3 +183,14 @@ This journal records all design decisions, architecture patterns, development st
     *   Updated `src/gpx-parser.js` passRegex pattern.
     *   Added dedicated test case `"Deduplicates/excludes <ca:passes> container matching in passRegex"` in `test/gpx.test.js`.
     *   Ran `npm test` and committed changes successfully.
+
+---
+
+### 🚀 Session 14: Chronological Waypoint Ordering
+*   **Goal**: Ensure waypoints are sorted in chronological order as encountered along the course (from Start to Finish).
+*   **Decisions & Rationale**:
+    *   **Sort Post-Snapping**: Added explicit `waypoints.sort((a, b) => a.dist_m - b.dist_m)` steps in the parsers (`parseGPX` and `parseKML`) immediately after closest-trackpoint snapping is completed. This guarantees that waypoints are correctly ordered based on cumulative distance along the track, rather than their arbitrary XML definition sequence.
+*   **Key Actions Taken**:
+    *   Added sorting logic in `parseGPX` and `parseKML` functions.
+    *   Wrote unit test `"Sorts waypoints by course distance chronologically"` in `test/gpx.test.js` to ensure out-of-order XML waypoints are returned in chronological distance order.
+    *   Ran test suite and committed changes.
