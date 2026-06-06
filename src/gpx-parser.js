@@ -132,11 +132,16 @@ export function recalculateRouteMetrics(route) {
   let totalDistance = 0;
   let totalElevationGain = 0;
   let totalElevationLoss = 0;
+  let minElevation = Infinity;
+  let maxElevation = -Infinity;
 
   for (let i = 0; i < pts.length; i++) {
     const pt = pts[i];
     pt.index = i;
     
+    if (pt.ele < minElevation) minElevation = pt.ele;
+    if (pt.ele > maxElevation) maxElevation = pt.ele;
+
     let grade = 0;
     if (i > 0) {
       const prev = pts[i - 1];
@@ -171,6 +176,8 @@ export function recalculateRouteMetrics(route) {
   route.totalDistance = totalDistance;
   route.totalElevationGain = totalElevationGain;
   route.totalElevationLoss = totalElevationLoss;
+  route.minElevation = minElevation === Infinity ? 0 : minElevation;
+  route.maxElevation = maxElevation === -Infinity ? 0 : maxElevation;
   route.avgSpacing = pts.length > 0 ? (totalDistance / pts.length) : 0;
 
   // Re-snap waypoints
@@ -193,43 +200,75 @@ export function recalculateRouteMetrics(route) {
  * @returns {Object} Structured route data
  */
 export function parseGPX(gpxText, units = "imperial") {
-  // Regex parsing for name, desc
-  const nameMatch = gpxText.match(/<name>([\s\S]*?)<\/name>/);
-  const routeName = nameMatch ? nameMatch[1].trim() : "Imported Route";
+  // Get route name and description from metadata if available, otherwise first name/desc tags
+  let routeName = "Imported Route";
+  const metadataNameMatch = gpxText.match(/<metadata>[\s\S]*?<name>([\s\S]*?)<\/name>[\s\S]*?<\/metadata>/);
+  if (metadataNameMatch) {
+    routeName = metadataNameMatch[1].trim();
+  } else {
+    const nameMatch = gpxText.match(/<name>([\s\S]*?)<\/name>/);
+    if (nameMatch) routeName = nameMatch[1].trim();
+  }
   
-  const descMatch = gpxText.match(/<desc>([\s\S]*?)<\/desc>/);
-  const routeDesc = descMatch ? descMatch[1].trim() : "No description provided.";
+  let routeDesc = "No description provided.";
+  const metadataDescMatch = gpxText.match(/<metadata>[\s\S]*?<desc>([\s\S]*?)<\/desc>[\s\S]*?<\/metadata>/);
+  if (metadataDescMatch) {
+    routeDesc = metadataDescMatch[1].trim();
+  } else {
+    const descMatch = gpxText.match(/<desc>([\s\S]*?)<\/desc>/);
+    if (descMatch) routeDesc = descMatch[1].trim();
+  }
   
   const rawPts = [];
-  const trkptRegex = /<trkpt\s+lat="([^"]+)"\s+lon="([^"]+)"(?:\s*\/|>([\s\S]*?)<\/trkpt>)/g;
-  let idx = 0;
+  const segments = [];
+  const rawTrackSegments = [];
   let match;
-  while ((match = trkptRegex.exec(gpxText)) !== null) {
-    const lat = parseFloat(match[1]);
-    const lon = parseFloat(match[2]);
-    const inner = match[3] || "";
+  
+  // Try to parse multiple tracks (<trk>)
+  const trkRegex = /<trk\b[^>]*>([\s\S]*?)<\/trk>/g;
+  let trkMatch;
+  while ((trkMatch = trkRegex.exec(gpxText)) !== null) {
+    const trkInner = trkMatch[1];
     
-    const eleMatch = inner.match(/<ele>([^<]+)<\/ele>/);
-    const ele = eleMatch ? parseFloat(eleMatch[1]) : 0;
+    const sNameMatch = trkInner.match(/<name>([\s\S]*?)<\/name>/);
+    const sName = sNameMatch ? sNameMatch[1].trim() : `Segment ${rawTrackSegments.length + 1}`;
     
-    const timeMatch = inner.match(/<time>([^<]+)<\/time>/);
-    const time = timeMatch ? timeMatch[1] : null;
-
-    rawPts.push({
-      index: idx,
-      lat,
-      lon,
-      ele,
-      time,
-    });
-    idx++;
+    const sDescMatch = trkInner.match(/<desc>([\s\S]*?)<\/desc>/);
+    const sDesc = sDescMatch ? sDescMatch[1].trim() : "";
+    
+    // Extract trackpoints inside this track
+    const pts = [];
+    const trkptRegex = /<trkpt\s+lat="([^"]+)"\s+lon="([^"]+)"(?:\s*\/|>([\s\S]*?)<\/trkpt>)/g;
+    let ptMatch;
+    while ((ptMatch = trkptRegex.exec(trkInner)) !== null) {
+      const lat = parseFloat(ptMatch[1]);
+      const lon = parseFloat(ptMatch[2]);
+      const inner = ptMatch[3] || "";
+      
+      const eleMatch = inner.match(/<ele>([^<]+)<\/ele>/);
+      const ele = eleMatch ? parseFloat(eleMatch[1]) : 0;
+      
+      const timeMatch = inner.match(/<time>([^<]+)<\/time>/);
+      const time = timeMatch ? timeMatch[1] : null;
+      
+      pts.push({ lat, lon, ele, time });
+    }
+    
+    if (pts.length > 0) {
+      rawTrackSegments.push({
+        name: sName,
+        desc: sDesc,
+        pts
+      });
+    }
   }
 
-  // Fallback: If no trackpoints (<trkpt>) are found, parse routepoints (<rtept>)
-  if (rawPts.length === 0) {
-    const rteptRegex = /<rtept\s+lat="([^"]+)"\s+lon="([^"]+)"(?:\s*\/|>([\s\S]*?)<\/rtept>)/g;
-    idx = 0;
-    while ((match = rteptRegex.exec(gpxText)) !== null) {
+  // Fallback: If no tracks (<trk>) with trackpoints were found, check flat trackpoints or routepoints
+  if (rawTrackSegments.length === 0) {
+    const pts = [];
+    const trkptRegex = /<trkpt\s+lat="([^"]+)"\s+lon="([^"]+)"(?:\s*\/|>([\s\S]*?)<\/trkpt>)/g;
+    let match;
+    while ((match = trkptRegex.exec(gpxText)) !== null) {
       const lat = parseFloat(match[1]);
       const lon = parseFloat(match[2]);
       const inner = match[3] || "";
@@ -240,16 +279,60 @@ export function parseGPX(gpxText, units = "imperial") {
       const timeMatch = inner.match(/<time>([^<]+)<\/time>/);
       const time = timeMatch ? timeMatch[1] : null;
 
-      rawPts.push({
-        index: idx,
-        lat,
-        lon,
-        ele,
-        time,
+      pts.push({ lat, lon, ele, time });
+    }
+    
+    // If no trackpoints, check routepoints (<rtept>)
+    if (pts.length === 0) {
+      const rteptRegex = /<rtept\s+lat="([^"]+)"\s+lon="([^"]+)"(?:\s*\/|>([\s\S]*?)<\/rtept>)/g;
+      while ((match = rteptRegex.exec(gpxText)) !== null) {
+        const lat = parseFloat(match[1]);
+        const lon = parseFloat(match[2]);
+        const inner = match[3] || "";
+        
+        const eleMatch = inner.match(/<ele>([^<]+)<\/ele>/);
+        const ele = eleMatch ? parseFloat(eleMatch[1]) : 0;
+        
+        const timeMatch = inner.match(/<time>([^<]+)<\/time>/);
+        const time = timeMatch ? timeMatch[1] : null;
+
+        pts.push({ lat, lon, ele, time });
+      }
+    }
+    
+    if (pts.length > 0) {
+      rawTrackSegments.push({
+        name: routeName,
+        desc: routeDesc,
+        pts
       });
-      idx++;
     }
   }
+
+  // Populate rawPts and segment indices
+  rawTrackSegments.forEach((seg) => {
+    const startIndex = rawPts.length;
+    
+    seg.pts.forEach((pt) => {
+      rawPts.push({
+        index: rawPts.length,
+        lat: pt.lat,
+        lon: pt.lon,
+        ele: pt.ele,
+        time: pt.time
+      });
+    });
+    
+    const endIndex = rawPts.length - 1;
+    segments.push({
+      name: seg.name,
+      desc: seg.desc,
+      startIndex,
+      endIndex,
+      startDist: 0,
+      endDist: 0
+    });
+  });
 
   // Apply an 11-point moving average elevation smoothing pass (5 points on each side)
   if (rawPts.length >= 3) {
@@ -332,7 +415,7 @@ export function parseGPX(gpxText, units = "imperial") {
     const ele = eMatch ? parseFloat(eMatch[1]) : 0;
     
     const sMatch = inner.match(/<sym>([^<]*)<\/sym>/);
-    const sym = sMatch ? sMatch[1].trim() : "icons/services.svg";
+    let sym = sMatch ? sMatch[1].trim() : "icons/services.svg";
     
     const dMatch = inner.match(/<desc>([^<]*)<\/desc>/);
     const desc = dMatch ? dMatch[1].trim() : "";
@@ -432,6 +515,77 @@ export function parseGPX(gpxText, units = "imperial") {
       }
     }
 
+    // Fallback: If no custom station extension exists, infer one from description/name keywords
+    if (!customExtension) {
+      const descLower = desc.toLowerCase();
+      const hasWater = descLower.includes("water") || descLower.includes("spring") || descLower.includes("creek") || nameLower.includes("water") || nameLower.includes("spring") || nameLower.includes("creek");
+      const hasFood = descLower.includes("food") || descLower.includes("aid") || descLower.includes("station") || nameLower.includes("food") || nameLower.includes("aid") || nameLower.includes("station");
+      const hasToilets = descLower.includes("bathroom") || descLower.includes("toilet") || descLower.includes("wc") || nameLower.includes("bathroom") || nameLower.includes("toilet") || nameLower.includes("wc");
+      const hasMedical = descLower.includes("medical") || descLower.includes("first aid") || nameLower.includes("medical") || nameLower.includes("first aid");
+
+      let type = "informational";
+      let subtype = "navigation";
+
+      if (hasWater || hasFood || hasToilets || hasMedical) {
+        type = "segmenting";
+        subtype = "aid_station";
+      } else if (nameLower.includes("pass") || nameLower.includes("col") || nameLower.includes("summit") || nameLower.includes("peak") || nameLower.includes("saddle") || nameLower.includes("tête") || nameLower.includes("posettes")) {
+        subtype = "summit";
+      } else if (nameLower.includes("bridge") || descLower.includes("bridge")) {
+        subtype = "scenic";
+      }
+
+      const services = {
+        water: hasWater,
+        unmanaged_water: false,
+        food: hasFood,
+        hot_food: false,
+        toilets: hasToilets,
+        medical: hasMedical,
+        sleep_area: false
+      };
+
+      const wptDistM = trackpoints[closestIdx]?.dist_m || 0;
+      const passes = [{
+        num: 1,
+        dist_m: wptDistM,
+        label: nameLower.includes("start") ? "Start" : (isFinish ? "End" : "")
+      }];
+
+      customExtension = {
+        station: {
+          id: `station-${wptIdx}`,
+          type,
+          subtype,
+          passes,
+          accessibility: {},
+          services,
+          navigation_alert: null
+        }
+      };
+
+      // Refine default symbol to match subtype
+      if (sym === "icons/services.svg") {
+        if (nameLower.includes("start")) {
+          sym = "icons/start.svg";
+        } else if (isFinish) {
+          sym = "icons/finish.svg";
+        } else if (subtype === "aid_station") {
+          if (hasWater && !hasFood && !hasMedical) {
+            sym = "icons/water.svg";
+            customExtension.station.subtype = "water_source";
+            customExtension.station.type = "informational";
+          } else {
+            sym = "icons/aid_station.svg";
+          }
+        } else if (subtype === "summit") {
+          sym = "icons/summit.svg";
+        } else if (subtype === "scenic") {
+          sym = "icons/scenic.svg";
+        }
+      }
+    }
+
     waypoints.push({
       id: customExtension?.station?.id || `wpt-${wptIdx}`,
       name,
@@ -447,14 +601,34 @@ export function parseGPX(gpxText, units = "imperial") {
     wptIdx++;
   }
 
+  // Map segment distances using the final snapped trackpoint distances
+  segments.forEach((seg) => {
+    seg.startDist = trackpoints[seg.startIndex]?.dist_m || 0;
+    seg.endDist = trackpoints[seg.endIndex]?.dist_m || 0;
+  });
+
+  let minElevation = Infinity;
+  let maxElevation = -Infinity;
+  trackpoints.forEach(pt => {
+    if (pt.ele < minElevation) minElevation = pt.ele;
+    if (pt.ele > maxElevation) maxElevation = pt.ele;
+  });
+  if (minElevation === Infinity) {
+    minElevation = 0;
+    maxElevation = 0;
+  }
+
   const parsedRoute = {
     name: routeName,
     description: routeDesc,
     trackpoints,
     waypoints,
+    segments,
     totalDistance,
     totalElevationGain,
     totalElevationLoss,
+    minElevation,
+    maxElevation,
     warnings: [],
   };
 
@@ -614,6 +788,17 @@ export function parseKML(kmlText, units = "imperial") {
     wpt.dist_m = trackpoints[closestIdx]?.dist_m || 0;
   });
 
+  let minElevation = Infinity;
+  let maxElevation = -Infinity;
+  trackpoints.forEach(pt => {
+    if (pt.ele < minElevation) minElevation = pt.ele;
+    if (pt.ele > maxElevation) maxElevation = pt.ele;
+  });
+  if (minElevation === Infinity) {
+    minElevation = 0;
+    maxElevation = 0;
+  }
+
   const parsedRoute = {
     name: routeName,
     description: routeDesc,
@@ -622,6 +807,8 @@ export function parseKML(kmlText, units = "imperial") {
     totalDistance,
     totalElevationGain,
     totalElevationLoss,
+    minElevation,
+    maxElevation,
     warnings: []
   };
 
@@ -647,24 +834,44 @@ export function calculateWarnings(route, extraWarnings = [], units = "imperial")
 
   // 1. RESOURCE DESERTS
   // Define water/food resources. We filter waypoints that have water or food services, or are classified as aid/water.
-  const resourceWaypoints = route.waypoints
-    .filter((wpt) => {
-      const isWaterSym = wpt.sym.includes("water") || wpt.name.toLowerCase().includes("water") || wpt.name.toLowerCase().includes("spring") || wpt.name.toLowerCase().includes("creek");
-      const isAidSym = wpt.sym.includes("aid") || wpt.name.toLowerCase().includes("aid") || wpt.name.toLowerCase().includes("station") || wpt.name.toLowerCase().includes("checkpoint");
-      
-      const hasWater = wpt.extensions?.station?.services?.water || wpt.extensions?.station?.services?.unmanaged_water;
-      const hasFood = wpt.extensions?.station?.services?.food;
-      
-      return isWaterSym || isAidSym || hasWater || hasFood;
-    })
-    .sort((a, b) => a.dist_m - b.dist_m);
+  const resourceWaypoints = route.waypoints.filter((wpt) => {
+    const isWaterSym = wpt.sym.includes("water") || wpt.name.toLowerCase().includes("water") || wpt.name.toLowerCase().includes("spring") || wpt.name.toLowerCase().includes("creek");
+    const isAidSym = wpt.sym.includes("aid") || wpt.name.toLowerCase().includes("aid") || wpt.name.toLowerCase().includes("station") || wpt.name.toLowerCase().includes("checkpoint");
+    
+    const hasWater = wpt.extensions?.station?.services?.water || wpt.extensions?.station?.services?.unmanaged_water;
+    const hasFood = wpt.extensions?.station?.services?.food;
+    
+    return isWaterSym || isAidSym || hasWater || hasFood;
+  });
+
+  // Flatten resource waypoints into individual passes
+  const resourcePasses = [];
+  resourceWaypoints.forEach((wpt) => {
+    const passes = wpt.extensions?.station?.passes || [];
+    if (passes.length > 0) {
+      passes.forEach((p) => {
+        resourcePasses.push({
+          name: wpt.name + (passes.length > 1 ? ` (${p.label || `Pass ${p.num}`})` : ""),
+          dist_m: p.dist_m
+        });
+      });
+    } else {
+      resourcePasses.push({
+        name: wpt.name,
+        dist_m: wpt.dist_m
+      });
+    }
+  });
+
+  // Sort resource passes by cumulative distance along the track
+  resourcePasses.sort((a, b) => a.dist_m - b.dist_m);
 
   // Gaps threshold: 5 miles (~8,046 meters)
   const DESERT_THRESHOLD_M = 8046.72;
 
-  // Check start of route to first resource
-  if (resourceWaypoints.length > 0) {
-    const firstDist = resourceWaypoints[0].dist_m;
+  // Check start of route to first resource pass
+  if (resourcePasses.length > 0) {
+    const firstDist = resourcePasses[0].dist_m;
     if (firstDist > DESERT_THRESHOLD_M) {
       warnings.push({
         id: "desert-start",
@@ -687,27 +894,27 @@ export function calculateWarnings(route, extraWarnings = [], units = "imperial")
     });
   }
 
-  // Check gaps between resources
-  for (let i = 0; i < resourceWaypoints.length - 1; i++) {
-    const startWpt = resourceWaypoints[i];
-    const endWpt = resourceWaypoints[i + 1];
-    const gap = endWpt.dist_m - startWpt.dist_m;
+  // Check gaps between resource passes
+  for (let i = 0; i < resourcePasses.length - 1; i++) {
+    const startPass = resourcePasses[i];
+    const endPass = resourcePasses[i + 1];
+    const gap = endPass.dist_m - startPass.dist_m;
 
     if (gap > DESERT_THRESHOLD_M) {
       warnings.push({
         id: `desert-gap-${i}`,
         type: "RESOURCE_DESERT",
-        message: `Resource Desert: ${(gap * distMultiplier).toFixed(1)} ${distName} between "${startWpt.name}" and "${endWpt.name}".`,
-        startDist: startWpt.dist_m,
-        endDist: endWpt.dist_m,
+        message: `Resource Desert: ${(gap * distMultiplier).toFixed(1)} ${distName} between "${startPass.name}" and "${endPass.name}".`,
+        startDist: startPass.dist_m,
+        endDist: endPass.dist_m,
         approved: true,
       });
     }
   }
 
-  // Check from last resource to finish
-  if (resourceWaypoints.length > 0) {
-    const lastDist = resourceWaypoints[resourceWaypoints.length - 1].dist_m;
+  // Check from last resource pass to finish
+  if (resourcePasses.length > 0) {
+    const lastDist = resourcePasses[resourcePasses.length - 1].dist_m;
     const finalGap = route.totalDistance - lastDist;
     if (finalGap > DESERT_THRESHOLD_M) {
       warnings.push({

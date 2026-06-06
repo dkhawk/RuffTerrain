@@ -200,6 +200,22 @@ body, html {
   white-space: nowrap;
 }
 
+.active-segment-tag {
+  font-family: var(--font-ui);
+  font-size: 11px;
+  font-weight: 500;
+  color: #00d2ff;
+  background-color: rgba(0, 210, 255, 0.08);
+  border: 1px solid rgba(0, 210, 255, 0.2);
+  padding: 4px 10px;
+  border-radius: 6px;
+  text-transform: uppercase;
+  max-width: 200px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .settings-gear-btn {
   background: transparent;
   border: none;
@@ -793,6 +809,10 @@ body, html {
   padding: 8px 10px;
   display: flex;
   flex-direction: column;
+}
+
+.stat-box.full-width {
+  grid-column: span 2;
 }
 
 .stat-box .label {

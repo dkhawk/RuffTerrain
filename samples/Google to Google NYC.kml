@@ -1,0 +1,68 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<kml xmlns="http://www.opengis.net/kml/2.2">
+  <Document>
+    <name>Google to Google NYC</name>
+    <description/>
+    <Style id="line-000000-1200-nodesc-normal">
+      <LineStyle>
+        <color>ff000000</color>
+        <width>1.2</width>
+      </LineStyle>
+      <BalloonStyle>
+        <text><![CDATA[<h3>$[name]</h3>]]></text>
+      </BalloonStyle>
+    </Style>
+    <Style id="line-000000-1200-nodesc-highlight">
+      <LineStyle>
+        <color>ff000000</color>
+        <width>1.8</width>
+      </LineStyle>
+      <BalloonStyle>
+        <text><![CDATA[<h3>$[name]</h3>]]></text>
+      </BalloonStyle>
+    </Style>
+    <StyleMap id="line-000000-1200-nodesc">
+      <Pair>
+        <key>normal</key>
+        <styleUrl>#line-000000-1200-nodesc-normal</styleUrl>
+      </Pair>
+      <Pair>
+        <key>highlight</key>
+        <styleUrl>#line-000000-1200-nodesc-highlight</styleUrl>
+      </Pair>
+    </StyleMap>
+    <Folder>
+      <name>Untitled layer</name>
+      <Placemark>
+        <name>Line 1</name>
+        <styleUrl>#line-000000-1200-nodesc</styleUrl>
+        <LineString>
+          <tessellate>1</tessellate>
+          <coordinates>
+            -74.0034246,40.7410834,0
+            -74.0084211,40.7432395,0
+            -74.0086341,40.7433867,0
+            -74.008933,40.7434527,0
+            -74.0094095,40.7407495,0
+            -74.0082391,40.7404647,0
+            -74.0081845,40.7406594,0
+            -74.0082391,40.7404647,0
+            -74.0094095,40.7407495,0
+            -74.0098554,40.7400701,0
+            -74.0100248,40.7397355,0
+            -74.0101619,40.7393805,0
+            -74.0102644,40.7389491,0
+            -74.0102543,40.7385197,0
+            -74.0101697,40.7373115,0
+            -74.0102633,40.7362566,0
+            -74.0103837,40.7353095,0
+            -74.0105148,40.7331469,0
+            -74.0109461,40.7292283,0
+            -74.0094129,40.7290271,0
+            -74.0096071,40.7282203,0
+          </coordinates>
+        </LineString>
+      </Placemark>
+    </Folder>
+  </Document>
+</kml>

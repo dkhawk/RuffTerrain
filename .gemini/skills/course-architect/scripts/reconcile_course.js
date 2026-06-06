@@ -10,8 +10,8 @@
 
 import fs from "fs";
 import path from "path";
-import { parseGPX, reconcileCourse, serializeGPX } from "../../../../feature-setup-app/src/gpx-parser.js";
-import { sendToGemini } from "../../../../feature-setup-app/src/gemini-client.js";
+import { parseGPX, reconcileCourse, serializeGPX } from "../../../../src/gpx-parser.js";
+import { sendToGemini } from "../../../../src/gemini-client.js";
 
 const args = process.argv.slice(2);
 

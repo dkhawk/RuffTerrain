@@ -119,16 +119,37 @@ export function writeGPX(route) {
   });
 
   // Trackpoints
-  xml += '  <trk>\n';
-  xml += `    <name>${escapeXml(route.name)}</name>\n`;
-  xml += '    <trkseg>\n';
-  route.trackpoints.forEach((pt) => {
-    xml += `      <trkpt lat="${pt.lat}" lon="${pt.lon}">\n`;
-    xml += `        <ele>${pt.ele.toFixed(2)}</ele>\n`;
-    xml += '      </trkpt>\n';
-  });
-  xml += '    </trkseg>\n';
-  xml += '  </trk>\n';
+  if (route.segments && route.segments.length > 0) {
+    route.segments.forEach((seg) => {
+      xml += '  <trk>\n';
+      xml += `    <name>${escapeXml(seg.name)}</name>\n`;
+      if (seg.desc) {
+        xml += `    <desc>${escapeXml(seg.desc)}</desc>\n`;
+      }
+      xml += '    <trkseg>\n';
+      for (let i = seg.startIndex; i <= seg.endIndex; i++) {
+        const pt = route.trackpoints[i];
+        if (pt) {
+          xml += `      <trkpt lat="${pt.lat}" lon="${pt.lon}">\n`;
+          xml += `        <ele>${pt.ele.toFixed(2)}</ele>\n`;
+          xml += '      </trkpt>\n';
+        }
+      }
+      xml += '    </trkseg>\n';
+      xml += '  </trk>\n';
+    });
+  } else {
+    xml += '  <trk>\n';
+    xml += `    <name>${escapeXml(route.name)}</name>\n`;
+    xml += '    <trkseg>\n';
+    route.trackpoints.forEach((pt) => {
+      xml += `      <trkpt lat="${pt.lat}" lon="${pt.lon}">\n`;
+      xml += `        <ele>${pt.ele.toFixed(2)}</ele>\n`;
+      xml += '      </trkpt>\n';
+    });
+    xml += '    </trkseg>\n';
+    xml += '  </trk>\n';
+  }
   xml += '</gpx>\n';
 
   return xml;

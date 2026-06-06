@@ -94,6 +94,7 @@ const hudValGainTot = document.getElementById("hud-val-gain-tot");
 const hudValLossCur = document.getElementById("hud-val-loss-cur");
 const hudValLossTot = document.getElementById("hud-val-loss-tot");
 const hudValNextAs = document.getElementById("hud-val-next-as");
+const activeSegmentDisplay = document.getElementById("active-segment-display");
 
 // Whiskey Compass
 const whiskeyCompass = document.getElementById("whiskey-compass");
@@ -120,6 +121,7 @@ const statDist = document.getElementById("stat-dist");
 const statGain = document.getElementById("stat-gain");
 const statLoss = document.getElementById("stat-loss");
 const statWpts = document.getElementById("stat-wpts");
+const statElevRange = document.getElementById("stat-elev-range");
 
 const activeClimbInfoBox = document.getElementById("active-climb-info-box");
 const activeClimbText = document.getElementById("active-climb-text");
@@ -208,6 +210,8 @@ const courseInfoOverlay = document.getElementById("course-info-overlay");
 const courseInfoBtn = document.getElementById("course-info-btn");
 const closeInfoBtn = document.getElementById("close-info-btn");
 const courseInfoText = document.getElementById("course-info-text");
+const toggleStatsBtn = document.getElementById("toggle-stats-btn");
+const closeStatsBtn = document.getElementById("close-stats-btn");
 // UI Notifications Toast
 const toastNotification = document.getElementById("toast-notification");
 
@@ -333,6 +337,7 @@ document.addEventListener("DOMContentLoaded", () => {
       pausePlayback();
       playbackIndex = index;
       lastPausedPoiIndex = -1; // Reset so they can re-trigger POI pauses from this jump
+      lastPausedPoiId = null;
       closePoiDetailDialog(false);
 
       if (mapController) {
@@ -379,6 +384,18 @@ document.addEventListener("DOMContentLoaded", () => {
 // ==========================================
 
 /**
+ * Updates the camera range label to show value in feet or meters depending on units.
+ */
+function updateCameraRangeLabel(val) {
+  if (units === "imperial") {
+    const feet = Math.round(val * 3.28084);
+    rangeLabelVal.textContent = `${feet} ft`;
+  } else {
+    rangeLabelVal.textContent = `${val}m`;
+  }
+}
+
+/**
  * Restores user UI preferences from localStorage and configures widgets to reflect them.
  */
 function loadPreferences() {
@@ -388,12 +405,10 @@ function loadPreferences() {
     speedLabelVal.textContent = savedSpeed;
   }
 
-  const savedRange = localStorage.getItem("pref_cam_range");
-  if (savedRange) {
-    cameraRangeSlider.value = savedRange;
-    rangeLabelVal.textContent = `${savedRange}m`;
-    mapController.cameraRange = parseInt(savedRange);
-  }
+  const savedRange = localStorage.getItem("pref_cam_range") || cameraRangeSlider.value;
+  cameraRangeSlider.value = savedRange;
+  updateCameraRangeLabel(parseInt(savedRange));
+  mapController.cameraRange = parseInt(savedRange);
 
   const savedTilt = localStorage.getItem("pref_tilt");
   if (savedTilt) {
@@ -679,6 +694,9 @@ function updateUnitLabels() {
       }
     }
   });
+  if (cameraRangeSlider) {
+    updateCameraRangeLabel(parseInt(cameraRangeSlider.value));
+  }
 }
 
 /**
@@ -740,6 +758,22 @@ function updateHUD(index) {
   } else {
     activeClimbInfoBox.classList.add("hidden");
   }
+
+  // 8. Update active segment tag display
+  if (activeSegmentDisplay) {
+    if (activeRoute.segments && activeRoute.segments.length > 1) {
+      const activeSeg = activeRoute.segments.find(seg => currentDist >= seg.startDist && currentDist <= seg.endDist);
+      if (activeSeg) {
+        activeSegmentDisplay.textContent = activeSeg.name;
+        activeSegmentDisplay.classList.remove("hidden");
+        activeSegmentDisplay.title = activeSeg.desc || "Active Segment";
+      } else {
+        activeSegmentDisplay.classList.add("hidden");
+      }
+    } else {
+      activeSegmentDisplay.classList.add("hidden");
+    }
+  }
 }
 
 /**
@@ -780,6 +814,9 @@ function startPlayback() {
   btnPlayback.title = "Pause Fly-Through";
 
   const pts = activeRoute.trackpoints;
+  if (lastPausedPoiId) {
+    playbackIndex = Math.min(pts.length - 1, Math.floor(playbackIndex) + 1);
+  }
   playbackDistance = pts[Math.floor(playbackIndex)]?.dist_m || 0;
 
   if (playbackDistance >= activeRoute.totalDistance) {
@@ -1478,7 +1515,7 @@ function renderEditWaypointList() {
         showToast(`Removed waypoint: ${wpt.name}`);
         saveActiveRouteState();
         renderEditWaypointList();
-        closePoiDetailDialog(true);
+        closePoiDetailDialog(false);
       }
     });
 
@@ -1531,7 +1568,45 @@ function processGpxContent(text, filename) {
 
   // Display Course Info
   if (activeRoute.description && activeRoute.description !== "No description provided.") {
-    courseInfoText.textContent = activeRoute.description;
+    let infoHtml = `<p>${escapeHtml(activeRoute.description)}</p>`;
+    if (activeRoute.segments && activeRoute.segments.length > 1) {
+      infoHtml += `<h4 style="margin-top: 20px; font-weight: 600; color: var(--primary-color);">COURSE SEGMENTS</h4>`;
+      infoHtml += `<div class="course-segments-list" style="margin-top: 10px; display: flex; flex-direction: column; gap: 8px;">`;
+      activeRoute.segments.forEach((seg, idx) => {
+        const distVal = ((seg.endDist - seg.startDist) * (units === "imperial" ? 1 / 1609.344 : 1 / 1000)).toFixed(2);
+        const distUnit = units === "imperial" ? "mi" : "km";
+        infoHtml += `
+          <div class="segment-info-item" style="padding: 8px 12px; border-radius: 6px; border: 1px solid rgba(255,255,255,0.05); background: rgba(255,255,255,0.02);">
+            <div style="font-weight: 600; font-size: 13px; color: var(--primary-color); display: flex; justify-content: space-between;">
+              <span>${idx + 1}. ${escapeHtml(seg.name)}</span>
+              <span>${distVal} ${distUnit}</span>
+            </div>
+            ${seg.desc ? `<div style="font-size: 12px; margin-top: 4px; color: rgba(255,255,255,0.6);">${escapeHtml(seg.desc)}</div>` : ''}
+          </div>
+        `;
+      });
+      infoHtml += `</div>`;
+    }
+    courseInfoText.innerHTML = infoHtml;
+    courseInfoBtn.classList.remove("hidden");
+  } else if (activeRoute.segments && activeRoute.segments.length > 1) {
+    let infoHtml = `<h4 style="margin-top: 10px; font-weight: 600; color: var(--primary-color);">COURSE SEGMENTS</h4>`;
+    infoHtml += `<div class="course-segments-list" style="margin-top: 10px; display: flex; flex-direction: column; gap: 8px;">`;
+    activeRoute.segments.forEach((seg, idx) => {
+      const distVal = ((seg.endDist - seg.startDist) * (units === "imperial" ? 1 / 1609.344 : 1 / 1000)).toFixed(2);
+      const distUnit = units === "imperial" ? "mi" : "km";
+      infoHtml += `
+        <div class="segment-info-item" style="padding: 8px 12px; border-radius: 6px; border: 1px solid rgba(255,255,255,0.05); background: rgba(255,255,255,0.02);">
+          <div style="font-weight: 600; font-size: 13px; color: var(--primary-color); display: flex; justify-content: space-between;">
+            <span>${idx + 1}. ${escapeHtml(seg.name)}</span>
+            <span>${distVal} ${distUnit}</span>
+          </div>
+          ${seg.desc ? `<div style="font-size: 12px; margin-top: 4px; color: rgba(255,255,255,0.6);">${escapeHtml(seg.desc)}</div>` : ''}
+        </div>
+      `;
+    });
+    infoHtml += `</div>`;
+    courseInfoText.innerHTML = infoHtml;
     courseInfoBtn.classList.remove("hidden");
   } else {
     courseInfoText.textContent = "No description available.";
@@ -1547,6 +1622,7 @@ function processGpxContent(text, filename) {
 
   // Make overlays visible
   cardStats.classList.remove("hidden");
+  if (toggleStatsBtn) toggleStatsBtn.classList.add("hidden");
   cardWarnings.classList.remove("hidden");
   if (toggleWarningsBtn) toggleWarningsBtn.classList.add("hidden");
   cardElevationScrubber.classList.remove("hidden");
@@ -1593,6 +1669,12 @@ function updateRouteStatsUI(route) {
   statGain.textContent = `+${gainStr}${eleUnit}`;
   statLoss.textContent = `-${lossStr}${eleUnit}`;
   statWpts.textContent = route.waypoints.length;
+
+  const minElevStr = convertElevationValue(route.minElevation || 0);
+  const maxElevStr = convertElevationValue(route.maxElevation || 0);
+  if (statElevRange) {
+    statElevRange.textContent = `${minElevStr} - ${maxElevStr} ${eleUnit}`;
+  }
 }
 
 function renderWarningsUI(route) {
@@ -1838,6 +1920,20 @@ function setupEventListeners() {
     closeWarningsBtn.addEventListener("click", () => {
       cardWarnings.classList.add("hidden");
       toggleWarningsBtn.classList.remove("hidden");
+    });
+  }
+
+  // Course Stats Toggle
+  if (toggleStatsBtn) {
+    toggleStatsBtn.addEventListener("click", () => {
+      cardStats.classList.remove("hidden");
+      toggleStatsBtn.classList.add("hidden");
+    });
+  }
+  if (closeStatsBtn) {
+    closeStatsBtn.addEventListener("click", () => {
+      cardStats.classList.add("hidden");
+      toggleStatsBtn.classList.remove("hidden");
     });
   }
 
@@ -2184,7 +2280,7 @@ function setupEventListeners() {
   // Camera Range Slider Listener
   cameraRangeSlider.addEventListener("input", (e) => {
     const val = parseInt(e.target.value);
-    rangeLabelVal.textContent = `${val}m`;
+    updateCameraRangeLabel(val);
     localStorage.setItem("pref_cam_range", val);
 
     if (mapController) {
@@ -2263,11 +2359,11 @@ function setupEventListeners() {
 
   // Close buttons listeners
   poiDialogCloseHeader.addEventListener("click", () => {
-    closePoiDetailDialog(true);
+    closePoiDetailDialog(false);
   });
 
   poiDialogCloseBottom.addEventListener("click", () => {
-    closePoiDetailDialog(true);
+    closePoiDetailDialog(false);
   });
 
   // Edit Waypoint Button Handler
@@ -2412,7 +2508,7 @@ function setupEventListeners() {
         showToast("Please import a GPX file first.");
         return;
       }
-      closePoiDetailDialog(true);
+      closePoiDetailDialog(false);
       isPlacingNewPoi = true;
       tempPoiData = null;
       
@@ -2653,6 +2749,7 @@ function setupResetBoulderButton() {
 
       // Hide panels
       cardStats.classList.add("hidden");
+      if (toggleStatsBtn) toggleStatsBtn.classList.add("hidden");
       cardWarnings.classList.add("hidden");
       const toggleWarningsBtn = document.getElementById("toggle-warnings-btn");
       if (toggleWarningsBtn) toggleWarningsBtn.classList.add("hidden");

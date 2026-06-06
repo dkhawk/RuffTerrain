@@ -70,9 +70,11 @@
 
       <div class="hud-actions-section">
         <span id="course-name-display" class="course-name-tag">NO ROUTE LOADED</span>
+        <span id="active-segment-display" class="active-segment-tag hidden"></span>
         <button id="toggle-chat-btn" class="settings-gear-btn hidden" title="Toggle Gemini Chat">💬</button>
         <button id="toggle-warnings-btn" class="settings-gear-btn hidden" title="Toggle Course Warnings">⚠️</button>
         <button id="course-info-btn" class="settings-gear-btn hidden" title="Course Description">ℹ️</button>
+        <button id="toggle-stats-btn" class="settings-gear-btn hidden" title="Course Stats Panel">📊</button>
         <button id="keyboard-shortcuts-btn" class="settings-gear-btn" title="Keyboard Shortcuts (⌨️)">⌨️</button>
         <button id="reset-boulder-btn" class="settings-gear-btn" title="Clear Course and Reset to Boulder">🔄</button>
         <button id="global-settings-btn" class="settings-gear-btn" title="Config Settings">⚙️</button>
@@ -233,14 +235,19 @@
 
     <!-- Card 3: Route Stats Card (Top Right) -->
     <section id="card-stats" class="glass-card panel-top-right hidden">
-      <header class="card-header">
+      <header class="card-header" style="display: flex; justify-content: space-between; align-items: center;">
         <h3>Course Profile</h3>
+        <button id="close-stats-btn" class="close-btn" style="background: none; border: none; color: var(--text-secondary); font-size: 20px; cursor: pointer; padding: 0; line-height: 1;">&times;</button>
       </header>
       <div class="card-body">
         <div class="stats-grid">
           <div class="stat-box">
             <span class="label">Distance</span>
             <span id="stat-dist" class="value">0.0 mi</span>
+          </div>
+          <div class="stat-box">
+            <span class="label">Waypoints</span>
+            <span id="stat-wpts" class="value">0</span>
           </div>
           <div class="stat-box">
             <span class="label">Elev Gain</span>
@@ -250,9 +257,9 @@
             <span class="label">Elev Loss</span>
             <span id="stat-loss" class="value">-0m</span>
           </div>
-          <div class="stat-box">
-            <span class="label">Waypoints</span>
-            <span id="stat-wpts" class="value">0</span>
+          <div class="stat-box full-width">
+            <span class="label">Elevation Range</span>
+            <span id="stat-elev-range" class="value">0 - 0 ft</span>
           </div>
         </div>
 
@@ -441,7 +448,7 @@
 
           <div class="slider-group">
             <label for="camera-range-slider">CAM RANGE</label>
-            <input type="range" id="camera-range-slider" min="300" max="6000" step="100" value="1500" />
+            <input type="range" id="camera-range-slider" min="300" max="10000" step="100" value="1500" />
             <span id="range-label-val" class="slider-val">1500m</span>
           </div>
 
