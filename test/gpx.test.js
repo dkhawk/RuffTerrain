@@ -138,4 +138,31 @@ describe("GPX Parser & Writer Tests", () => {
     assert.ok(xml.includes("<desc>Description One</desc>"));
   });
 
+  test("Deduplicates/excludes <ca:passes> container matching in passRegex", () => {
+    const mockGpx = `<?xml version="1.0" encoding="utf-8"?>
+<gpx version="1.1" creator="Test" xmlns="http://www.topografix.com/GPX/1/1" xmlns:ca="http://coursearchitect.com/schema/v1">
+  <wpt lat="45.0" lon="6.0">
+    <name>Start</name>
+    <extensions>
+      <ca:station type="segmenting" id="start" subtype="aid_station">
+        <ca:passes>
+          <ca:pass num="1" dist_m="0.0" label="Start"/>
+        </ca:passes>
+      </ca:station>
+    </extensions>
+  </wpt>
+  <trk>
+    <trkseg>
+      <trkpt lat="45.0" lon="6.0"><ele>1000.0</ele></trkpt>
+    </trkseg>
+  </trk>
+</gpx>`;
+
+    const route = parseGPX(mockGpx, "imperial");
+    const wpt = route.waypoints[0];
+    const passes = wpt.extensions.station.passes;
+    assert.strictEqual(passes.length, 1);
+    assert.strictEqual(passes[0].label, "Start");
+  });
+
 });

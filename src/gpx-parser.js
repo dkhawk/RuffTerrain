@@ -435,7 +435,7 @@ export function parseGPX(gpxText, units = "imperial") {
       const subtype = subtypeMatch ? subtypeMatch[1] : null;
 
       const passes = [];
-      const passRegex = /<(?:ca:)?pass([^>]*)\/?>/g;
+      const passRegex = /<(?:ca:)?pass\b([^>]*)\/?>/g;
       let pMatch;
       while ((pMatch = passRegex.exec(stationInner)) !== null) {
         const pAttrs = pMatch[1];
