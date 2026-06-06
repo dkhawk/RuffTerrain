@@ -205,3 +205,15 @@ This journal records all design decisions, architecture patterns, development st
 *   **Key Actions Taken**:
     *   Modified `.panel-bottom-center`, `.panel-bottom-left`, and `.panel-middle-right` layout constraints inside `src/style.css`.
     *   Compiled clean production assets with `npm run build` and committed changes.
+
+---
+
+### 🚀 Session 16: Conditionally Hiding HUD Time Metric
+*   **Goal**: Hide the "TIME" HUD metric column when a course layout has no real time/recording timestamps, preventing synthetic or misleading paces from showing.
+*   **Decisions & Rationale**:
+    *   **Presence-Based Visibility Toggling**: Added `id="hud-metric-time"` to the Time column container in `index.html`. On route ingestion, `main.js` checks if the GPX trackpoints contain actual timestamps (e.g. `activeRoute.trackpoints[0].time`).
+    *   **Automatic Layout Reflow**: If timestamps are missing, the "TIME" metric is hidden (`.classList.add("hidden")`), allowing the other metrics (DIST, ELEV, GAIN, LOSS, NEXT AS) to slide over naturally using the existing flexbox layout.
+*   **Key Actions Taken**:
+    *   Updated `index.html` structure.
+    *   Added visibility detection logic to `src/main.js`.
+    *   Compiled clean assets and committed changes.
