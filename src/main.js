@@ -86,6 +86,7 @@ let attachedFiles = []; // Array of attached files for Gemini chat
 // Loader and HUD Telemetry Dashboard
 const hudMetrics = document.getElementById("hud-metrics");
 const hudValTime = document.getElementById("hud-val-time");
+const hudMetricTime = document.getElementById("hud-metric-time");
 const hudValDistCur = document.getElementById("hud-val-dist-cur");
 const hudValDistTot = document.getElementById("hud-val-dist-tot");
 const hudValElev = document.getElementById("hud-val-elev");
@@ -1627,6 +1628,16 @@ function processGpxContent(text, filename) {
   if (toggleWarningsBtn) toggleWarningsBtn.classList.add("hidden");
   cardElevationScrubber.classList.remove("hidden");
   hudMetrics.classList.remove("hidden");
+
+  // Show/hide time HUD column based on presence of actual timestamps in the GPX
+  const hasTime = activeRoute.trackpoints.length > 0 && !!activeRoute.trackpoints[0].time;
+  if (hudMetricTime) {
+    if (hasTime) {
+      hudMetricTime.classList.remove("hidden");
+    } else {
+      hudMetricTime.classList.add("hidden");
+    }
+  }
   if (cardGeminiChat) {
     cardGeminiChat.classList.remove("hidden");
   }
