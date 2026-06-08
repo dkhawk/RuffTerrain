@@ -217,3 +217,17 @@ This journal records all design decisions, architecture patterns, development st
     *   Updated `index.html` structure.
     *   Added visibility detection logic to `src/main.js`.
     *   Compiled clean assets and committed changes.
+
+---
+
+### 🚀 Session 17: Clearing Safety Warning Highlights
+*   **Goal**: Allow users to clear highlighted safety warning polylines from the map and UI when they no longer need to focus on them.
+*   **Decisions & Rationale**:
+    *   **Map Method Implementation**: Created `clearWarningHighlight()` inside `Map3D` in `src/map-3d.js` to securely remove `this.activeWarningPolyline` from the Google 3D Map viewport.
+    *   **Action Header Button**: Injected a broom button (`🧹` / `#clear-warnings-highlight-btn`) inside the Warnings panel header. It is hidden by default and only becomes visible when a warning is actively highlighted.
+    *   **Automated Cleanups**: Bound triggers to automatically clear active warnings and hide the broom button whenever a new route is loaded or the active route is reset to Boulder.
+*   **Key Actions Taken**:
+    *   Added `clearWarningHighlight()` method to `Map3D` class.
+    *   Appended `#clear-warnings-highlight-btn` element to the header of `#card-warnings` in `index.html`.
+    *   Registered event listener in `src/main.js` to execute clearing and toggle button class states.
+    *   Added automated cleaning during route load/reset steps.
