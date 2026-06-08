@@ -606,6 +606,22 @@ export class Map3DController {
   }
 
   /**
+   * Clears any active safety warning highlight polyline from the 3D map.
+   */
+  clearWarningHighlight() {
+    if (this.activeWarningPolyline) {
+      try {
+        this.map.removeChild(this.activeWarningPolyline);
+      } catch (e) {
+        try {
+          this.activeWarningPolyline.remove();
+        } catch (err) {}
+      }
+      this.activeWarningPolyline = null;
+    }
+  }
+
+  /**
    * Highlights a safety warning segment with a thicker polyline outline on the 3D map
    * and smoothly pans/zooms the camera to focus on it.
    * @param {Object} warn Warning object from activeRoute.warnings

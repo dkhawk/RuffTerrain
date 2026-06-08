@@ -152,6 +152,7 @@ const warningsList = document.getElementById("warnings-list");
 const toggleWarningsBtn = document.getElementById("toggle-warnings-btn");
 const closeWarningsBtn = document.getElementById("close-warnings-btn");
 const regenerateWarningsBtn = document.getElementById("regenerate-warnings-btn");
+const clearWarningsHighlightBtn = document.getElementById("clear-warnings-highlight-btn");
 
 // Collapsible POI Detail Dialog Panel
 const poiDetailDialog = document.getElementById("poi-detail-dialog");
@@ -1658,6 +1659,9 @@ function processGpxContent(text, filename) {
   renderWarningsUI(activeRoute);
   updateUnitLabels();
   updateHUD(0);
+  if (clearWarningsHighlightBtn) {
+    clearWarningsHighlightBtn.classList.add("hidden");
+  }
   
   // Render sidebar waypoints outline list
   renderEditWaypointList();
@@ -1727,6 +1731,9 @@ function renderWarningsUI(route) {
 
       if (typeof mapController !== "undefined" && mapController && warn.approved) {
         mapController.highlightWarning(warn);
+        if (clearWarningsHighlightBtn) {
+          clearWarningsHighlightBtn.classList.remove("hidden");
+        }
       }
     });
 
@@ -1956,6 +1963,16 @@ function setupEventListeners() {
       renderWarningsUI(activeRoute);
       elevationChart.draw();
       showToast("Warnings regenerated.");
+    });
+  }
+
+  if (clearWarningsHighlightBtn) {
+    clearWarningsHighlightBtn.addEventListener("click", () => {
+      if (typeof mapController !== "undefined" && mapController) {
+        mapController.clearWarningHighlight();
+      }
+      clearWarningsHighlightBtn.classList.add("hidden");
+      showToast("Warning highlight cleared.");
     });
   }
 
@@ -2764,6 +2781,9 @@ function setupResetBoulderButton() {
       cardWarnings.classList.add("hidden");
       const toggleWarningsBtn = document.getElementById("toggle-warnings-btn");
       if (toggleWarningsBtn) toggleWarningsBtn.classList.add("hidden");
+      if (clearWarningsHighlightBtn) {
+        clearWarningsHighlightBtn.classList.add("hidden");
+      }
       cardElevationScrubber.classList.add("hidden");
       hudMetrics.classList.add("hidden");
       
