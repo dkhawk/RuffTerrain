@@ -305,3 +305,23 @@ This journal records all design decisions, architecture patterns, development st
 *   **Key Actions Taken**:
     *   Added `android-port` worktree and tracked branch in git.
     *   Drafted and saved `android_ux_design_prompt.md` containing absolute-linked image mockup as an artifact.
+
+---
+
+## 📅 June 9, 2026
+
+### 🚀 Session 24: Weather Forecast Integration
+*   **Goal**: Integrate the Google Weather API to display hourly forecasts along the route and waypoint-specific weather metrics.
+*   **Decisions & Rationale**:
+    *   **Throttled API Client & Cache**: Built `src/fetch-weather.js` that rounds coordinates (to 3 decimal places / ~100m precision) and caches results by coordinate grid and time hour to prevent rate-limit exhaustion during scrubber movement.
+    *   **Side-by-Side Right Sidebars**: Added dynamic layout coordinate shifting to `#card-weather` (`.shifted`) so it slides horizontally to the left (`right: 340px`) when the Warnings Panel is open, preventing overlap.
+    *   **POI Weather Widget**: Embedded weather information (temperature, precipitation probability, wind speed/direction, and conditions description) directly inside the POI Detail Dialog (`#poi-detail-dialog`) to enrich waypoint details.
+    *   **Weather Keyboard Shortcut**: Registered the `w` / `W` shortcut key to toggle the Weather Panel, fully documented in the Keyboard Shortcuts modal.
+*   **Key Actions Taken**:
+    *   Created `src/fetch-weather.js` containing API client, local caching, and condition-to-emoji mapping logic.
+    *   Modified `index.html` to add the weather toggle button, the general Weather Forecast Panel, and the POI weather section.
+    *   Appended `.panel-weather` CSS layout and transitions to `src/style.css`.
+    *   Registered DOM variables, event listeners, shift coordinate checking, debounce updates, and keybindings in `src/main.js`.
+    *   Wrote unit tests for condition mappings in `test/gpx.test.js` and confirmed all 6 tests pass.
+    *   Successfully ran `npm install` and verified production builds with `npm run build`.
+

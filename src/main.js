@@ -30,6 +30,7 @@ import { correctRouteElevations } from "./fetch-elevation.js";
 import { sendToGemini, fetchAvailableModels, generateWaypointFromDescription } from "./gemini-client.js";
 import { loadGoogleMaps, Map3DController, calculateBearing } from "./map-3d.js";
 import { ElevationChart } from "./elevation-chart.js";
+import { fetchWeatherForecast, getWeatherConditionStyle } from "./fetch-weather.js";
 
 // ==========================================
 // STATE MANAGEMENT & CONFIGURATIONS
@@ -216,6 +217,39 @@ const toggleStatsBtn = document.getElementById("toggle-stats-btn");
 const closeStatsBtn = document.getElementById("close-stats-btn");
 // UI Notifications Toast
 const toastNotification = document.getElementById("toast-notification");
+
+// Weather Panel & UI
+const toggleWeatherBtn = document.getElementById("toggle-weather-btn");
+const cardWeather = document.getElementById("card-weather");
+const closeWeatherBtn = document.getElementById("close-weather-btn");
+const weatherLoader = document.getElementById("weather-loader");
+const weatherError = document.getElementById("weather-error");
+const weatherContent = document.getElementById("weather-content");
+const weatherLocationSubtitle = document.getElementById("weather-location-subtitle");
+
+const weatherCurrentTemp = document.getElementById("weather-current-temp");
+const weatherCurrentFeels = document.getElementById("weather-current-feels");
+const weatherCurrentEmoji = document.getElementById("weather-current-emoji");
+const weatherCurrentDesc = document.getElementById("weather-current-desc");
+const weatherCurrentWind = document.getElementById("weather-current-wind");
+const weatherCurrentHumidity = document.getElementById("weather-current-humidity");
+const weatherCurrentPrecip = document.getElementById("weather-current-precip");
+const weatherCurrentClouds = document.getElementById("weather-current-clouds");
+const weatherForecastHoursList = document.getElementById("weather-forecast-hours-list");
+
+// POI Weather Section
+const poiWeatherSection = document.getElementById("poi-weather-section");
+const poiWeatherEmoji = document.getElementById("poi-weather-emoji");
+const poiWeatherDesc = document.getElementById("poi-weather-desc");
+const poiWeatherWind = document.getElementById("poi-weather-wind");
+const poiWeatherTemp = document.getElementById("poi-weather-temp");
+const poiWeatherPrecip = document.getElementById("poi-weather-precip");
+
+// Weather throttling/debouncing state
+let lastWeatherLat = null;
+let lastWeatherLon = null;
+let weatherDebounceTimer = null;
+let weatherAbortController = null;
 
 // ==========================================
 // APPLICATION INITIALIZATION
@@ -584,6 +618,242 @@ function formatElevation(meters) {
 }
 
 /**
+ * Returns a unit-converted numerical temperature value representation from celsius.
+ */
+function convertTemperatureValue(celsius) {
+  if (units === "imperial") {
+    return Math.round((celsius * 9) / 5 + 32) + "°F";
+  }
+  return Math.round(celsius) + "°C";
+}
+
+/**
+ * Returns a unit-converted numerical wind speed value representation from km/h.
+ */
+function convertWindSpeedValue(kmh) {
+  if (units === "imperial") {
+    return Math.round(kmh * 0.621371) + " mph";
+  }
+  return Math.round(kmh) + " km/h";
+}
+
+/**
+ * Helper to format display hour string from weather API displayDateTime structure.
+ */
+function formatDisplayHour(displayDateTime) {
+  if (!displayDateTime) return "--:--";
+  const hours = displayDateTime.hours;
+  const ampm = hours >= 12 ? "PM" : "AM";
+  const displayHour = hours % 12 || 12;
+  return `${displayHour}:00 ${ampm}`;
+}
+
+/**
+ * Updates the Weather Panel layout with details.
+ */
+async function updateWeatherUI(lat, lon) {
+  if (!apiKeyMaps) {
+    if (weatherError) {
+      weatherError.textContent = "Google Maps API Key is required for weather forecast.";
+      weatherError.classList.remove("hidden");
+    }
+    if (weatherLoader) weatherLoader.classList.add("hidden");
+    if (weatherContent) weatherContent.classList.add("hidden");
+    return;
+  }
+
+  if (weatherAbortController) {
+    weatherAbortController.abort();
+  }
+  weatherAbortController = new AbortController();
+
+  if (weatherLoader) weatherLoader.classList.remove("hidden");
+  if (weatherError) weatherError.classList.add("hidden");
+  if (weatherContent) weatherContent.classList.add("hidden");
+
+  try {
+    const data = await fetchWeatherForecast(lat, lon, 3, apiKeyMaps);
+    if (!data || !data.forecastHours || data.forecastHours.length === 0) {
+      throw new Error("No forecast data returned.");
+    }
+
+    // Determine location subtitle
+    let locationName = `Lat: ${Number(lat).toFixed(4)}, Lon: ${Number(lon).toFixed(4)}`;
+    if (activeRoute && activeRoute.waypoints) {
+      const closestWpt = activeRoute.waypoints.find(wpt => {
+        const d = haversine(lat, lon, wpt.lat, wpt.lon);
+        return d < 0.1; // within 100 meters
+      });
+      if (closestWpt) {
+        locationName = `Near ${closestWpt.name}`;
+      }
+    }
+    if (weatherLocationSubtitle) {
+      weatherLocationSubtitle.textContent = locationName;
+    }
+
+    const current = data.forecastHours[0];
+    const condition = current.weatherCondition || {};
+    const condStyle = getWeatherConditionStyle(condition.type);
+
+    if (weatherCurrentTemp) {
+      weatherCurrentTemp.textContent = convertTemperatureValue(current.temperature?.degrees ?? 0);
+    }
+    if (weatherCurrentFeels) {
+      weatherCurrentFeels.textContent = `Feels like ${convertTemperatureValue(current.feelsLikeTemperature?.degrees ?? 0)}`;
+    }
+    if (weatherCurrentEmoji) {
+      weatherCurrentEmoji.textContent = condStyle.emoji;
+    }
+    if (weatherCurrentDesc) {
+      weatherCurrentDesc.textContent = condition.description?.text || condStyle.label;
+    }
+
+    if (weatherCurrentWind) {
+      const windSpeed = current.wind?.speed?.value ?? 0;
+      const windDir = current.wind?.direction?.cardinal || "N/A";
+      weatherCurrentWind.textContent = `${convertWindSpeedValue(windSpeed)} ${windDir}`;
+    }
+    if (weatherCurrentHumidity) {
+      weatherCurrentHumidity.textContent = `${current.relativeHumidity ?? "--"}%`;
+    }
+    if (weatherCurrentPrecip) {
+      weatherCurrentPrecip.textContent = `${current.precipitation?.probability?.percent ?? 0}%`;
+    }
+    if (weatherCurrentClouds) {
+      weatherCurrentClouds.textContent = `${current.cloudCover ?? "--"}%`;
+    }
+
+    if (weatherForecastHoursList) {
+      weatherForecastHoursList.innerHTML = "";
+      data.forecastHours.forEach(hourData => {
+        const hrCond = hourData.weatherCondition || {};
+        const hrStyle = getWeatherConditionStyle(hrCond.type);
+        const hrTemp = hourData.temperature?.degrees ?? 0;
+        const timeStr = formatDisplayHour(hourData.displayDateTime);
+
+        const row = document.createElement("div");
+        row.className = "weather-forecast-hour-row";
+        row.style.display = "flex";
+        row.style.justifyContent = "space-between";
+        row.style.alignItems = "center";
+        row.style.background = "rgba(255, 255, 255, 0.03)";
+        row.style.border = "1px solid rgba(255, 255, 255, 0.05)";
+        row.style.borderRadius = "6px";
+        row.style.padding = "6px 10px";
+
+        row.innerHTML = `
+          <span class="time" style="font-size: 11px; font-weight: 500; min-width: 65px; text-align: left;">${timeStr}</span>
+          <span class="emoji" style="font-size: 16px; margin: 0 8px;">${hrStyle.emoji}</span>
+          <span class="desc" style="font-size: 11px; color: var(--text-muted); flex: 1; text-align: left; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">${hrCond.description?.text || hrStyle.label}</span>
+          <span class="temp" style="font-size: 11px; font-weight: bold; min-width: 45px; text-align: right;">${convertTemperatureValue(hrTemp)}</span>
+        `;
+        weatherForecastHoursList.appendChild(row);
+      });
+    }
+
+    if (weatherLoader) weatherLoader.classList.add("hidden");
+    if (weatherContent) weatherContent.classList.remove("hidden");
+  } catch (error) {
+    if (error.name !== "AbortError") {
+      console.error("Error updating weather UI:", error);
+      if (weatherError) {
+        weatherError.textContent = error.message || "Failed to load weather forecast.";
+        weatherError.classList.remove("hidden");
+      }
+      if (weatherLoader) weatherLoader.classList.add("hidden");
+    }
+  }
+}
+
+/**
+ * Updates POI weather sub-view.
+ */
+async function updatePoiWeatherUI(wpt) {
+  if (!apiKeyMaps) {
+    if (poiWeatherSection) poiWeatherSection.classList.add("hidden");
+    return;
+  }
+
+  if (poiWeatherSection) poiWeatherSection.classList.remove("hidden");
+  if (poiWeatherEmoji) poiWeatherEmoji.textContent = "🌡️";
+  if (poiWeatherDesc) poiWeatherDesc.textContent = "Loading...";
+  if (poiWeatherWind) poiWeatherWind.textContent = "Wind: --";
+  if (poiWeatherTemp) poiWeatherTemp.textContent = "--";
+  if (poiWeatherPrecip) poiWeatherPrecip.textContent = "Rain: --%";
+
+  try {
+    const data = await fetchWeatherForecast(wpt.lat, wpt.lon, 1, apiKeyMaps);
+    if (!data || !data.forecastHours || data.forecastHours.length === 0) {
+      throw new Error("No forecast data");
+    }
+
+    const current = data.forecastHours[0];
+    const condition = current.weatherCondition || {};
+    const condStyle = getWeatherConditionStyle(condition.type);
+
+    if (poiWeatherEmoji) poiWeatherEmoji.textContent = condStyle.emoji;
+    if (poiWeatherDesc) poiWeatherDesc.textContent = condition.description?.text || condStyle.label;
+    
+    const tempCelsius = current.temperature?.degrees ?? 0;
+    if (poiWeatherTemp) poiWeatherTemp.textContent = convertTemperatureValue(tempCelsius);
+
+    const windSpeed = current.wind?.speed?.value ?? 0;
+    const windDir = current.wind?.direction?.cardinal || "N/A";
+    if (poiWeatherWind) {
+      poiWeatherWind.textContent = `Wind: ${convertWindSpeedValue(windSpeed)} ${windDir}`;
+    }
+
+    if (poiWeatherPrecip) {
+      poiWeatherPrecip.textContent = `Rain: ${current.precipitation?.probability?.percent ?? 0}%`;
+    }
+  } catch (error) {
+    console.error("Failed to load POI weather:", error);
+    if (poiWeatherDesc) poiWeatherDesc.textContent = "Forecast unavailable";
+    if (poiWeatherTemp) poiWeatherTemp.textContent = "--";
+  }
+}
+
+/**
+ * Triggers a debounced weather update for the specified lat/lon.
+ */
+function triggerWeatherWeather(lat, lon, force = false) {
+  if (!apiKeyMaps) return;
+  if (!cardWeather || cardWeather.classList.contains("hidden")) return;
+
+  if (weatherDebounceTimer) {
+    clearTimeout(weatherDebounceTimer);
+  }
+
+  weatherDebounceTimer = setTimeout(() => {
+    const distShift = (lastWeatherLat !== null && lastWeatherLon !== null) 
+      ? haversine(lat, lon, lastWeatherLat, lastWeatherLon) 
+      : Infinity;
+
+    if (force || distShift > 2.0) {
+      lastWeatherLat = lat;
+      lastWeatherLon = lon;
+      updateWeatherUI(lat, lon);
+    }
+  }, 600);
+}
+
+/**
+ * Coordinates sidebar panel horizontal shift mapping.
+ */
+function updateWeatherShiftedState() {
+  if (!cardWarnings || !cardWeather) return;
+  const warningsVisible = !cardWarnings.classList.contains("hidden");
+  const weatherVisible = !cardWeather.classList.contains("hidden");
+
+  if (warningsVisible && weatherVisible) {
+    cardWeather.classList.add("shifted");
+  } else {
+    cardWeather.classList.remove("shifted");
+  }
+}
+
+/**
  * Computes the elapsed duration at a trackpoint.
  * If GPX trackpoints contain timestamps, computes the exact difference relative to the start point.
  * Otherwise, estimates the elapsed duration based on a typical trail-running speed of 10 km/h (2.778 m/s).
@@ -776,6 +1046,9 @@ function updateHUD(index) {
       activeSegmentDisplay.classList.add("hidden");
     }
   }
+
+  // 9. Debounced Weather Update
+  triggerWeatherWeather(currentPt.lat, currentPt.lon);
 }
 
 /**
@@ -1041,6 +1314,9 @@ function renderEditAmenities(wpt) {
  */
 function showPoiDetailDialog(wpt, index, referenceDist = null, startCollapsed = false) {
   if (!poiDetailDialog) return;
+
+  // Fetch and show weather for the POI
+  updatePoiWeatherUI(wpt);
 
   activeDialogWpt = wpt;
   isEditingPoiLocation = false;
@@ -1631,6 +1907,15 @@ function processGpxContent(text, filename) {
   if (toggleStatsBtn) toggleStatsBtn.classList.add("hidden");
   cardWarnings.classList.remove("hidden");
   if (toggleWarningsBtn) toggleWarningsBtn.classList.add("hidden");
+  cardWeather.classList.remove("hidden");
+  if (toggleWeatherBtn) toggleWeatherBtn.classList.add("hidden");
+  updateWeatherShiftedState();
+  
+  if (activeRoute.trackpoints.length > 0) {
+    const startPt = activeRoute.trackpoints[0];
+    triggerWeatherWeather(startPt.lat, startPt.lon, true);
+  }
+
   cardElevationScrubber.classList.remove("hidden");
   hudMetrics.classList.remove("hidden");
 
@@ -1943,12 +2228,38 @@ function setupEventListeners() {
     toggleWarningsBtn.addEventListener("click", () => {
       cardWarnings.classList.remove("hidden");
       toggleWarningsBtn.classList.add("hidden");
+      updateWeatherShiftedState();
     });
   }
   if (closeWarningsBtn) {
     closeWarningsBtn.addEventListener("click", () => {
       cardWarnings.classList.add("hidden");
       toggleWarningsBtn.classList.remove("hidden");
+      updateWeatherShiftedState();
+    });
+  }
+
+  // Weather Toggle
+  if (toggleWeatherBtn) {
+    toggleWeatherBtn.addEventListener("click", () => {
+      cardWeather.classList.remove("hidden");
+      toggleWeatherBtn.classList.add("hidden");
+      updateWeatherShiftedState();
+      
+      // Force initial weather update on open
+      if (activeRoute && activeRoute.trackpoints.length > 0) {
+        const pt = activeRoute.trackpoints[playbackIndex || 0];
+        if (pt) {
+          triggerWeatherWeather(pt.lat, pt.lon, true);
+        }
+      }
+    });
+  }
+  if (closeWeatherBtn) {
+    closeWeatherBtn.addEventListener("click", () => {
+      cardWeather.classList.add("hidden");
+      toggleWeatherBtn.classList.remove("hidden");
+      updateWeatherShiftedState();
     });
   }
 
@@ -2799,6 +3110,10 @@ function setupResetBoulderButton() {
       if (clearWarningsHighlightBtn) {
         clearWarningsHighlightBtn.classList.add("hidden");
       }
+      cardWeather.classList.add("hidden");
+      if (toggleWeatherBtn) toggleWeatherBtn.classList.add("hidden");
+      lastWeatherLat = null;
+      lastWeatherLon = null;
       cardElevationScrubber.classList.add("hidden");
       hudMetrics.classList.add("hidden");
       
@@ -2936,6 +3251,15 @@ function setupKeyboardShortcuts() {
         }
         break;
 
+      case "w":
+      case "W":
+        if (toggleWeatherBtn && !toggleWeatherBtn.classList.contains("hidden")) {
+          toggleWeatherBtn.click();
+        } else if (cardWeather && !cardWeather.classList.contains("hidden")) {
+          closeWeatherBtn.click();
+        }
+        break;
+
       case "Escape":
         // Close overlays and dialogs
         if (shortcutsOverlay && !shortcutsOverlay.classList.contains("hidden")) {
@@ -2949,6 +3273,9 @@ function setupKeyboardShortcuts() {
         }
         if (courseInfoOverlay && !courseInfoOverlay.classList.contains("hidden")) {
           courseInfoOverlay.classList.add("hidden");
+        }
+        if (cardWeather && !cardWeather.classList.contains("hidden")) {
+          closeWeatherBtn.click();
         }
         break;
 

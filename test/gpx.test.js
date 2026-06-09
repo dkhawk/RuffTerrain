@@ -2,6 +2,7 @@ import { test, describe } from "node:test";
 import assert from "node:assert";
 import { parseGPX } from "../src/gpx-parser.js";
 import { writeGPX } from "../src/gpx-writer.js";
+import { getWeatherConditionStyle } from "../src/fetch-weather.js";
 
 describe("GPX Parser & Writer Tests", () => {
   
@@ -192,6 +193,24 @@ describe("GPX Parser & Writer Tests", () => {
     assert.strictEqual(route.waypoints[0].name, "Start Line");
     assert.strictEqual(route.waypoints[1].name, "Midpoint Aid");
     assert.strictEqual(route.waypoints[2].name, "Finish Line");
+  });
+
+  test("Weather condition styles mappings", () => {
+    const clearStyle = getWeatherConditionStyle("CLEAR");
+    assert.strictEqual(clearStyle.emoji, "☀️");
+    assert.strictEqual(clearStyle.label, "Clear");
+
+    const cloudyStyle = getWeatherConditionStyle("CLOUDY");
+    assert.strictEqual(cloudyStyle.emoji, "☁️");
+    assert.strictEqual(cloudyStyle.label, "Cloudy");
+
+    const rainStyle = getWeatherConditionStyle("RAIN");
+    assert.strictEqual(rainStyle.emoji, "🌧️");
+    assert.strictEqual(rainStyle.label, "Rain");
+
+    const unknownStyle = getWeatherConditionStyle("UNKNOWN_WEATHER_TYPE");
+    assert.strictEqual(unknownStyle.emoji, "🌡️");
+    assert.strictEqual(unknownStyle.label, "UNKNOWN WEATHER TYPE");
   });
 
 });
