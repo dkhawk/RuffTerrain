@@ -72,7 +72,7 @@
         <span id="course-name-display" class="course-name-tag">NO ROUTE LOADED</span>
         <span id="active-segment-display" class="active-segment-tag hidden"></span>
         <button id="toggle-chat-btn" class="settings-gear-btn hidden" title="Toggle Gemini Chat">💬</button>
-        <button id="toggle-warnings-btn" class="settings-gear-btn hidden" title="Toggle Course Warnings">⚠️</button>
+        <button id="toggle-warnings-btn" class="settings-gear-btn hidden" title="Toggle Course Alerts">⚠️</button>
         <button id="course-info-btn" class="settings-gear-btn hidden" title="Course Description">ℹ️</button>
         <button id="toggle-stats-btn" class="settings-gear-btn hidden" title="Course Stats Panel">📊</button>
         <button id="toggle-weather-btn" class="settings-gear-btn hidden" title="Weather Forecast">🌤️</button>
@@ -290,16 +290,16 @@
       </div>
     </section>
 
-    <!-- Card 4: Safety Warnings (Middle Right) -->
+    <!-- Card 4: Safety Alerts (Middle Right) -->
     <section id="card-warnings" class="glass-card panel-middle-right hidden">
       <header class="card-header" style="display: flex; justify-content: space-between; align-items: center;">
         <div style="display: flex; align-items: center; gap: 0.5rem;">
-          <h3 style="margin: 0;">Course Warnings</h3>
+          <h3 style="margin: 0;">Alerts</h3>
           <span id="warnings-count" class="badge">0</span>
-          <button id="regenerate-warnings-btn" class="icon-btn" title="Regenerate all warnings" style="background: none; border: none; cursor: pointer; color: var(--text-muted); font-size: 14px;">↺</button>
-          <button id="clear-warnings-highlight-btn" class="icon-btn hidden" title="Clear warning highlight from map" style="background: none; border: none; cursor: pointer; color: var(--text-muted); font-size: 14px;">🧹</button>
+          <button id="regenerate-warnings-btn" class="icon-btn" title="Regenerate all alerts" style="background: none; border: none; cursor: pointer; color: var(--text-muted); font-size: 14px;">↺</button>
+          <button id="clear-warnings-highlight-btn" class="icon-btn hidden" title="Clear alert highlight from map" style="background: none; border: none; cursor: pointer; color: var(--text-muted); font-size: 14px;">🧹</button>
         </div>
-        <button id="close-warnings-btn" class="close-card-btn" title="Hide Warnings Panel">&times;</button>
+        <button id="close-warnings-btn" class="close-card-btn" title="Hide Alerts Panel">&times;</button>
       </header>
       <div class="card-body scrollable">
         <div id="warnings-list" class="warnings-list">
@@ -633,6 +633,10 @@
             <div style="display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid rgba(255,255,255,0.05); padding-bottom: 6px;">
               <span>Toggle Chat Sidebar</span>
               <kbd style="background: rgba(255,255,255,0.15); border: 1px solid rgba(255,255,255,0.2); border-radius: 4px; padding: 2px 6px; font-family: monospace; font-size: 11px; font-weight: bold;">C</kbd>
+            </div>
+            <div style="display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid rgba(255,255,255,0.05); padding-bottom: 6px;">
+              <span>Toggle Alerts Panel</span>
+              <kbd style="background: rgba(255,255,255,0.15); border: 1px solid rgba(255,255,255,0.2); border-radius: 4px; padding: 2px 6px; font-family: monospace; font-size: 11px; font-weight: bold;">A</kbd>
             </div>
             <div style="display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid rgba(255,255,255,0.05); padding-bottom: 6px;">
               <span>Toggle Weather Panel</span>

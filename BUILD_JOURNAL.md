@@ -325,3 +325,17 @@ This journal records all design decisions, architecture patterns, development st
     *   Wrote unit tests for condition mappings in `test/gpx.test.js` and confirmed all 6 tests pass.
     *   Successfully ran `npm install` and verified production builds with `npm run build`.
 
+---
+
+### 🚀 Session 25: Course Alerts Renaming & Keyboard Shortcut
+*   **Goal**: Rename the Course Warnings panel to "Alerts" and map the `a` / `A` key to toggle its visibility.
+*   **Decisions & Rationale**:
+    *   **User-Facing Label Refactoring**: Renamed all user-facing instances of "Course Warnings" to "Course Alerts" or simply "Alerts" (including tooltip descriptions, empty list placeholders, and action headers) to make the panel header matches user request.
+    *   **Alerts Keyboard Shortcut**: Bound `a` / `A` to toggle the Alerts Panel, adding its documentation in the Keyboard Shortcuts help overlay modal.
+    *   **Escape Key Enhancement**: Updated key bindings so that pressing `Escape` now successfully dismisses the Alerts Panel (which previously did not respond to Escape).
+*   **Key Actions Taken**:
+    *   Updated `index.html` header, tooltips, panel title text, and keyboard shortcuts overlay.
+    *   Modified `src/main.js` to rename warning message strings, bind the `a`/`A` key code, and handle Escape closures for `cardWarnings`.
+    *   Ran build and verification loops successfully.
+
+

@@ -1987,7 +1987,7 @@ function renderWarningsUI(route) {
   warningsCount.textContent = approvedWarnings.length;
 
   if (route.warnings.length === 0) {
-    warningsList.innerHTML = `<div class="small-label" style="text-align:center;padding:12px;color:var(--text-muted)">No safety warnings found on this trail.</div>`;
+    warningsList.innerHTML = `<div class="small-label" style="text-align:center;padding:12px;color:var(--text-muted)">No safety alerts found on this trail.</div>`;
     return;
   }
 
@@ -2284,7 +2284,7 @@ function setupEventListeners() {
       calculateWarnings(activeRoute, spatialWarnings, units);
       renderWarningsUI(activeRoute);
       elevationChart.draw();
-      showToast("Warnings regenerated.");
+      showToast("Alerts regenerated.");
     });
   }
 
@@ -3251,6 +3251,15 @@ function setupKeyboardShortcuts() {
         }
         break;
 
+      case "a":
+      case "A":
+        if (toggleWarningsBtn && !toggleWarningsBtn.classList.contains("hidden")) {
+          toggleWarningsBtn.click();
+        } else if (cardWarnings && !cardWarnings.classList.contains("hidden")) {
+          closeWarningsBtn.click();
+        }
+        break;
+
       case "w":
       case "W":
         if (toggleWeatherBtn && !toggleWeatherBtn.classList.contains("hidden")) {
@@ -3276,6 +3285,9 @@ function setupKeyboardShortcuts() {
         }
         if (cardWeather && !cardWeather.classList.contains("hidden")) {
           closeWeatherBtn.click();
+        }
+        if (cardWarnings && !cardWarnings.classList.contains("hidden")) {
+          closeWarningsBtn.click();
         }
         break;
 
