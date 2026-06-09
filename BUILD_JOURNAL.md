@@ -231,3 +231,15 @@ This journal records all design decisions, architecture patterns, development st
     *   Appended `#clear-warnings-highlight-btn` element to the header of `#card-warnings` in `index.html`.
     *   Registered event listener in `src/main.js` to execute clearing and toggle button class states.
     *   Added automated cleaning during route load/reset steps.
+
+---
+
+### 🚀 Session 18: Synchronized Sidebar Warning Highlights
+*   **Goal**: Highlight the warning item in the sidebar list when a user clicks on it to view it on the map/trail.
+*   **Decisions & Rationale**:
+    *   **Interactive Sidebar Styling**: Added `.active` status CSS classes tailored to warning categories (`.climb.active`, `.desert.active`, `.spatial-mismatch.active`) in `src/style.css` to match their respective map polyline highlighting colors with premium background hues and glowing box shadows.
+    *   **Event State Management**: Updated click event handlers on warning list items in `src/main.js` to clear `.active` classes from all other items before applying the highlight to the selected item. Also ensured sidebar highlights are removed when clearing the warning highlight via the broom button.
+*   **Key Actions Taken**:
+    *   Injected active state styles for warning cards in `src/style.css`.
+    *   Configured class toggling logic in `renderWarningsUI` and clear button listeners in `src/main.js`.
+    *   Compiled clean production assets and committed changes.
