@@ -352,5 +352,16 @@ This journal records all design decisions, architecture patterns, development st
     *   Registered `e` / `E` key cases and Escape case closure for `cardImporter` in the keydown handler.
     *   Updated `index.html` shortcuts overlay menu to document the new keybinding.
 
+---
+
+### 🚀 Session 27: Documentation Correction
+*   **Goal**: Refactor the project README.md for complete factual correctness.
+*   **Decisions & Rationale**:
+    *   **Setup Paths**: Changed outdated references pointing to `feature-setup-app/` subdirectory in clone/install steps to the repository root directory, as source code is stored at the root level of worktrees/branches.
+    *   **Feature Inventory**: Documented the Safety Warnings-to-Alerts renaming, the newly integrated Google Weather API forecast capabilities, and the complete keyboard shortcuts table.
+*   **Key Actions Taken**:
+    *   Updated `README.md` and verified build/tests.
+
+
 
 
