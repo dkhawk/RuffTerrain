@@ -1730,6 +1730,13 @@ function renderWarningsUI(route) {
       if (e.target.closest(".warn-toggle")) return;
 
       if (typeof mapController !== "undefined" && mapController && warn.approved) {
+        // Clear active class from all warning items
+        const allItems = warningsList.querySelectorAll(".warning-item");
+        allItems.forEach(i => i.classList.remove("active"));
+
+        // Highlight this item in the sidebar
+        item.classList.add("active");
+
         mapController.highlightWarning(warn);
         if (clearWarningsHighlightBtn) {
           clearWarningsHighlightBtn.classList.remove("hidden");
@@ -1970,6 +1977,10 @@ function setupEventListeners() {
     clearWarningsHighlightBtn.addEventListener("click", () => {
       if (typeof mapController !== "undefined" && mapController) {
         mapController.clearWarningHighlight();
+      }
+      if (warningsList) {
+        const allItems = warningsList.querySelectorAll(".warning-item");
+        allItems.forEach(i => i.classList.remove("active"));
       }
       clearWarningsHighlightBtn.classList.add("hidden");
       showToast("Warning highlight cleared.");
