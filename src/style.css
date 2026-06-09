@@ -440,7 +440,10 @@ body, html {
 }
 
 .panel-top-right {
-  display: none !important; /* Stats are already in the top HUD */
+  top: 76px;
+  right: 24px;
+  width: 300px;
+  height: auto;
 }
 
 .panel-middle-right {
