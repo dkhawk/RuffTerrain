@@ -280,3 +280,14 @@ This journal records all design decisions, architecture patterns, development st
     *   Updated `showPoiDetailDialog` function definition to take `startCollapsed`.
     *   Set `startCollapsed = true` inside the `renderLoop` auto-pause block.
     *   Verified build succeeds, tests pass, and committed changes.
+
+---
+
+### 🚀 Session 22: Restoring Course Profile Panel Visibility
+*   **Goal**: Resolve the issue where the "Fetch & Correct Elevations" and "Export Enhanced GPX" buttons were completely invisible to the user.
+*   **Decisions & Rationale**:
+    *   **Class Overrides Conflict**: Discovered that the `.panel-top-right` class, which holds Card 3 (Route Stats / Course Profile Card), was hardcoded to `display: none !important;` in `src/style.css`. While the intent was to prevent duplicate stats (as they also display on the HUD), this panel contained the critical action buttons for elevation correction and GPX export, making those features completely inaccessible.
+    *   **Restoring Panel Position**: Removed the `display: none !important;` rule and configured proper absolute positioning (`top: 76px; right: 24px; width: 300px; height: auto;`) so that it displays perfectly stacked above the warnings panel on the right side of the screen when a route is loaded or toggled.
+*   **Key Actions Taken**:
+    *   Updated `.panel-top-right` style definitions in `src/style.css`.
+    *   Verified build runs correctly and committed changes.
