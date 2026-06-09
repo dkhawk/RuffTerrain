@@ -933,32 +933,9 @@ hr {
 }
 
 .warning-item.active {
-  background-color: rgba(255, 255, 255, 0.08);
-  border-color: rgba(255, 255, 255, 0.4);
-  box-shadow: 0 0 12px rgba(255, 255, 255, 0.08);
-}
-
-.warning-item.climb.active {
-  background-color: rgba(245, 158, 11, 0.1);
-  border-color: rgba(245, 158, 11, 0.45);
-  box-shadow: 0 0 10px rgba(245, 158, 11, 0.15);
-}
-
-.warning-item.desert.active {
-  background-color: rgba(239, 68, 68, 0.1);
-  border-color: rgba(239, 68, 68, 0.45);
-  box-shadow: 0 0 10px rgba(239, 68, 68, 0.15);
-}
-
-.warning-item.spatial-mismatch.active {
-  background-color: rgba(168, 85, 247, 0.15);
-  border-color: rgba(168, 85, 247, 0.5);
-  box-shadow: 0 0 10px rgba(168, 85, 247, 0.2);
-}
-
-.warnings-list.has-active .warning-item:not(.active) {
-  opacity: 0.45;
-  filter: saturate(40%) contrast(90%);
+  background-color: rgba(255, 255, 255, 0.16) !important;
+  border-color: rgba(255, 255, 255, 0.5) !important;
+  box-shadow: 0 0 10px rgba(255, 255, 255, 0.15) !important;
 }
 
 .warning-item.rejected {

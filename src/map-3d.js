@@ -620,14 +620,6 @@ export class Map3DController {
       }
       this.activeWarningPolyline = null;
     }
-
-    // Restore all standard route lines to their original color & width
-    this.polylines.forEach(poly => {
-      if (poly.originalColor) {
-        poly.strokeColor = poly.originalColor;
-      }
-      poly.strokeWidth = 6;
-    });
   }
 
   /**
@@ -653,18 +645,12 @@ export class Map3DController {
     const warnPts = trackpoints.filter(pt => pt.dist_m >= warn.startDist && pt.dist_m <= warn.endDist);
     if (warnPts.length === 0) return;
 
-    // Mute all standard route lines to make the highlight pop
-    this.polylines.forEach(poly => {
-      poly.strokeColor = "rgba(148, 163, 184, 0.25)";
-      poly.strokeWidth = 4;
-    });
-
-    // 2. Select color based on warning type (vibrant opaque colors)
-    let strokeColor = "#f59e0b"; // default Amber for Resource Deserts
+    // 2. Select color based on warning type (original semi-transparent colors)
+    let strokeColor = "rgba(245, 158, 11, 0.55)"; // default Amber for Resource Deserts
     if (warn.type === "DIFFICULT_CLIMB" || warn.type === "EXPOSURE_RISK") {
-      strokeColor = "#ef4444"; // Red for terrain hazards
+      strokeColor = "rgba(239, 68, 68, 0.6)"; // Red for terrain hazards
     } else if (warn.type === "SPATIAL_MISMATCH") {
-      strokeColor = "#a855f7"; // Purple for spatial mismatches
+      strokeColor = "rgba(168, 85, 247, 0.6)"; // Purple for spatial mismatches
     }
 
     // 3. Create a thick highlight polyline

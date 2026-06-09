@@ -1736,7 +1736,6 @@ function renderWarningsUI(route) {
 
         // Highlight this item in the sidebar
         item.classList.add("active");
-        warningsList.classList.add("has-active");
 
         mapController.highlightWarning(warn);
         if (clearWarningsHighlightBtn) {
@@ -1980,7 +1979,6 @@ function setupEventListeners() {
         mapController.clearWarningHighlight();
       }
       if (warningsList) {
-        warningsList.classList.remove("has-active");
         const allItems = warningsList.querySelectorAll(".warning-item");
         allItems.forEach(i => i.classList.remove("active"));
       }
