@@ -72,9 +72,11 @@
         <span id="course-name-display" class="course-name-tag">NO ROUTE LOADED</span>
         <span id="active-segment-display" class="active-segment-tag hidden"></span>
         <button id="toggle-chat-btn" class="settings-gear-btn hidden" title="Toggle Gemini Chat">💬</button>
-        <button id="toggle-warnings-btn" class="settings-gear-btn hidden" title="Toggle Course Warnings">⚠️</button>
+        <button id="toggle-warnings-btn" class="settings-gear-btn hidden" title="Toggle Course Alerts">⚠️</button>
         <button id="course-info-btn" class="settings-gear-btn hidden" title="Course Description">ℹ️</button>
         <button id="toggle-stats-btn" class="settings-gear-btn hidden" title="Course Stats Panel">📊</button>
+        <button id="toggle-weather-btn" class="settings-gear-btn hidden" title="Weather Forecast">🌤️</button>
+        <kbd id="hud-weather-kbd-indicator" style="display:none;"></kbd>
         <button id="keyboard-shortcuts-btn" class="settings-gear-btn" title="Keyboard Shortcuts (⌨️)">⌨️</button>
         <button id="reset-boulder-btn" class="settings-gear-btn" title="Clear Course and Reset to Boulder">🔄</button>
         <button id="global-settings-btn" class="settings-gear-btn" title="Config Settings">⚙️</button>
@@ -288,20 +290,83 @@
       </div>
     </section>
 
-    <!-- Card 4: Safety Warnings (Middle Right) -->
+    <!-- Card 4: Safety Alerts (Middle Right) -->
     <section id="card-warnings" class="glass-card panel-middle-right hidden">
       <header class="card-header" style="display: flex; justify-content: space-between; align-items: center;">
         <div style="display: flex; align-items: center; gap: 0.5rem;">
-          <h3 style="margin: 0;">Course Warnings</h3>
+          <h3 style="margin: 0;">Alerts</h3>
           <span id="warnings-count" class="badge">0</span>
-          <button id="regenerate-warnings-btn" class="icon-btn" title="Regenerate all warnings" style="background: none; border: none; cursor: pointer; color: var(--text-muted); font-size: 14px;">↺</button>
-          <button id="clear-warnings-highlight-btn" class="icon-btn hidden" title="Clear warning highlight from map" style="background: none; border: none; cursor: pointer; color: var(--text-muted); font-size: 14px;">🧹</button>
+          <button id="regenerate-warnings-btn" class="icon-btn" title="Regenerate all alerts" style="background: none; border: none; cursor: pointer; color: var(--text-muted); font-size: 14px;">↺</button>
+          <button id="clear-warnings-highlight-btn" class="icon-btn hidden" title="Clear alert highlight from map" style="background: none; border: none; cursor: pointer; color: var(--text-muted); font-size: 14px;">🧹</button>
         </div>
-        <button id="close-warnings-btn" class="close-card-btn" title="Hide Warnings Panel">&times;</button>
+        <button id="close-warnings-btn" class="close-card-btn" title="Hide Alerts Panel">&times;</button>
       </header>
       <div class="card-body scrollable">
         <div id="warnings-list" class="warnings-list">
           <!-- Warnings populated dynamically -->
+        </div>
+      </div>
+    </section>
+
+    <!-- Card 6: Weather Forecast Panel (Right Side, under compass or replacing stats) -->
+    <section id="card-weather" class="glass-card panel-weather hidden">
+      <header class="card-header" style="display: flex; justify-content: space-between; align-items: center;">
+        <div style="display: flex; align-items: center; gap: 0.5rem;">
+          <span class="icon">🌤️</span>
+          <div>
+            <h3 style="margin: 0; font-size: 13px;">Weather Forecast</h3>
+            <p id="weather-location-subtitle" class="subtitle" style="margin: 0; font-size: 10px; color: var(--text-muted);">Current Location</p>
+          </div>
+        </div>
+        <button id="close-weather-btn" class="close-card-btn" title="Hide Weather Panel">&times;</button>
+      </header>
+      <div class="card-body">
+        <!-- Loader state -->
+        <div id="weather-loader" class="weather-loader hidden" style="display: flex; align-items: center; justify-content: center; gap: 8px; padding: 20px 0; font-size: 12px; color: var(--text-muted);">
+          <span class="spinner"></span> <span>Loading forecast...</span>
+        </div>
+        <!-- Error state -->
+        <div id="weather-error" class="weather-error hidden" style="text-align: center; color: #ef4444; padding: 20px 0; font-size: 12px;">
+          Failed to load weather forecast.
+        </div>
+        <!-- Loaded state -->
+        <div id="weather-content" class="weather-content">
+          <div class="weather-current-summary" style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 12px; padding-bottom: 12px; border-bottom: 1px solid rgba(255, 255, 255, 0.08);">
+            <div style="display: flex; flex-direction: column;">
+              <span id="weather-current-temp" style="font-size: 28px; font-weight: bold; font-family: var(--font-display);">--°C</span>
+              <span id="weather-current-feels" style="font-size: 11px; color: var(--text-muted);">Feels like --°C</span>
+            </div>
+            <div style="text-align: right; display: flex; flex-direction: column; align-items: flex-end;">
+              <span id="weather-current-emoji" style="font-size: 36px; line-height: 1;">🌡️</span>
+              <span id="weather-current-desc" style="font-size: 12px; font-weight: 500;">No Data</span>
+            </div>
+          </div>
+          
+          <div class="weather-details-grid" style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-bottom: 12px; font-size: 11px;">
+            <div class="weather-detail-item">
+              <span class="lbl" style="color: var(--text-muted);">💨 WIND:</span>
+              <span id="weather-current-wind" class="val" style="font-weight: 500;">--</span>
+            </div>
+            <div class="weather-detail-item">
+              <span class="lbl" style="color: var(--text-muted);">💧 HUMIDITY:</span>
+              <span id="weather-current-humidity" class="val" style="font-weight: 500;">--%</span>
+            </div>
+            <div class="weather-detail-item">
+              <span class="lbl" style="color: var(--text-muted);">🌧️ RAIN PROB:</span>
+              <span id="weather-current-precip" class="val" style="font-weight: 500;">--%</span>
+            </div>
+            <div class="weather-detail-item">
+              <span class="lbl" style="color: var(--text-muted);">☁️ CLOUD COVER:</span>
+              <span id="weather-current-clouds" class="val" style="font-weight: 500;">--%</span>
+            </div>
+          </div>
+
+          <div class="weather-forecast-timeline">
+            <h4 style="margin: 0 0 6px 0; font-size: 10px; text-transform: uppercase; color: var(--text-muted); letter-spacing: 0.5px;">Hourly Forecast:</h4>
+            <div id="weather-forecast-hours-list" style="display: flex; flex-direction: column; gap: 6px; max-height: 140px; overflow-y: auto;">
+              <!-- Hours forecast populated dynamically -->
+            </div>
+          </div>
         </div>
       </div>
     </section>
@@ -353,6 +418,24 @@
             <h4>Available Amenities:</h4>
             <div class="poi-icons-row" id="poi-services-icons-row">
               <!-- Inline SVGs/emojis representing water, food, aid, sleep, etc. -->
+            </div>
+          </div>
+        </div>
+
+        <!-- Waypoint Weather Forecast Section -->
+        <div id="poi-weather-section" class="poi-weather-section hidden" style="margin-top: 10px; padding-top: 10px; border-top: 1px solid rgba(255, 255, 255, 0.08);">
+          <h4 style="margin: 0 0 6px 0; font-size: 11px; text-transform: uppercase; color: var(--text-muted); letter-spacing: 0.5px;">Weather Forecast:</h4>
+          <div class="poi-weather-card" style="display: flex; align-items: center; justify-content: space-between; background: rgba(255,255,255,0.02); border: 1px solid rgba(255,255,255,0.05); padding: 8px 12px; border-radius: 8px;">
+            <div style="display: flex; gap: 10px; align-items: center;">
+              <span id="poi-weather-emoji" style="font-size: 24px; line-height: 1;">🌡️</span>
+              <div style="display: flex; flex-direction: column; text-align: left;">
+                <span id="poi-weather-desc" style="font-size: 12px; font-weight: 500;">Loading...</span>
+                <span id="poi-weather-wind" style="font-size: 10px; color: var(--text-muted);">Wind: --</span>
+              </div>
+            </div>
+            <div style="text-align: right; display: flex; flex-direction: column;">
+              <span id="poi-weather-temp" style="font-size: 16px; font-weight: bold; font-family: var(--font-display);">--°C</span>
+              <span id="poi-weather-precip" style="font-size: 10px; color: var(--text-muted);">Rain: --%</span>
             </div>
           </div>
         </div>
@@ -550,6 +633,18 @@
             <div style="display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid rgba(255,255,255,0.05); padding-bottom: 6px;">
               <span>Toggle Chat Sidebar</span>
               <kbd style="background: rgba(255,255,255,0.15); border: 1px solid rgba(255,255,255,0.2); border-radius: 4px; padding: 2px 6px; font-family: monospace; font-size: 11px; font-weight: bold;">C</kbd>
+            </div>
+            <div style="display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid rgba(255,255,255,0.05); padding-bottom: 6px;">
+              <span>Toggle Alerts Panel</span>
+              <kbd style="background: rgba(255,255,255,0.15); border: 1px solid rgba(255,255,255,0.2); border-radius: 4px; padding: 2px 6px; font-family: monospace; font-size: 11px; font-weight: bold;">A</kbd>
+            </div>
+            <div style="display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid rgba(255,255,255,0.05); padding-bottom: 6px;">
+              <span>Toggle Weather Panel</span>
+              <kbd style="background: rgba(255,255,255,0.15); border: 1px solid rgba(255,255,255,0.2); border-radius: 4px; padding: 2px 6px; font-family: monospace; font-size: 11px; font-weight: bold;">W</kbd>
+            </div>
+            <div style="display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid rgba(255,255,255,0.05); padding-bottom: 6px;">
+              <span>Toggle Edit Course Panel</span>
+              <kbd style="background: rgba(255,255,255,0.15); border: 1px solid rgba(255,255,255,0.2); border-radius: 4px; padding: 2px 6px; font-family: monospace; font-size: 11px; font-weight: bold;">E</kbd>
             </div>
             <div style="display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid rgba(255,255,255,0.05); padding-bottom: 6px;">
               <span>Toggle Edit Lock</span>

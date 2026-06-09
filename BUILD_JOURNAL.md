@@ -305,3 +305,52 @@ This journal records all design decisions, architecture patterns, development st
 *   **Key Actions Taken**:
     *   Added `android-port` worktree and tracked branch in git.
     *   Drafted and saved `android_ux_design_prompt.md` containing absolute-linked image mockup as an artifact.
+
+---
+
+## 📅 June 9, 2026
+
+### 🚀 Session 24: Weather Forecast Integration
+*   **Goal**: Integrate the Google Weather API to display hourly forecasts along the route and waypoint-specific weather metrics.
+*   **Decisions & Rationale**:
+    *   **Throttled API Client & Cache**: Built `src/fetch-weather.js` that rounds coordinates (to 3 decimal places / ~100m precision) and caches results by coordinate grid and time hour to prevent rate-limit exhaustion during scrubber movement.
+    *   **Side-by-Side Right Sidebars**: Added dynamic layout coordinate shifting to `#card-weather` (`.shifted`) so it slides horizontally to the left (`right: 340px`) when the Warnings Panel is open, preventing overlap.
+    *   **POI Weather Widget**: Embedded weather information (temperature, precipitation probability, wind speed/direction, and conditions description) directly inside the POI Detail Dialog (`#poi-detail-dialog`) to enrich waypoint details.
+    *   **Weather Keyboard Shortcut**: Registered the `w` / `W` shortcut key to toggle the Weather Panel, fully documented in the Keyboard Shortcuts modal.
+*   **Key Actions Taken**:
+    *   Created `src/fetch-weather.js` containing API client, local caching, and condition-to-emoji mapping logic.
+    *   Modified `index.html` to add the weather toggle button, the general Weather Forecast Panel, and the POI weather section.
+    *   Appended `.panel-weather` CSS layout and transitions to `src/style.css`.
+    *   Registered DOM variables, event listeners, shift coordinate checking, debounce updates, and keybindings in `src/main.js`.
+    *   Wrote unit tests for condition mappings in `test/gpx.test.js` and confirmed all 6 tests pass.
+    *   Successfully ran `npm install` and verified production builds with `npm run build`.
+
+---
+
+### 🚀 Session 25: Course Alerts Renaming & Keyboard Shortcut
+*   **Goal**: Rename the Course Warnings panel to "Alerts" and map the `a` / `A` key to toggle its visibility.
+*   **Decisions & Rationale**:
+    *   **User-Facing Label Refactoring**: Renamed all user-facing instances of "Course Warnings" to "Course Alerts" or simply "Alerts" (including tooltip descriptions, empty list placeholders, and action headers) to make the panel header matches user request.
+    *   **Alerts Keyboard Shortcut**: Bound `a` / `A` to toggle the Alerts Panel, adding its documentation in the Keyboard Shortcuts help overlay modal.
+    *   **Escape Key Enhancement**: Updated key bindings so that pressing `Escape` now successfully dismisses the Alerts Panel (which previously did not respond to Escape).
+*   **Key Actions Taken**:
+    *   Updated `index.html` header, tooltips, panel title text, and keyboard shortcuts overlay.
+    *   Modified `src/main.js` to rename warning message strings, bind the `a`/`A` key code, and handle Escape closures for `cardWarnings`.
+    *   Ran build and verification loops successfully.
+
+---
+
+### 🚀 Session 26: Edit Course Panel Keyboard Shortcut
+*   **Goal**: Create a keyboard shortcut for toggling the Edit Course panel (`#card-importer`).
+*   **Decisions & Rationale**:
+    *   **Edit Course Keyboard Shortcut**: Bound `e` / `E` to toggle the Edit Course panel (since "Edit" starts with E, which is free and highly mnemonic).
+    *   **Global Variable Refactoring**: Promoted `importTriggerBtn` and `closeImporterBtn` to global module variables in `main.js` so they can be accessed inside keydown handlers without illegal local variable re-assignments.
+    *   **Escape Key Handling**: Configured the Escape key to close the Edit Course panel if it is currently open.
+    *   **Shortcut Documentation**: Added documentation for the `E` shortcut inside the Keyboard Shortcuts help overlay in `index.html`.
+*   **Key Actions Taken**:
+    *   Declared `importTriggerBtn` and `closeImporterBtn` globally in `main.js` and removed local `const` re-declarations inside the DOMContentLoaded handler.
+    *   Registered `e` / `E` key cases and Escape case closure for `cardImporter` in the keydown handler.
+    *   Updated `index.html` shortcuts overlay menu to document the new keybinding.
+
+
+
