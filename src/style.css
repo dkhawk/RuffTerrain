@@ -956,6 +956,11 @@ hr {
   box-shadow: 0 0 10px rgba(168, 85, 247, 0.2);
 }
 
+.warnings-list.has-active .warning-item:not(.active) {
+  opacity: 0.45;
+  filter: saturate(40%) contrast(90%);
+}
+
 .warning-item.rejected {
   display: none;
 }
