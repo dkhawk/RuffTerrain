@@ -1,6 +1,6 @@
-# 🗺️ RuffTerrain (Kokopelli) — 3D Course Architect & Route Visualizer
+# 🗺️ Ruff Terrain — 3D Course Architect & Route Visualizer
 
-RuffTerrain (also known as Kokopelli) is a premium, client-side WebGL web application designed to help race directors, trail runners, and hikers import, enhance, and visualize remote trail courses in high-fidelity 3D. 
+Kokopelli's Ruff Terrain Explorer is a client-side WebGL web application designed to help hikers, trail runners, and other outdoor adventurers import, enrich, and visualize remote trail courses in high-fidelity 3D. 
 
 It overlays route GPX/KML paths onto 3D satellite terrain, calculates detailed safety metrics (difficult climbs and resource gaps), provides an interactive cinematic playback fly-through simulation, and integrates with the **Gemini Course Architect** generative AI to ingest unstructured text or PDFs (such as race detail web pages) to auto-generate checkpoints, aid stations, and safety attributes.
 
@@ -10,13 +10,14 @@ It overlays route GPX/KML paths onto 3D satellite terrain, calculates detailed s
 
 1. **High-Fidelity 3D Map Renderer**: Embeds the Google Maps JavaScript 3D Maps API to track routes, color-code steep climbs vs. descents, and display custom 3D interactive waypoint markers.
 2. **Resilient Elevation Correction**: Batches coordinate coordinates to fetch real-world ground elevations from Open-Meteo with an automatic Open-Elevation fallback, then applies an 11-point moving average filter.
-3. **Safety Warnings Engine**: Automatically evaluates routes for:
+3. **Safety Alerts Engine**: Automatically evaluates routes for:
    * **Resource Deserts**: Gaps between water/food sources exceeding 5 miles (~8km).
    * **Difficult Climbs**: Steep climbs (grade > 3.5%) categorized by difficulty scores (Moderate to Extreme).
    * **Spatial Mismatches**: Waypoints whose coordinates sit more than 2,000 meters off-route.
 4. **Gemini Course Architect Chat**: Direct Gemini AI integration using strict JSON schemas to modify, add, or override waypoints from chat commands or uploaded PDF race guides (parsed client-side using PDF.js).
-5. **Course Profile Canvas Scrubber**: A high-DPI retina-calibrated Canvas elevation chart displaying climbs, custom warning highlights, and real-time hover telemetries.
+5. **Course Profile Canvas Scrubber**: A high-DPI retina-calibrated Canvas elevation chart displaying climbs, custom alerts highlight, and real-time hover telemetries.
 6. **Export Enhanced GPX**: Serializes course configurations back into standard GPX decorated with custom `ca:` namespace XML annotations to preserve aid station details.
+7. **Weather Forecast Integration**: Integrates the Google Weather API to display 3-hour forecasts, wind speed/direction, humidity, cloud cover, and precipitation probability along the scrubber timeline and within checkpoint details dialogs.
 
 ---
 
@@ -26,6 +27,7 @@ It overlays route GPX/KML paths onto 3D satellite terrain, calculates detailed s
 * **Map Engine**: Google Maps JavaScript 3D Maps API (`Map3DElement`, `Polyline3DElement`, `Marker3DInteractiveElement`).
 * **Visuals & Charts**: HTML5 Canvas API (custom drawing with device-pixel-ratio scaling).
 * **AI Integration**: Google Gemini API via HTTPS REST (`v1beta` endpoint).
+* **Weather Integration**: Google Weather API via HTTPS REST (`forecast/hours:lookup` endpoint).
 * **Bundler & Server**: Vite JS dev & production builds.
 * **Testing Suite**: Native Node.js Test Runner.
 
@@ -46,7 +48,7 @@ Before starting, ensure you have the following installed on your machine:
 ### 1. Clone the Repository
 ```bash
 git clone https://github.com/dkhawk/RuffTerrain.git
-cd RuffTerrain/feature-setup-app
+cd RuffTerrain
 ```
 
 ### 2. Install Dependencies
@@ -55,7 +57,7 @@ npm install
 ```
 
 ### 3. Environment Configuration
-Create a `.env.local` file inside the `feature-setup-app` directory to store your credentials:
+Create a `.env.local` file inside the root directory to store your credentials:
 ```bash
 VITE_MAPS_API_KEY=your_google_maps_api_key_here
 VITE_GEMINI_API_KEY=your_gemini_api_key_here
@@ -67,13 +69,32 @@ VITE_GEMINI_API_KEY=your_gemini_api_key_here
 ```bash
 npm run dev
 ```
-Open the URL shown in your terminal (usually **http://localhost:5173/** or **http://localhost:5174/**) in your browser.
+Open the URL shown in your terminal (usually something like **http://localhost:5173/**) in your browser.
 
 ### 5. Run the Test Suite
 To run the local unit tests (covering GPX/KML parsing, custom XML annotations, sorting, and helper logic):
 ```bash
 npm test
 ```
+
+---
+
+## ⌨️ Keyboard Shortcuts
+
+RuffTerrain includes keyboard shortcuts to speed up route analysis and planning:
+
+| Key | Action |
+| --- | --- |
+| `Space` | Toggle Fly-Through Play / Pause |
+| `[` / `]` | Decrease / Increase playback speed |
+| `C` / `c` | Toggle Gemini Chat Panel |
+| `A` / `a` | Toggle Safety Alerts Panel |
+| `W` / `w` | Toggle Weather Forecast Panel |
+| `E` / `e` | Toggle Open / Import (Edit Course) Panel |
+| `L` / `l` | Toggle Track Lock state |
+| `Home` / `End` | Jump simulation playback to Start / Finish |
+| `Esc` | Close active dialogs, settings, or side panels |
+| `?` | Toggle Keyboard Shortcuts Help Overlay |
 
 ---
 
@@ -136,7 +157,7 @@ When exporting GPX files, RuffTerrain injects custom XML namespace metadata unde
 ## 📦 Directory Structure
 
 ```
-feature-setup-app/
+.
 ├── index.html            # Main markup layout, HUD panels, and templates
 ├── package.json          # Node scripts and dependencies (Vite, PDF.js, etc.)
 ├── test/                 # Test files (TAP-based unit tests)
@@ -144,11 +165,12 @@ feature-setup-app/
 └── src/
     ├── main.js           # Core controller; coordinates playback, UI state, and storage
     ├── style.css         # CSS variables, premium glassmorphism tokens, and animations
-    ├── gpx-parser.js     # GPX/KML parsers, distance math, snapping, warnings engine
+    ├── gpx-parser.js     # GPX/KML parsers, distance math, snapping, alerts engine
     ├── gpx-writer.js     # Serializes route state to valid XML GPX with ca: namespaces
     ├── map-3d.js         # Controls WebGL Map3DElement camera, pins, and tracklines
     ├── elevation-chart.js# Canvas-based high-DPI elevation scrubber chart
     ├── fetch-elevation.js# Resilient elevation corrector (batching, retry logic, fallback)
+    ├── fetch-weather.js  # Resilient weather forecaster (caching, condition mapping)
     └── gemini-client.js  # Interconnects user inputs/files with Gemini REST API
 ```
 
@@ -157,7 +179,7 @@ feature-setup-app/
 ## 🔧 Troubleshooting
 
 ### Flat Elevation Profile
-* **Issue**: Imported GPX file does not contain elevation tags, resulting in a flat elevation profile line (0 elevation) and no climb warning calculations.
+* **Issue**: Imported GPX file does not contain elevation tags, resulting in a flat elevation profile line (0 elevation) and no climb alert calculations.
 * **Fix**: Use the **`⚡ Fetch & Correct Elevations`** button located at the bottom of the **Edit Course** panel. The app will fetch satellite-derived elevation data from Open-Meteo and rebuild the elevation profile and climb stats. Export the corrected file using **`📥 Export Enhanced GPX`** to save the elevation data back into your GPX file.
 
 ### WebGL Map Fails to Render
