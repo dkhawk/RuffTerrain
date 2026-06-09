@@ -894,3 +894,13 @@ This journal records all design decisions, architecture patterns, development st
 *   **Key Actions Taken**:
     *   Updated `parseGPX` and `parseKML` in `src/gpx-parser.js`.
     *   Rebuilt production bundle successfully via `npm run build`.
+
+---
+
+### 🚀 Session 30: Android Project Setup & Maps 3D Configuration
+*   **Goal**: Initialize a modern Kotlin Android project and configure target dependencies (Maps 3D SDK, Compose Lifecycle, Play Services) safely using Version Catalogs.
+*   **Decisions & Rationale**:
+    *   **Android Architecture Setup**: Bootstrapped a baseline Android module (`app`) targeting Compose UI and standard Google Maps Platform 3D SDK. Excluded all web modules to establish mobile development boundaries.
+*   **Key Actions Taken**:
+    *   Configured root build files, Gradle properties, AndroidManifest, and UI components.
+    *   Created `MainActivity`, `MainScreen`, and ViewModel tests.
