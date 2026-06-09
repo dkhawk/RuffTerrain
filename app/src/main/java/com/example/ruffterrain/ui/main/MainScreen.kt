@@ -19,16 +19,13 @@ fun MainScreen(
   viewModel: MainScreenViewModel = viewModel { MainScreenViewModel(DefaultDataRepository()) },
 ) {
   val state by viewModel.uiState.collectAsStateWithLifecycle()
-  when (state) {
-    MainScreenUiState.Loading -> {
-      // Blank
-    }
-    is MainScreenUiState.Success -> {
-      MainScreen(data = (state as MainScreenUiState.Success).data, modifier = modifier)
-    }
-    is MainScreenUiState.Error -> {
-      Text("Error loading data: ${(state as MainScreenUiState.Error).throwable.message}")
-    }
+  if (state.isLoading) {
+    // Show empty loading
+  } else if (state.errorMessage != null) {
+    Text("Error loading data: ${state.errorMessage}")
+  } else {
+    val courseName = state.courseData?.name ?: "No Course"
+    MainScreen(data = listOf(courseName), modifier = modifier)
   }
 }
 
