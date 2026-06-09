@@ -1,2 +1,0 @@
-Add an aid station called "Barr Camp" located at 38.847792366337856, -105.00694879614652.
-Add an aid station called "Pikes Peak Summit House" located at 38.84075954127663, -105.0425246751654.
