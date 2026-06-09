@@ -905,7 +905,7 @@ function startPlayback() {
       const isMultiPass = crossedPass !== null;
       lastPausedPoiId = isMultiPass ? `${reachedPoi.id}-pass-${crossedPass.num}` : reachedPoi.id;
       pausePlayback();
-      showPoiDetailDialog(reachedPoi, reachedPoi.closestTrackpointIndex, playbackDistance);
+      showPoiDetailDialog(reachedPoi, reachedPoi.closestTrackpointIndex, playbackDistance, true);
       return; 
     }
 
@@ -1039,7 +1039,7 @@ function renderEditAmenities(wpt) {
  * @param {Object} wpt Waypoint details parsed from GPX schema
  * @param {number} index Trackpoint index snapping point
  */
-function showPoiDetailDialog(wpt, index, referenceDist = null) {
+function showPoiDetailDialog(wpt, index, referenceDist = null, startCollapsed = false) {
   if (!poiDetailDialog) return;
 
   activeDialogWpt = wpt;
@@ -1247,8 +1247,12 @@ function showPoiDetailDialog(wpt, index, referenceDist = null) {
     poiTableRows.appendChild(tr);
   }
 
-  // Start in expanded state so user immediately sees all details
-  poiDetailDialog.classList.remove("collapsed");
+  // Setup collapsed or expanded initial view states
+  if (startCollapsed) {
+    poiDetailDialog.classList.add("collapsed");
+  } else {
+    poiDetailDialog.classList.remove("collapsed");
+  }
   poiDetailDialog.classList.remove("hidden");
 
   // Setup auto-resume timeout (skip if settings pauseTime is set to 0)
