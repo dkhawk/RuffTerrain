@@ -256,3 +256,15 @@ This journal records all design decisions, architecture patterns, development st
     *   Updated `src/map-3d.js` to store original colors, thin/mute unselected polylines, and use opaque highlight colors.
     *   Implemented `.has-active` toggling in `src/main.js` and sidebar styles in `src/style.css`.
     *   Verified build runs correctly and committed changes.
+
+---
+
+### 🚀 Session 20: Refined Warning Card Highlighting & Map Reversion
+*   **Goal**: Simplify the safety warning selection style based on user feedback. Revert high-contrast map polyline muting and resolve sidebar highlighting muddy gray visual confusion.
+*   **Decisions & Rationale**:
+    *   **Map Scheme Reversion**: Reverted `Map3D`'s warning overlay rendering in `src/map-3d.js` to draw the thick, semi-transparent highlight overlay (`strokeWidth: 14`) using the original colors (`rgba(245, 158, 11, 0.55)`, `rgba(239, 68, 68, 0.6)`, and `rgba(168, 85, 247, 0.6)`) directly over the fully colored, un-muted track segments.
+    *   **Simplified Sidebar Active State**: Replaced type-specific, low-opacity active sidebar colors (which mixed with dark cards to look muddy/disabled) with a clean, high-contrast, semi-transparent white highlight: `.warning-item.active { background-color: rgba(255, 255, 255, 0.16) !important; border-color: rgba(255, 255, 255, 0.5) !important; }`. Removed the list item dimming/grayscale logic (`.has-active`) to preserve normal sidebar visual context.
+*   **Key Actions Taken**:
+    *   Restored original coloring and polyline states in `src/map-3d.js` and removed muting routines.
+    *   Refactored active sidebar classes in `src/style.css` and removed `.has-active` helper toggles from `src/main.js`.
+    *   Built the app and committed changes.
