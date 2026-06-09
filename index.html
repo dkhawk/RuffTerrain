@@ -174,6 +174,22 @@
           <span style="font-size: 10px; color: var(--text-muted); text-align: center; font-style: italic; padding: 6px 0;">No waypoints loaded.</span>
         </div>
 
+        <div class="action-buttons" style="display: flex; flex-direction: column; gap: 6px; margin-top: 10px; border-top: 1px solid rgba(255,255,255,0.08); padding-top: 10px;">
+          <button id="correct-elevation-btn" class="btn btn-secondary w-100" style="font-size: 12px; height: 32px; padding: 0; display: flex; align-items: center; justify-content: center; gap: 6px;">
+            <span>⚡ Fetch & Correct Elevations</span>
+          </button>
+          <div id="elevation-progress" class="progress-bar-container hidden" style="margin-bottom: 2px;">
+            <div class="progress-bar">
+              <div id="elevation-progress-fill" class="progress-fill"></div>
+            </div>
+            <span id="elevation-progress-label" class="progress-label">Fetching: 0%</span>
+          </div>
+          
+          <button id="export-gpx-btn" class="btn btn-primary w-100" style="font-size: 12px; height: 32px; padding: 0; display: flex; align-items: center; justify-content: center; gap: 6px;">
+            <span>📥 Export Enhanced GPX</span>
+          </button>
+        </div>
+
 
       </div>
     </section>
@@ -268,23 +284,7 @@
           <span id="active-climb-text">Remaining: 0.0 mi (+0ft)</span>
         </div>
 
-        <hr/>
 
-        <div class="action-buttons">
-          <button id="correct-elevation-btn" class="btn btn-secondary w-100 mb-2">
-            <span>⚡ Fetch & Correct Elevations</span>
-          </button>
-          <div id="elevation-progress" class="progress-bar-container hidden">
-            <div class="progress-bar">
-              <div id="elevation-progress-fill" class="progress-fill"></div>
-            </div>
-            <span id="elevation-progress-label" class="progress-label">Fetching: 0%</span>
-          </div>
-          
-          <button id="export-gpx-btn" class="btn btn-primary w-100">
-            <span>📥 Export Enhanced GPX</span>
-          </button>
-        </div>
       </div>
     </section>
 
