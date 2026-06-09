@@ -283,11 +283,13 @@ This journal records all design decisions, architecture patterns, development st
 
 ---
 
-### 🚀 Session 22: Restoring Course Profile Panel Visibility
-*   **Goal**: Resolve the issue where the "Fetch & Correct Elevations" and "Export Enhanced GPX" buttons were completely invisible to the user.
+### 🚀 Session 22: Relocating Action Buttons to "Edit Course" Panel
+*   **Goal**: Resolve the issue where the "Fetch & Correct Elevations" and "Export Enhanced GPX" buttons were completely invisible or overlapped with the "Course Warnings" panel.
 *   **Decisions & Rationale**:
-    *   **Class Overrides Conflict**: Discovered that the `.panel-top-right` class, which holds Card 3 (Route Stats / Course Profile Card), was hardcoded to `display: none !important;` in `src/style.css`. While the intent was to prevent duplicate stats (as they also display on the HUD), this panel contained the critical action buttons for elevation correction and GPX export, making those features completely inaccessible.
-    *   **Restoring Panel Position**: Removed the `display: none !important;` rule and configured proper absolute positioning (`top: 76px; right: 24px; width: 300px; height: auto;`) so that it displays perfectly stacked above the warnings panel on the right side of the screen when a route is loaded or toggled.
+    *   **Class Overrides & Overlaps**: Discovered that Card 3 (Route Stats / Course Profile Card) was originally hidden via CSS `display: none !important` because the stats themselves duplicate the top HUD. However, this card also contained the only buttons for correcting elevations and exporting GPX.
+    *   **Avoiding Overlaps**: After briefly enabling Card 3, we noticed that it overlapped heavily with the "Course Warnings" card (`.panel-middle-right`) on the right side of the screen.
+    *   **UI Redesign**: Instead of stacking cards on the right, we relocated the **"⚡ Fetch & Correct Elevations"** and **"📥 Export Enhanced GPX"** buttons directly to the bottom of the **"Edit Course" (Card 1)** panel on the left. This keeps the right side clean, aligns perfectly with the user's edit-then-export workflow, and keeps Card 3 cleanly hidden via the original CSS rules.
 *   **Key Actions Taken**:
-    *   Updated `.panel-top-right` style definitions in `src/style.css`.
-    *   Verified build runs correctly and committed changes.
+    *   Moved action buttons markup from Card 3 to Card 1 in `index.html`.
+    *   Restored `.panel-top-right { display: none !important; }` in `src/style.css` to keep Card 3 hidden and prevent visual overlapping.
+    *   Verified build succeeds, tests pass, and committed changes.
