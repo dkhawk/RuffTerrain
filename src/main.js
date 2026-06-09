@@ -105,6 +105,8 @@ const compassDegrees = document.getElementById("compass-degrees");
 
 // Left panel components (Importer & Gemini chatbot)
 const cardImporter = document.getElementById("card-importer");
+const importTriggerBtn = document.getElementById("import-trigger-btn");
+const closeImporterBtn = document.getElementById("close-importer-btn");
 const dropZone = document.getElementById("drop-zone");
 const fileSelector = document.getElementById("file-selector");
 const editLockCheckbox = document.getElementById("edit-lock-checkbox");
@@ -2170,7 +2172,6 @@ function setupEventListeners() {
   closeSettingsBtn.addEventListener("click", () => settingsOverlay.classList.add("hidden"));
 
   // Open / Import trigger toggles the importer card panel
-  const importTriggerBtn = document.getElementById("import-trigger-btn");
   if (importTriggerBtn && cardImporter) {
     importTriggerBtn.addEventListener("click", () => {
       cardImporter.classList.toggle("hidden");
@@ -2178,7 +2179,6 @@ function setupEventListeners() {
   }
 
   // Close importer button hides the panel
-  const closeImporterBtn = document.getElementById("close-importer-btn");
   if (closeImporterBtn && cardImporter) {
     closeImporterBtn.addEventListener("click", () => {
       cardImporter.classList.add("hidden");
@@ -3260,6 +3260,13 @@ function setupKeyboardShortcuts() {
         }
         break;
 
+      case "e":
+      case "E":
+        if (importTriggerBtn) {
+          importTriggerBtn.click();
+        }
+        break;
+
       case "w":
       case "W":
         if (toggleWeatherBtn && !toggleWeatherBtn.classList.contains("hidden")) {
@@ -3288,6 +3295,9 @@ function setupKeyboardShortcuts() {
         }
         if (cardWarnings && !cardWarnings.classList.contains("hidden")) {
           closeWarningsBtn.click();
+        }
+        if (cardImporter && !cardImporter.classList.contains("hidden")) {
+          closeImporterBtn.click();
         }
         break;
 

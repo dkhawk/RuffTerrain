@@ -338,4 +338,19 @@ This journal records all design decisions, architecture patterns, development st
     *   Modified `src/main.js` to rename warning message strings, bind the `a`/`A` key code, and handle Escape closures for `cardWarnings`.
     *   Ran build and verification loops successfully.
 
+---
+
+### 🚀 Session 26: Edit Course Panel Keyboard Shortcut
+*   **Goal**: Create a keyboard shortcut for toggling the Edit Course panel (`#card-importer`).
+*   **Decisions & Rationale**:
+    *   **Edit Course Keyboard Shortcut**: Bound `e` / `E` to toggle the Edit Course panel (since "Edit" starts with E, which is free and highly mnemonic).
+    *   **Global Variable Refactoring**: Promoted `importTriggerBtn` and `closeImporterBtn` to global module variables in `main.js` so they can be accessed inside keydown handlers without illegal local variable re-assignments.
+    *   **Escape Key Handling**: Configured the Escape key to close the Edit Course panel if it is currently open.
+    *   **Shortcut Documentation**: Added documentation for the `E` shortcut inside the Keyboard Shortcuts help overlay in `index.html`.
+*   **Key Actions Taken**:
+    *   Declared `importTriggerBtn` and `closeImporterBtn` globally in `main.js` and removed local `const` re-declarations inside the DOMContentLoaded handler.
+    *   Registered `e` / `E` key cases and Escape case closure for `cardImporter` in the keydown handler.
+    *   Updated `index.html` shortcuts overlay menu to document the new keybinding.
+
+
 
