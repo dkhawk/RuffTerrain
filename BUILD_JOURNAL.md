@@ -243,3 +243,16 @@ This journal records all design decisions, architecture patterns, development st
     *   Injected active state styles for warning cards in `src/style.css`.
     *   Configured class toggling logic in `renderWarningsUI` and clear button listeners in `src/main.js`.
     *   Compiled clean production assets and committed changes.
+
+---
+
+### 🚀 Session 19: High-Contrast Map and Sidebar Highlighting
+*   **Goal**: Resolve contrast issues where map warning segment highlights mixed with satellite terrain textures, making them look desaturated/gray and backwards.
+*   **Decisions & Rationale**:
+    *   **Main Track Dimmings**: Modified `addPolylineSegment` to retain `originalColor` on `Polyline3DElement` instances. When a warning is highlighted on the map, the rest of the main route segments are dynamically muted to a semi-transparent slate gray (`rgba(148, 163, 184, 0.25)`) and thinned.
+    *   **Solid Neon Highlights**: Configured the warning highlight segment to render in 100% solid, opaque, vibrant neon colors (Neon Amber `#f59e0b`, Neon Red `#ef4444`, Neon Purple `#a855f7`) at an increased thickness (`strokeWidth: 14`).
+    *   **Sidebar Exclusions**: Set up a container class `.has-active` on the warnings list when a warning is highlighted, which reduces the opacity of all non-focused warning items in the sidebar to `0.45` and applies a grayscale filter, creating absolute clarity of focus.
+*   **Key Actions Taken**:
+    *   Updated `src/map-3d.js` to store original colors, thin/mute unselected polylines, and use opaque highlight colors.
+    *   Implemented `.has-active` toggling in `src/main.js` and sidebar styles in `src/style.css`.
+    *   Verified build runs correctly and committed changes.
