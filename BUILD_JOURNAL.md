@@ -293,3 +293,15 @@ This journal records all design decisions, architecture patterns, development st
     *   Moved action buttons markup from Card 3 to Card 1 in `index.html`.
     *   Restored `.panel-top-right { display: none !important; }` in `src/style.css` to keep Card 3 hidden and prevent visual overlapping.
     *   Verified build succeeds, tests pass, and committed changes.
+
+---
+
+### 🚀 Session 23: Android Port UX Specification & Worktree Setup
+*   **Goal**: Create a new worktree and branch for the Android port, and draft a high-fidelity design prompt/spec for the UX designer.
+*   **Decisions & Rationale**:
+    *   **Worktree Separation**: Created an isolated worktree and branch named `android-port` to separate the upcoming native Android development from the web application repository state.
+    *   **Interactive Mobile UX Design**: Structured a detailed mobile UX design prompt specifying custom glassmorphism theme styling, full-screen map backgrounds, bottom sheet drawer controllers, map-pan target reticles for adding waypoints, warning markers directly overlaying the map/chart paths, and empty-state onboarding imports.
+    *   **UI Mockup Generation**: Utilized image generation to render a high-fidelity portrait UI mockup illustrating the layout balance of the map, compass, playback controllers, and bottom telemetry panel.
+*   **Key Actions Taken**:
+    *   Added `android-port` worktree and tracked branch in git.
+    *   Drafted and saved `android_ux_design_prompt.md` containing absolute-linked image mockup as an artifact.
