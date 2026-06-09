@@ -268,3 +268,15 @@ This journal records all design decisions, architecture patterns, development st
     *   Restored original coloring and polyline states in `src/map-3d.js` and removed muting routines.
     *   Refactored active sidebar classes in `src/style.css` and removed `.has-active` helper toggles from `src/main.js`.
     *   Built the app and committed changes.
+
+---
+
+### 🚀 Session 21: Correcting Playback POI Auto-Resume
+*   **Goal**: Fix the playback auto-resume behavior where the fly-through got stuck indefinitely when pausing at a POI (waypoint).
+*   **Decisions & Rationale**:
+    *   **Context-Based Collapse Default**: The auto-resume timeout is conditioned on the POI detail dialog being in the `collapsed` state (to allow users to freeze the timeline by expanding the card manually). However, `showPoiDetailDialog` was hardcoded to start in the `expanded` state, breaking the auto-resume check.
+    *   **Conditional Collapsed parameter**: Added `startCollapsed` to `showPoiDetailDialog` in `src/main.js`. It defaults to `false` for manual edits (so they open expanded) but is set to `true` when called during playback auto-pauses in the render loop. This correctly triggers the timer to resume the fly-through.
+*   **Key Actions Taken**:
+    *   Updated `showPoiDetailDialog` function definition to take `startCollapsed`.
+    *   Set `startCollapsed = true` inside the `renderLoop` auto-pause block.
+    *   Verified build succeeds, tests pass, and committed changes.
