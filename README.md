@@ -175,7 +175,7 @@ When exporting GPX files, RuffTerrain injects custom XML namespace metadata unde
 ```
 
 ## 📱 Scan to Visit Repository
-Scan the QR code below to quickly open the GitHub repository on your mobile device:
+Scan the QR code below to quickly open the GitHub repository:
 
 ![RuffTerrain GitHub Repository Link](public/qrcode-noble.png)
 
