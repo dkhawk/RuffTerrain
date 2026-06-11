@@ -174,10 +174,10 @@ When exporting GPX files, RuffTerrain injects custom XML namespace metadata unde
     └── gemini-client.js  # Interconnects user inputs/files with Gemini REST API
 ```
 
-## 📱 Scan & Mobile Visualizer
-Scan the QR code below to load and visualize course terrains on your mobile device:
+## 📱 Scan to Visit Repository
+Scan the QR code below to quickly open the GitHub repository on your mobile device:
 
-![RuffTerrain QR Link](public/qrcode-noble.png)
+![RuffTerrain GitHub Repository Link](public/qrcode-noble.png)
 
 ---
 
