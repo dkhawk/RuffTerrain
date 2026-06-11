@@ -362,6 +362,82 @@ This journal records all design decisions, architecture patterns, development st
 *   **Key Actions Taken**:
     *   Updated `README.md` and verified build/tests.
 
+---
 
+### 🚀 Session 28: Favicon Branding Update
+*   **Goal**: Update the favicon of the application to use the custom dog drawing logo (`/noble-dog.jpg`).
+*   **Decisions & Rationale**:
+    *   **Branding Consistency**: Changed the default favicon from `favicon.svg` to `/noble-dog.jpg` to align with the visual logo branding used in the title of the HUD dashboard.
+*   **Key Actions Taken**:
+    *   Modified the icon shortcut link tag in `index.html` to reference `noble-dog.jpg`.
 
+---
+
+### 🚀 Session 29: Android Port Initialization
+*   **Goal**: Initialize a new Android project and configure the Google Maps 3D SDK and Secrets Gradle Plugin.
+*   **Decisions & Rationale**:
+    *   **Subproject Cleanup**: Deleted redundant web application source files inside the `android-port` worktree (as they are already tracked and available in the `main` worktree) to start clean.
+    *   **Project Template**: Leveraged the `empty-activity` project creation template targeting Jetpack Compose, Kotlin, and Android Gradle Plugin 9.0.
+    *   **SDK & Secrets Setup**: Configured the version catalog (`libs.versions.toml`) to include `play-services-maps3d` (0.2.0) and `secrets-gradle-plugin` (2.0.1).
+    *   **Security Enforcement**: Generated the standard `local.defaults.properties` and `secrets.properties` API key storage files and configured `.gitignore` to prevent any accidental credentials check-ins.
+    *   **Manifest Configuration**: Added the INTERNET permission and registered the Maps 3D API key metadata entry pointing to the secrets variable.
+*   **Key Actions Taken**:
+    *   Initialized the project skeleton using the `android` CLI tool.
+    *   Updated versions catalog and build scripts to reference Maps 3D libraries and applied the secrets plugin.
+    *   Modified `AndroidManifest.xml` and created properties configuration files.
+    *   Ran build compilation (`./gradlew assembleDebug`) and verified it completes successfully.
+
+---
+
+### 🚀 Session 30: Parser & State Foundation
+*   **Goal**: Create core data models, design a portable GPX parser, and integrate a reactive course repository and state.
+*   **Decisions & Rationale**:
+    *   **Data Models**: Structured `RoutePoint` and `CourseData` in `CourseModels.kt` to model spatial, metric, alert, and weather data.
+    *   **JDK DOM Parsing**: Replaced Android's platform-specific `XmlPullParser` with standard JDK `DocumentBuilderFactory` to ensure the GPX parsing logic is 100% portable and cross-platform.
+    *   **JVM Unit Testing**: Leveraged a custom `Haversine` distance calculator instead of `Location.distanceBetween` to avoid stub runtime errors during fast, local JVM testing.
+    *   **Reactive State**: Refactored `DataRepository` and `MainScreenViewModel` to expose flat state attributes (`isLoading`, `errorMessage`, `scrubberProgress`) instead of a rigid sealed class, enabling incremental screen updates.
+*   **Key Actions Taken**:
+    *   Wrote `CourseModels.kt`, `GpxParser.kt`, and `Haversine.kt`.
+    *   Created `GpxParserTest.kt` unit tests using classloader assets.
+    *   Integrated state/viewModel code and fixed layout compilation references.
+    *   Ran and passed all unit tests locally.
+
+---
+
+### 🚀 Session 31: UI and Map 3D viewport integration
+*   **Goal**: Hook up custom 3D Map, Canvas elevation scrubber chart, and dashboard playback controls.
+*   **Decisions & Rationale**:
+    *   **Resolve Maps 3D Packages**: Standardized package namespaces pointing to the modern `com.google.android.gms.maps3d` namespace for Map3DView and GoogleMap3D components, resolving unresolved reference errors.
+    *   **Options and Styling Refactoring**: Switched Map3DOptions to use explicit constructor parameters, avoiding builder reassignment limitations. Wrapped Marker Pin Configuration styling inside the correct `setStyle(pinConfiguration { ... })` builder DSL.
+    *   **Lightweight UI Elements**: Swapped material-icons-extended references for styled Unicode symbols to avoid classpath conflicts and keep dependencies extremely clean.
+    *   **Compiler Smart Casts**: Cached delegated VM states to a local Kotlin variable to allow smart-casting to non-null CourseData during chart rendering.
+*   **Key Actions Taken**:
+    *   Updated `Map3DContainer.kt`, `MainScreen.kt`, and `Navigation.kt` layouts.
+    *   Built and verified that local JVM unit tests compile and pass.
+    *   Deployed debug APK to `emulator-5554` and successfully launched the spatial dashboard UI.
+
+---
+
+### 🚀 Session 32: Resolving Maps 3D Dynamite addMarker Crash
+*   **Goal**: Prevent application crash (NullPointerException) when a GPX course is loaded.
+*   **Decisions & Rationale**:
+    *   **Dynamite NPE Diagnosis**: Analyzed logcat trace pointing to `GoogleMap3D.addMarker` crash in `maps3d_dynamite` policy module. Discovered that if `style`, `label`, or `glyph` are missing (null) inside `markerOptions`, the binder/Dynamite serialization crashes when trying to invoke `.getClass()` on them.
+    *   **Fully Configured Marker Options**: Re-enabled styling and added default fallback values: `label = "Runner"`, `setStyle(...)`, and nested `setGlyph(...)` initialization to ensure no required properties are null.
+    *   **Kotlin DSL Builder Setter Syntax**: Invoked `setGlyph(Glyph.fromText("•"))` instead of property assignment to comply with the read-only properties constraint in the builder.
+*   **Key Actions Taken**:
+    *   Modified `Map3DContainer.kt` focal marker configuration inside `markerOptions`.
+    *   Verified the project compiles cleanly and unit tests pass.
+    *   Pushed a test GPX course to the emulator and automated SAF file picking. Verified that the map viewport initializes and loads the route successfully with zero runtime exceptions.
+
+---
+
+### 🚀 Session 33: QR Code Integration and Documentation Synchronization
+*   **Goal**: Add the QR code image link to the project and synchronize documentation.
+*   **Decisions & Rationale**:
+    *   **Synchronization with Corrected Docs**: Checked out `README.md` from the `docs/readme-updates` branch to ensure all Vite setup paths, instructions, and directory structures are factually correct (removing outdated subdirectory paths).
+    *   **QR Code Reference**: Added the QR code asset `/public/qrcode-noble.png` and referenced it under a clean "Scan to Visit Repository" section, removing mobile device references.
+*   **Key Actions Taken**:
+    *   Created local branch `feature/qrcode` and checked it out inside a separate git worktree.
+    *   Copied the image asset from Downloads to `public/qrcode-noble.png`.
+    *   Updated `README.md` and committed all changes cleanly to the local branch.
 
