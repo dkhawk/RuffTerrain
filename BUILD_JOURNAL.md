@@ -480,3 +480,18 @@ This journal records all design decisions, architecture patterns, development st
     *   Created GitHub Actions deployment workflow at `.github/workflows/deploy-pages.yml`.
     *   Ran `npm run build` and verified clean production bundle generation in `dist/`.
 
+---
+
+### 🚀 Session 37: Interactive Hotkeys for Camera Range and Tilt
+*   **Goal**: Add keyboard shortcuts (hotkeys) to adjust the 3D map camera range (zoom) and camera tilt angle dynamically.
+*   **Decisions & Rationale**:
+    *   **Mnemonic & Ergonomic Key Mappings**:
+        *   **Camera Range (Zoom)**: Mapped `-` / `_` (Zoom Out / +100m) and `=` / `+` (Zoom In / -100m). Also mapped `r` (+100m) / `R` (-100m) as letter mnemonics.
+        *   **Camera Tilt Angle**: Mapped `▲` (`ArrowUp` / `PageUp` / `t` for +5°) and `▼` (`ArrowDown` / `PageDown` / `T` for -5°).
+    *   **Synchronous Slider Event Dispatch**: Dispatching standard `input` events directly to `cameraRangeSlider` and `cameraTiltSlider` so that hotkeys instantly persist changes to `localStorage` and trigger camera lerp updates via existing controllers.
+    *   **Help Modal Documentation**: Added shortcut documentation entries inside the Keyboard Shortcuts help overlay (`#shortcuts-overlay`).
+*   **Key Actions Taken**:
+    *   Updated `index.html` keyboard shortcuts overlay list.
+    *   Added hotkey switch cases to `src/main.js`.
+    *   Rebuilt production bundle with `npm run build` and updated static `dist/index.html` classic execution defer tags.
+
