@@ -495,3 +495,14 @@ This journal records all design decisions, architecture patterns, development st
     *   Added hotkey switch cases to `src/main.js`.
     *   Rebuilt production bundle with `npm run build` and updated static `dist/index.html` classic execution defer tags.
 
+---
+
+### 🚀 Session 38: Reset Playback and Camera on New Course Load
+*   **Goal**: Ensure loading a new GPX/KML course stops active playback and fully resets the scrubber and map camera to the start of the new course.
+*   **Decisions & Rationale**:
+    *   **Automatic Playback Reset**: Added `pausePlayback()` and `playbackDistance = 0` during course ingestion in `processGpxContent`.
+    *   **Camera & Scrubber Synchronization**: Triggering `mapController.syncToTrackpoint(0, true)` and resetting `elevationChart.progressIndex = 0` so the map camera and chart indicator immediately jump to the starting line of the newly imported route.
+*   **Key Actions Taken**:
+    *   Updated `processGpxContent` in `src/main.js`.
+    *   Rebuilt production bundle with `npm run build` and updated static `dist/index.html` classic execution defer tags.
+
