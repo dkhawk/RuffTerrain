@@ -441,3 +441,42 @@ This journal records all design decisions, architecture patterns, development st
     *   Copied the image asset from Downloads to `public/qrcode-noble.png`.
     *   Updated `README.md` and committed all changes cleanly to the local branch.
 
+---
+
+### 🚀 Session 34: Implementing Maps 3D Match-ID Update Best Practice
+*   **Goal**: Ensure marker and polyline updates conform to Maps 3D SDK best practices to prevent rendering updates failure and screen flicker.
+*   **Decisions & Rationale**:
+    *   **Matching ID Update Pattern**: Replaced direct property setters and remove-then-re-add strategies for `coursePolyline` and `focalMarker` with the SDK-recommended matching ID pattern. By preserving the existing object's `id` inside the new option builders, the rendering pipeline dynamically morphs the existing map primitives instead of stacking or leaking entities.
+*   **Key Actions Taken**:
+    *   Refactored `Map3DContainer.kt` update blocks for both polyline rendering and scrubber-progress marker movements to pass `coursePolyline?.id` and `focalMarker?.id` in options.
+    *   Cleanly recompiled and confirmed that Android unit tests pass successfully.
+
+---
+
+### 🚀 Session 35: Refining Focal Marker Elevation Mode for Visibility
+*   **Goal**: Prevent focal marker clipping and occlusion on the 3D terrain surface during active course preview play.
+*   **Decisions & Rationale**:
+    *   **Relative to Ground Hovering**: Configured the runner marker to use `AltitudeMode.RELATIVE_TO_GROUND` with a fixed elevation offset of `5.0` meters (instead of clamping directly to the ground mesh or using absolute trackpoint heights). This lets the marker hover cleanly above the track line and guarantees high visibility throughout 3D simulations.
+*   **Key Actions Taken**:
+    *   Updated the runner position `latLngAltitude` and `altitudeMode` inside the scrubber LaunchedEffect block in `Map3DContainer.kt`.
+    *   Verified compilation and deployed the updated build successfully to the emulator.
+
+---
+
+## 📅 June 12, 2026
+
+### 🚀 Session 36: GitHub Pages Static Hosting & SPA Routing Configuration
+*   **Goal**: Prepare and configure the Web Application for automated static deployment on GitHub Pages (`*.github.io`).
+*   **Decisions & Rationale**:
+    *   **Worktree Isolation**: Created feature worktree `feature-gh-pages` (`feature/gh-pages` branch) branched from `main` to preserve release branch stability.
+    *   **Relative Asset Resolution**: Configured `base: './'` inside `vite.config.js` and converted absolute root paths (`/favicon.svg`, `/src/style.css`, `/noble-dog.jpg`, `/src/main.js`) in `index.html` to relative paths (`./...`). This ensures all assets resolve correctly regardless of whether the app is hosted at a domain root or a repository sub-path (`https://dkhawk.github.io/RuffTerrain/`).
+    *   **Bypassing Jekyll Processing**: Added an empty `.nojekyll` file under `public/.nojekyll` so GitHub Pages will not ignore bundled Vite assets located in underscore-prefixed directories (e.g. `./assets/index-_mDXWP8K.css`).
+    *   **SPA 404 Routing Fallback**: Copied `index.html` to `public/404.html` to guarantee that direct URL navigation or page reloads resolve correctly to the SPA router on GitHub Pages.
+    *   **Automated CI/CD**: Added a GitHub Actions deployment workflow at `.github/workflows/deploy-pages.yml` leveraging `@actions/upload-pages-artifact` and `@actions/deploy-pages`.
+*   **Key Actions Taken**:
+    *   Added `feature-gh-pages` worktree.
+    *   Updated asset link schemes in `index.html`.
+    *   Created `vite.config.js`, `public/.nojekyll`, and `public/404.html`.
+    *   Created GitHub Actions deployment workflow at `.github/workflows/deploy-pages.yml`.
+    *   Ran `npm run build` and verified clean production bundle generation in `dist/`.
+
