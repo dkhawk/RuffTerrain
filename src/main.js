@@ -1837,6 +1837,8 @@ function processGpxContent(text, filename) {
   activeRoute = isKml ? parseKML(text, units) : parseGPX(text, units);
   activeRoute.avgSpacing = activeRoute.trackpoints.length > 0 ? (activeRoute.totalDistance / activeRoute.trackpoints.length) : 0;
   chatHistory = []; // Reset Gemini chatbot context on new course ingestion
+  pausePlayback();
+  playbackDistance = 0;
   playbackIndex = 0;
   lastPausedPoiIndex = -1;
   closePoiDetailDialog(false);
@@ -1944,7 +1946,12 @@ function processGpxContent(text, filename) {
 
   if (apiKeyMaps && mapController.map) {
     mapController.drawRoute(activeRoute, climbColorsCheckbox.checked);
+    mapController.syncToTrackpoint(0, true);
   }
+
+  elevationChart.progressIndex = 0;
+  elevationChart.hoverIdx = -1;
+  elevationChart.draw();
 
   updateRouteStatsUI(activeRoute);
   renderWarningsUI(activeRoute);
@@ -3203,6 +3210,62 @@ function setupKeyboardShortcuts() {
             playbackSpeed.value = currentVal;
             playbackSpeed.dispatchEvent(new Event("change"));
             showToast(`Playback speed: ${currentVal}x`);
+          }
+        }
+        break;
+
+      case "-":
+      case "_":
+      case "r": // Zoom out / Increase Range
+        if (cameraRangeSlider) {
+          let currentVal = parseInt(cameraRangeSlider.value);
+          if (currentVal < parseInt(cameraRangeSlider.max)) {
+            currentVal = Math.min(parseInt(cameraRangeSlider.max), currentVal + 100);
+            cameraRangeSlider.value = currentVal;
+            cameraRangeSlider.dispatchEvent(new Event("input"));
+            showToast(`Camera Range: ${currentVal}m`);
+          }
+        }
+        break;
+
+      case "=":
+      case "+":
+      case "R": // Zoom in / Decrease Range
+        if (cameraRangeSlider) {
+          let currentVal = parseInt(cameraRangeSlider.value);
+          if (currentVal > parseInt(cameraRangeSlider.min)) {
+            currentVal = Math.max(parseInt(cameraRangeSlider.min), currentVal - 100);
+            cameraRangeSlider.value = currentVal;
+            cameraRangeSlider.dispatchEvent(new Event("input"));
+            showToast(`Camera Range: ${currentVal}m`);
+          }
+        }
+        break;
+
+      case "ArrowUp":
+      case "PageUp":
+      case "t": // Increase Tilt
+        if (cameraTiltSlider) {
+          let currentVal = parseInt(cameraTiltSlider.value);
+          if (currentVal < parseInt(cameraTiltSlider.max)) {
+            currentVal = Math.min(parseInt(cameraTiltSlider.max), currentVal + 5);
+            cameraTiltSlider.value = currentVal;
+            cameraTiltSlider.dispatchEvent(new Event("input"));
+            showToast(`Camera Tilt: ${currentVal}°`);
+          }
+        }
+        break;
+
+      case "ArrowDown":
+      case "PageDown":
+      case "T": // Decrease Tilt
+        if (cameraTiltSlider) {
+          let currentVal = parseInt(cameraTiltSlider.value);
+          if (currentVal > parseInt(cameraTiltSlider.min)) {
+            currentVal = Math.max(parseInt(cameraTiltSlider.min), currentVal - 5);
+            cameraTiltSlider.value = currentVal;
+            cameraTiltSlider.dispatchEvent(new Event("input"));
+            showToast(`Camera Tilt: ${currentVal}°`);
           }
         }
         break;
