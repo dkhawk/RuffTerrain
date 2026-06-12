@@ -1837,6 +1837,8 @@ function processGpxContent(text, filename) {
   activeRoute = isKml ? parseKML(text, units) : parseGPX(text, units);
   activeRoute.avgSpacing = activeRoute.trackpoints.length > 0 ? (activeRoute.totalDistance / activeRoute.trackpoints.length) : 0;
   chatHistory = []; // Reset Gemini chatbot context on new course ingestion
+  pausePlayback();
+  playbackDistance = 0;
   playbackIndex = 0;
   lastPausedPoiIndex = -1;
   closePoiDetailDialog(false);
@@ -1944,7 +1946,12 @@ function processGpxContent(text, filename) {
 
   if (apiKeyMaps && mapController.map) {
     mapController.drawRoute(activeRoute, climbColorsCheckbox.checked);
+    mapController.syncToTrackpoint(0, true);
   }
+
+  elevationChart.progressIndex = 0;
+  elevationChart.hoverIdx = -1;
+  elevationChart.draw();
 
   updateRouteStatsUI(activeRoute);
   renderWarningsUI(activeRoute);
