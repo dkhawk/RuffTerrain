@@ -531,3 +531,13 @@ This journal records all design decisions, architecture patterns, development st
     *   Updated `closestTrackpointIndex` in `src/gpx-parser.js`.
     *   Rebuilt production bundle with `npm run build` and updated static `dist/index.html` classic execution defer tags.
 
+---
+
+### 🚀 Session 41: Google Maps 3D Click Event (`gmp-click`) Resolution
+*   **Goal**: Ensure map clicks successfully trigger POI relocation by capturing Google Maps 3D custom events (`gmp-click`) rather than standard DOM pointer clicks.
+*   **Decisions & Rationale**:
+    *   **Raycast Coordinate Capture**: Standard DOM `click` events on `<gmp-map-3d>` do not expose raycast surface coordinates (`e.position`). Added an explicit listener for `gmp-click` on the map instance in `map-3d.js` so that `e.position` is successfully captured and routed to `mapController.onMapClick`.
+*   **Key Actions Taken**:
+    *   Added `gmp-click` listener in `src/map-3d.js`.
+    *   Rebuilt production bundle with `npm run build` and updated static `dist/index.html` classic execution defer tags.
+
