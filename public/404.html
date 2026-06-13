@@ -17,7 +17,7 @@
     <!-- Main Application Stylesheet -->
     <!-- PDF.js client-side parser library -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.4.120/pdf.min.js"></script>
-    <script defer src="./assets/index-soGvNE8q.js"></script>
+    <script defer src="./assets/index-CFsaUfTJ.js"></script>
   </head>
   <body>
     <!-- Top HUD Dashboard (Header Bar matching Screenshot 1) -->
@@ -316,11 +316,26 @@
           <div>
             <h3 style="margin: 0; font-size: 13px;">Weather Forecast</h3>
             <p id="weather-location-subtitle" class="subtitle" style="margin: 0; font-size: 10px; color: var(--text-muted);">Current Location</p>
+            <p id="weather-projected-time" class="subtitle" style="margin: 2px 0 0 0; font-size: 10px; font-weight: 600; color: #10b981;"></p>
           </div>
         </div>
         <button id="close-weather-btn" class="close-card-btn" title="Hide Weather Panel">&times;</button>
       </header>
       <div class="card-body">
+        <!-- Weather & Pace Synchronization Controls -->
+        <div class="weather-plan-config" style="margin-bottom: 12px; padding: 8px; background: rgba(0, 0, 0, 0.25); border: 1px solid rgba(255, 255, 255, 0.08); border-radius: 6px; font-size: 11px;">
+          <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 6px;">
+            <span style="color: var(--text-muted); font-weight: 500;">START TIME:</span>
+            <input type="datetime-local" id="weather-plan-start" style="background: rgba(255,255,255,0.1); border: 1px solid rgba(255,255,255,0.2); color: #fff; border-radius: 4px; padding: 2px 6px; font-size: 10px; outline: none; cursor: pointer;" />
+          </div>
+          <div style="display: flex; align-items: center; justify-content: space-between;">
+            <span style="color: var(--text-muted); font-weight: 500;">EST. DURATION:</span>
+            <div style="display: flex; align-items: center; gap: 4px;">
+              <input type="number" id="weather-plan-duration" min="0.5" max="100" step="0.5" value="4.0" style="background: rgba(255,255,255,0.1); border: 1px solid rgba(255,255,255,0.2); color: #fff; border-radius: 4px; padding: 2px 6px; width: 50px; text-align: right; font-size: 10px; outline: none;" />
+              <span style="color: var(--text-muted);">hrs</span>
+            </div>
+          </div>
+        </div>
         <!-- Loader state -->
         <div id="weather-loader" class="weather-loader hidden" style="display: flex; align-items: center; justify-content: center; gap: 8px; padding: 20px 0; font-size: 12px; color: var(--text-muted);">
           <span class="spinner"></span> <span>Loading forecast...</span>

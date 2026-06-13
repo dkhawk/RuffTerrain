@@ -462,6 +462,7 @@ export class Map3DController {
     // Setup delegated click listeners on the map element to catch clicks on 3D markers
     if (this.mapClickListener) {
       this.map.removeEventListener("click", this.mapClickListener);
+      this.map.removeEventListener("gmp-click", this.mapClickListener);
     }
     
     this.mapClickListener = (e) => {
@@ -485,6 +486,7 @@ export class Map3DController {
     };
 
     this.map.addEventListener("click", this.mapClickListener);
+    this.map.addEventListener("gmp-click", this.mapClickListener);
 
     // Create scrubbing tracker cursor at the last known trackpoint progress index
     const cursorIdx = Math.min(Math.max(0, this.currentTrackpointIndex || 0), trackpoints.length - 1);

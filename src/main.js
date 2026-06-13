@@ -238,6 +238,9 @@ const weatherCurrentHumidity = document.getElementById("weather-current-humidity
 const weatherCurrentPrecip = document.getElementById("weather-current-precip");
 const weatherCurrentClouds = document.getElementById("weather-current-clouds");
 const weatherForecastHoursList = document.getElementById("weather-forecast-hours-list");
+const weatherPlanStartInput = document.getElementById("weather-plan-start");
+const weatherPlanDurationInput = document.getElementById("weather-plan-duration");
+const weatherProjectedTimeLbl = document.getElementById("weather-projected-time");
 
 // POI Weather Section
 const poiWeatherSection = document.getElementById("poi-weather-section");
@@ -674,7 +677,7 @@ async function updateWeatherUI(lat, lon) {
   if (weatherContent) weatherContent.classList.add("hidden");
 
   try {
-    const data = await fetchWeatherForecast(lat, lon, 3, apiKeyMaps);
+    const data = await fetchWeatherForecast(lat, lon, 48, apiKeyMaps);
     if (!data || !data.forecastHours || data.forecastHours.length === 0) {
       throw new Error("No forecast data returned.");
     }
@@ -694,7 +697,52 @@ async function updateWeatherUI(lat, lon) {
       weatherLocationSubtitle.textContent = locationName;
     }
 
-    const current = data.forecastHours[0];
+    let progressFraction = 0;
+    if (activeRoute && activeRoute.trackpoints && activeRoute.trackpoints.length > 0 && activeRoute.totalDistance > 0) {
+      const snapped = snapToRouteSegments(activeRoute, { lat, lng: lon });
+      if (snapped && snapped.dist_m !== undefined) {
+        progressFraction = Math.max(0, Math.min(1, snapped.dist_m / activeRoute.totalDistance));
+      }
+    }
+
+    let planStartMs = Date.now();
+    if (weatherPlanStartInput && weatherPlanStartInput.value) {
+      const parsed = new Date(weatherPlanStartInput.value);
+      if (!isNaN(parsed)) {
+        planStartMs = parsed.getTime();
+      }
+    }
+
+    const durationHrs = (weatherPlanDurationInput && parseFloat(weatherPlanDurationInput.value)) ? parseFloat(weatherPlanDurationInput.value) : 4.0;
+    const estArrivalMs = planStartMs + progressFraction * (durationHrs * 3600 * 1000);
+    const arrivalDate = new Date(estArrivalMs);
+
+    if (weatherProjectedTimeLbl) {
+      const arrDay = arrivalDate.toLocaleDateString([], { month: 'short', day: 'numeric' });
+      const arrTime = arrivalDate.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+      weatherProjectedTimeLbl.textContent = `Arrive (${Math.round(progressFraction * 100)}%): ${arrDay}, ${arrTime}`;
+    }
+
+    let selectedHour = data.forecastHours[0];
+    let minDiff = Infinity;
+
+    data.forecastHours.forEach(hr => {
+      let hrMs = Date.now();
+      if (hr.time) {
+        hrMs = new Date(hr.time).getTime();
+      } else if (hr.displayDateTime) {
+        const dt = hr.displayDateTime;
+        hrMs = new Date(dt.year || arrivalDate.getFullYear(), (dt.month || arrivalDate.getMonth() + 1) - 1, dt.day || arrivalDate.getDate(), dt.hours || 0).getTime();
+      }
+
+      const diff = Math.abs(hrMs - arrivalDate.getTime());
+      if (diff < minDiff) {
+        minDiff = diff;
+        selectedHour = hr;
+      }
+    });
+
+    const current = selectedHour;
     const condition = current.weatherCondition || {};
     const condStyle = getWeatherConditionStyle(condition.type);
 
@@ -728,7 +776,10 @@ async function updateWeatherUI(lat, lon) {
 
     if (weatherForecastHoursList) {
       weatherForecastHoursList.innerHTML = "";
-      data.forecastHours.forEach(hourData => {
+      const selectedIdx = data.forecastHours.indexOf(selectedHour);
+      const displayHours = data.forecastHours.slice(Math.max(0, selectedIdx), selectedIdx + 8);
+
+      displayHours.forEach((hourData, idx) => {
         const hrCond = hourData.weatherCondition || {};
         const hrStyle = getWeatherConditionStyle(hrCond.type);
         const hrTemp = hourData.temperature?.degrees ?? 0;
@@ -739,13 +790,13 @@ async function updateWeatherUI(lat, lon) {
         row.style.display = "flex";
         row.style.justifyContent = "space-between";
         row.style.alignItems = "center";
-        row.style.background = "rgba(255, 255, 255, 0.03)";
-        row.style.border = "1px solid rgba(255, 255, 255, 0.05)";
+        row.style.background = idx === 0 ? "rgba(16, 185, 129, 0.15)" : "rgba(255, 255, 255, 0.03)";
+        row.style.border = idx === 0 ? "1px solid rgba(16, 185, 129, 0.4)" : "1px solid rgba(255, 255, 255, 0.05)";
         row.style.borderRadius = "6px";
         row.style.padding = "6px 10px";
 
         row.innerHTML = `
-          <span class="time" style="font-size: 11px; font-weight: 500; min-width: 65px; text-align: left;">${timeStr}</span>
+          <span class="time" style="font-size: 11px; font-weight: ${idx === 0 ? 'bold' : '500'}; color: ${idx === 0 ? '#10b981' : 'inherit'}; min-width: 65px; text-align: left;">${timeStr}</span>
           <span class="emoji" style="font-size: 16px; margin: 0 8px;">${hrStyle.emoji}</span>
           <span class="desc" style="font-size: 11px; color: var(--text-muted); flex: 1; text-align: left; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">${hrCond.description?.text || hrStyle.label}</span>
           <span class="temp" style="font-size: 11px; font-weight: bold; min-width: 45px; text-align: right;">${convertTemperatureValue(hrTemp)}</span>
@@ -2267,6 +2318,42 @@ function setupEventListeners() {
       cardWeather.classList.add("hidden");
       toggleWeatherBtn.classList.remove("hidden");
       updateWeatherShiftedState();
+    });
+  }
+
+  if (weatherPlanStartInput) {
+    const savedStart = localStorage.getItem("pref_weather_start");
+    if (savedStart) {
+      weatherPlanStartInput.value = savedStart;
+    } else {
+      const tomorrow = new Date();
+      tomorrow.setDate(tomorrow.getDate() + 1);
+      tomorrow.setHours(8, 0, 0, 0);
+      const tzoffset = tomorrow.getTimezoneOffset() * 60000;
+      weatherPlanStartInput.value = (new Date(tomorrow - tzoffset)).toISOString().slice(0, 16);
+    }
+    weatherPlanStartInput.addEventListener("change", () => {
+      if (weatherPlanStartInput.value) {
+        localStorage.setItem("pref_weather_start", weatherPlanStartInput.value);
+        if (lastWeatherLat !== null && lastWeatherLon !== null) {
+          triggerWeatherWeather(lastWeatherLat, lastWeatherLon, true);
+        }
+      }
+    });
+  }
+
+  if (weatherPlanDurationInput) {
+    const savedDur = localStorage.getItem("pref_weather_duration");
+    if (savedDur) {
+      weatherPlanDurationInput.value = savedDur;
+    }
+    weatherPlanDurationInput.addEventListener("change", () => {
+      if (weatherPlanDurationInput.value) {
+        localStorage.setItem("pref_weather_duration", weatherPlanDurationInput.value);
+        if (lastWeatherLat !== null && lastWeatherLon !== null) {
+          triggerWeatherWeather(lastWeatherLat, lastWeatherLon, true);
+        }
+      }
     });
   }
 
