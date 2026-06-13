@@ -552,3 +552,14 @@ This journal records all design decisions, architecture patterns, development st
     *   Updated edit mode state transitions in `src/main.js`.
     *   Rebuilt production bundle with `npm run build` and updated static `dist/index.html` classic execution defer tags.
 
+---
+
+### 🚀 Session 43: Preserving Camera Framing During Relocation
+*   **Goal**: Prevent the 3D map camera from zooming out or resetting range/center when repositioning a waypoint on the map.
+*   **Decisions & Rationale**:
+    *   **Bypassing Full Route Redraw**: Previously, clicking the map to reposition a POI invoked `mapController.drawRoute()`, which reset `map.range` to frame the macro bounding box of the entire course. Added `updateWaypointMarkerPosition` to update only the specific POI pin and progress cursor on the terrain, preserving the user's active camera center, tilt, and zoom level.
+*   **Key Actions Taken**:
+    *   Added `updateWaypointMarkerPosition` in `src/map-3d.js`.
+    *   Updated `onMapClick` relocation handler in `src/main.js`.
+    *   Rebuilt production bundle with `npm run build` and updated static `dist/index.html` classic execution defer tags.
+
