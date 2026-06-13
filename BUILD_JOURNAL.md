@@ -506,3 +506,17 @@ This journal records all design decisions, architecture patterns, development st
     *   Updated `processGpxContent` in `src/main.js`.
     *   Rebuilt production bundle with `npm run build` and updated static `dist/index.html` classic execution defer tags.
 
+---
+
+### 🚀 Session 39: Reliable POI Relocation via Map Clicks
+*   **Goal**: Solve the POI (waypoint) relocation bug by replacing unreliable 3D terrain raycasting drags (`gmp-dragend`) with robust map click relocation.
+*   **Decisions & Rationale**:
+    *   **Worktree Isolation**: Created `feature-relocate-poi` (`feature/relocate-poi` branch) from `main`.
+    *   **Disabling Flaky Raycast Drags**: Set `marker.gmpDraggable = false` globally in `map-3d.js` to prevent 3D pins from dropping underground or intercepting camera tilt raycasts.
+    *   **Map Click Relocation Handler**: Added an explicit check inside `mapController.onMapClick` during Edit Mode (`isEditingPoiLocation = true`). Clicking anywhere on the map snaps the point to the nearest course trackpoint (if snapping is enabled) and immediately updates the POI coordinates, re-sorts waypoints by distance, updates UI/charts, and shows a confirmation toast.
+*   **Key Actions Taken**:
+    *   Created `feature-relocate-poi` worktree.
+    *   Disabled `gmpDraggable` in `src/map-3d.js`.
+    *   Implemented map click relocation in `src/main.js`.
+    *   Rebuilt production bundle with `npm run build` and updated static `dist/index.html` classic execution defer tags.
+
