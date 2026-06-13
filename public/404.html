@@ -17,7 +17,7 @@
     <!-- Main Application Stylesheet -->
     <!-- PDF.js client-side parser library -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.4.120/pdf.min.js"></script>
-    <script defer src="./assets/index-CFsaUfTJ.js"></script>
+    <script defer src="./assets/index-BxFJ_yvq.js"></script>
   </head>
   <body>
     <!-- Top HUD Dashboard (Header Bar matching Screenshot 1) -->
@@ -521,6 +521,16 @@
         <button id="add-poi-submit-btn" class="btn btn-primary" style="flex: 1; font-size: 12px; height: 32px; padding: 0;" disabled>Generate Waypoint</button>
       </div>
     </section>
+
+    <!-- Floating Banner During POI Relocation (Minimizing Dialog) -->
+    <div id="relocate-banner" class="glass-card hidden" style="position: absolute; top: 80px; left: 50%; transform: translateX(-50%); z-index: 1000; display: flex; align-items: center; gap: 12px; padding: 8px 20px; background: rgba(16, 185, 129, 0.95); backdrop-filter: blur(8px); border: 1px solid rgba(255, 255, 255, 0.4); border-radius: 30px; box-shadow: 0 8px 24px rgba(0, 0, 0, 0.5); color: #fff;">
+      <span style="font-size: 18px;">📍</span>
+      <div style="display: flex; flex-direction: column; text-align: left;">
+        <span style="font-size: 12px; font-weight: bold;">Click anywhere on the map to relocate</span>
+        <span id="relocate-banner-name" style="font-size: 10px; opacity: 0.9;"></span>
+      </div>
+      <button id="relocate-done-btn" style="background: #fff; color: #10b981; border: none; border-radius: 16px; padding: 5px 14px; font-size: 11px; font-weight: bold; cursor: pointer; margin-left: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.2);">Done</button>
+    </div>
 
     <!-- Card 5: Bottom Elevation Scrubber Panel (Bottom Center matching Screenshot 1) -->
     <section id="card-elevation-scrubber" class="glass-card panel-bottom-center hidden">

@@ -2852,7 +2852,14 @@ function setupEventListeners() {
         if (mapController) {
           mapController.setEditLock(false); // unlock draggable markers
         }
-        showToast("Edit mode enabled. Edit name, amenities, or click anywhere on the map to relocate.");
+        poiDetailDialog.classList.add("hidden");
+        const rBanner = document.getElementById("relocate-banner");
+        if (rBanner) {
+          rBanner.classList.remove("hidden");
+          const bName = document.getElementById("relocate-banner-name");
+          if (bName) bName.textContent = activeDialogWpt ? activeDialogWpt.name : "";
+        }
+        showToast("Click anywhere on the map to place.");
       } else {
         // Exit/Save Edit Mode
         isEditingPoiLocation = false;
@@ -2861,6 +2868,9 @@ function setupEventListeners() {
         if (poiEditModeSelector) {
           poiEditModeSelector.classList.add("hidden");
         }
+        const rBanner = document.getElementById("relocate-banner");
+        if (rBanner) rBanner.classList.add("hidden");
+        poiDetailDialog.classList.remove("hidden");
 
         // Save name input
         if (poiValNameInput && poiValName && activeDialogWpt) {
@@ -2887,6 +2897,15 @@ function setupEventListeners() {
 
         showToast("Waypoint details saved successfully.");
         saveActiveRouteState();
+      }
+    });
+  }
+
+  const relocateDoneBtn = document.getElementById("relocate-done-btn");
+  if (relocateDoneBtn) {
+    relocateDoneBtn.addEventListener("click", () => {
+      if (poiDialogEditBtn && isEditingPoiLocation) {
+        poiDialogEditBtn.click();
       }
     });
   }
@@ -3024,8 +3043,6 @@ function setupEventListeners() {
         elevationChart.progressIndex = playbackIndex;
         elevationChart.draw();
         updateHUD(playbackIndex);
-
-        showPoiDetailDialog(activeDialogWpt, playbackIndex);
 
         const distStr = units === "miles"
           ? `${(activeDialogWpt.dist_m / 1609.34).toFixed(2)} mi`
