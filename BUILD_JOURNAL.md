@@ -541,3 +541,14 @@ This journal records all design decisions, architecture patterns, development st
     *   Added `gmp-click` listener in `src/map-3d.js`.
     *   Rebuilt production bundle with `npm run build` and updated static `dist/index.html` classic execution defer tags.
 
+---
+
+### 🚀 Session 42: Minimal Floating Banner Relocation Mode
+*   **Goal**: Reclaim 100% of map screen real estate during POI relocation by automatically hiding the bulky POI detail dialog and displaying a minimal top floating banner.
+*   **Decisions & Rationale**:
+    *   **Screen Real Estate Optimization**: When clicking "✏️ Edit Location", `#poi-detail-dialog` is immediately hidden and `#relocate-banner` is shown at the top of the viewport. This frees up the entire screen area so users can navigate, zoom, tilt, and click the map without dialog obstruction.
+*   **Key Actions Taken**:
+    *   Added floating `#relocate-banner` in `index.html`.
+    *   Updated edit mode state transitions in `src/main.js`.
+    *   Rebuilt production bundle with `npm run build` and updated static `dist/index.html` classic execution defer tags.
+
