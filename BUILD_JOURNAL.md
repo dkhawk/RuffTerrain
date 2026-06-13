@@ -520,3 +520,14 @@ This journal records all design decisions, architecture patterns, development st
     *   Implemented map click relocation in `src/main.js`.
     *   Rebuilt production bundle with `npm run build` and updated static `dist/index.html` classic execution defer tags.
 
+---
+
+### 🚀 Session 40: Perpendicular Bisector Snapping
+*   **Goal**: Refine POI map click snapping to associate the relocated waypoint based on the nearest perpendicular bisector rather than simply the starting vertex of the segment.
+*   **Decisions & Rationale**:
+    *   **Perpendicular Bisector Boundary**: Updated `snapToRouteSegments` in `gpx-parser.js` to return `closestTrackpointIndex: Math.round(i + t)` instead of `i`.
+    *   **Voronoi Trackpoint Partitioning**: When a clicked point projects onto a route segment at fraction $t \in [0, 1]$, the midpoint ($t = 0.5$, representing the perpendicular bisector) acts as the exact boundary separating affiliation between vertex $i$ and vertex $i+1$.
+*   **Key Actions Taken**:
+    *   Updated `closestTrackpointIndex` in `src/gpx-parser.js`.
+    *   Rebuilt production bundle with `npm run build` and updated static `dist/index.html` classic execution defer tags.
+
