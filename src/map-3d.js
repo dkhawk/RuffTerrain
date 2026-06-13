@@ -523,6 +523,24 @@ export class Map3DController {
   }
 
   /**
+   * Updates an individual waypoint marker and progress indicator without resetting map camera or range.
+   */
+  updateWaypointMarkerPosition(wpt, newPos, trkptIndex = null) {
+    if (!this.markers) return;
+    const marker = this.markers.find(m => m.waypoint === wpt);
+    if (marker) {
+      marker.position = { lat: newPos.lat, lng: newPos.lon || newPos.lng, altitude: 10 };
+    }
+    if (trkptIndex !== null && this.activeRoute && this.activeRoute.trackpoints[trkptIndex]) {
+      const pt = this.activeRoute.trackpoints[trkptIndex];
+      if (this.currentTrackMarker) {
+        this.currentTrackMarker.position = { lat: pt.lat, lng: pt.lon, altitude: 15 };
+      }
+      this.currentTrackpointIndex = trkptIndex;
+    }
+  }
+
+  /**
    * Synchronizes map view / camera target to a specific trackpoint by index.
    * @param {number} trkptIndex Trackpoint index to snap to
    * @param {boolean} smooth True if using camera flyTo animation, false for instantaneous jump

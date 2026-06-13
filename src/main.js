@@ -3037,8 +3037,7 @@ function setupEventListeners() {
 
         activeRoute.waypoints.sort((a, b) => a.dist_m - b.dist_m);
 
-        mapController.drawRoute(activeRoute, climbColorsCheckbox.checked);
-        mapController.syncToTrackpoint(playbackIndex, false);
+        mapController.updateWaypointMarkerPosition(activeDialogWpt, targetPos, playbackIndex);
 
         elevationChart.progressIndex = playbackIndex;
         elevationChart.draw();
