@@ -2765,7 +2765,7 @@ function setupEventListeners() {
         if (mapController) {
           mapController.setEditLock(false); // unlock draggable markers
         }
-        showToast("Edit mode enabled. Edit name, amenities, or drag marker on map to relocate.");
+        showToast("Edit mode enabled. Edit name, amenities, or click anywhere on the map to relocate.");
       } else {
         // Exit/Save Edit Mode
         isEditingPoiLocation = false;
@@ -2830,6 +2830,7 @@ function setupEventListeners() {
 
   // Listen to waypoint markers clicks from 3D Satellite Map
   window.addEventListener("waypoint-click", (e) => {
+    if (isEditingPoiLocation) return;
     const wpt = e.detail;
     pausePlayback();
     playbackIndex = wpt.closestTrackpointIndex;
@@ -2899,9 +2900,54 @@ function setupEventListeners() {
     });
   }
 
-  // Handle map clicks to place the temporary marker
+  // Handle map clicks to place the temporary marker or relocate active POI
   if (mapController) {
     mapController.onMapClick = (pos) => {
+      if (isEditingPoiLocation && activeDialogWpt) {
+        const isSnap = dragSnapCheckbox ? dragSnapCheckbox.checked : true;
+        let targetPos = {
+          lat: pos.lat,
+          lon: pos.lng || pos.lon,
+          ele: pos.altitude || 0,
+          dist_m: activeDialogWpt.dist_m,
+          closestTrackpointIndex: activeDialogWpt.closestTrackpointIndex
+        };
+
+        if (isSnap) {
+          const snapped = snapToRouteSegments(activeRoute, { lat: pos.lat, lng: pos.lng || pos.lon });
+          if (snapped) {
+            targetPos = snapped;
+          }
+        }
+
+        activeDialogWpt.lat = targetPos.lat;
+        activeDialogWpt.lon = targetPos.lon;
+        if (targetPos.ele) activeDialogWpt.ele = targetPos.ele;
+        if (targetPos.dist_m !== undefined) activeDialogWpt.dist_m = targetPos.dist_m;
+        if (targetPos.closestTrackpointIndex !== undefined) {
+          activeDialogWpt.closestTrackpointIndex = targetPos.closestTrackpointIndex;
+          playbackIndex = targetPos.closestTrackpointIndex;
+        }
+
+        activeRoute.waypoints.sort((a, b) => a.dist_m - b.dist_m);
+
+        mapController.drawRoute(activeRoute, climbColorsCheckbox.checked);
+        mapController.syncToTrackpoint(playbackIndex, false);
+
+        elevationChart.progressIndex = playbackIndex;
+        elevationChart.draw();
+        updateHUD(playbackIndex);
+
+        showPoiDetailDialog(activeDialogWpt, playbackIndex);
+
+        const distStr = units === "miles"
+          ? `${(activeDialogWpt.dist_m / 1609.34).toFixed(2)} mi`
+          : `${(activeDialogWpt.dist_m / 1000).toFixed(2)} km`;
+
+        showToast(`Relocated "${activeDialogWpt.name}" to ${distStr}`);
+        return;
+      }
+
       if (!isPlacingNewPoi) return;
 
       const snapped = snapToRouteSegments(activeRoute, { lat: pos.lat, lng: pos.lng });

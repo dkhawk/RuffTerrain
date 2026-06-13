@@ -214,7 +214,7 @@ export class Map3DController {
   setEditLock(isLocked) {
     this.isEditLocked = isLocked;
     this.markers.forEach(marker => {
-      marker.gmpDraggable = !isLocked;
+      marker.gmpDraggable = false;
     });
   }
 
@@ -427,8 +427,8 @@ export class Map3DController {
         extruded: true,
         drawsWhenOccluded: true
       });
-      marker.waypoint = wpt; // Store direct reference to the waypoint details on the marker DOM instance
-      marker.gmpDraggable = !this.isEditLocked;
+      marker.waypoint = wpt;
+      marker.gmpDraggable = false;
 
       const svgElement = parseSvgStringToElement(getWaypointSvgString(wpt));
       svgElement.style.cursor = "pointer";
