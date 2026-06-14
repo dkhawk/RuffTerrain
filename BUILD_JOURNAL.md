@@ -506,3 +506,158 @@ This journal records all design decisions, architecture patterns, development st
     *   Updated `processGpxContent` in `src/main.js`.
     *   Rebuilt production bundle with `npm run build` and updated static `dist/index.html` classic execution defer tags.
 
+---
+
+### 🚀 Session 39: Reliable POI Relocation via Map Clicks
+*   **Goal**: Solve the POI (waypoint) relocation bug by replacing unreliable 3D terrain raycasting drags (`gmp-dragend`) with robust map click relocation.
+*   **Decisions & Rationale**:
+    *   **Worktree Isolation**: Created `feature-relocate-poi` (`feature/relocate-poi` branch) from `main`.
+    *   **Disabling Flaky Raycast Drags**: Set `marker.gmpDraggable = false` globally in `map-3d.js` to prevent 3D pins from dropping underground or intercepting camera tilt raycasts.
+    *   **Map Click Relocation Handler**: Added an explicit check inside `mapController.onMapClick` during Edit Mode (`isEditingPoiLocation = true`). Clicking anywhere on the map snaps the point to the nearest course trackpoint (if snapping is enabled) and immediately updates the POI coordinates, re-sorts waypoints by distance, updates UI/charts, and shows a confirmation toast.
+*   **Key Actions Taken**:
+    *   Created `feature-relocate-poi` worktree.
+    *   Disabled `gmpDraggable` in `src/map-3d.js`.
+    *   Implemented map click relocation in `src/main.js`.
+    *   Rebuilt production bundle with `npm run build` and updated static `dist/index.html` classic execution defer tags.
+
+---
+
+### 🚀 Session 40: Perpendicular Bisector Snapping
+*   **Goal**: Refine POI map click snapping to associate the relocated waypoint based on the nearest perpendicular bisector rather than simply the starting vertex of the segment.
+*   **Decisions & Rationale**:
+    *   **Perpendicular Bisector Boundary**: Updated `snapToRouteSegments` in `gpx-parser.js` to return `closestTrackpointIndex: Math.round(i + t)` instead of `i`.
+    *   **Voronoi Trackpoint Partitioning**: When a clicked point projects onto a route segment at fraction $t \in [0, 1]$, the midpoint ($t = 0.5$, representing the perpendicular bisector) acts as the exact boundary separating affiliation between vertex $i$ and vertex $i+1$.
+*   **Key Actions Taken**:
+    *   Updated `closestTrackpointIndex` in `src/gpx-parser.js`.
+    *   Rebuilt production bundle with `npm run build` and updated static `dist/index.html` classic execution defer tags.
+
+---
+
+### 🚀 Session 41: Google Maps 3D Click Event (`gmp-click`) Resolution
+*   **Goal**: Ensure map clicks successfully trigger POI relocation by capturing Google Maps 3D custom events (`gmp-click`) rather than standard DOM pointer clicks.
+*   **Decisions & Rationale**:
+    *   **Raycast Coordinate Capture**: Standard DOM `click` events on `<gmp-map-3d>` do not expose raycast surface coordinates (`e.position`). Added an explicit listener for `gmp-click` on the map instance in `map-3d.js` so that `e.position` is successfully captured and routed to `mapController.onMapClick`.
+*   **Key Actions Taken**:
+    *   Added `gmp-click` listener in `src/map-3d.js`.
+    *   Rebuilt production bundle with `npm run build` and updated static `dist/index.html` classic execution defer tags.
+
+---
+
+### 🚀 Session 42: Minimal Floating Banner Relocation Mode
+*   **Goal**: Reclaim 100% of map screen real estate during POI relocation by automatically hiding the bulky POI detail dialog and displaying a minimal top floating banner.
+*   **Decisions & Rationale**:
+    *   **Screen Real Estate Optimization**: When clicking "✏️ Edit Location", `#poi-detail-dialog` is immediately hidden and `#relocate-banner` is shown at the top of the viewport. This frees up the entire screen area so users can navigate, zoom, tilt, and click the map without dialog obstruction.
+*   **Key Actions Taken**:
+    *   Added floating `#relocate-banner` in `index.html`.
+    *   Updated edit mode state transitions in `src/main.js`.
+    *   Rebuilt production bundle with `npm run build` and updated static `dist/index.html` classic execution defer tags.
+
+---
+
+### 🚀 Session 43: Preserving Camera Framing During Relocation
+*   **Goal**: Prevent the 3D map camera from zooming out or resetting range/center when repositioning a waypoint on the map.
+*   **Decisions & Rationale**:
+    *   **Bypassing Full Route Redraw**: Previously, clicking the map to reposition a POI invoked `mapController.drawRoute()`, which reset `map.range` to frame the macro bounding box of the entire course. Added `updateWaypointMarkerPosition` to update only the specific POI pin and progress cursor on the terrain, preserving the user's active camera center, tilt, and zoom level.
+*   **Key Actions Taken**:
+    *   Added `updateWaypointMarkerPosition` in `src/map-3d.js`.
+    *   Updated `onMapClick` relocation handler in `src/main.js`.
+    *   Rebuilt production bundle with `npm run build` and updated static `dist/index.html` classic execution defer tags.
+
+---
+
+### 🚀 Session 44: Unified Bottom-Left Command Drawer (POI Info & Gemini AI Chat)
+*   **Goal**: Combine the POI Waypoint Details dialog and the Gemini AI Chat Assistant into a single unified drawer card to eliminate overlay collisions.
+*   **Decisions & Rationale**:
+    *   **Unified Drawer Architecture**: Merged `#poi-detail-dialog` and `#card-gemini-chat` into a premium unified side drawer (`#unified-drawer-card`) with top navigation tabs (`📍 Waypoint Details` / `✨ Gemini AI Chat`) and smooth scrolling. Opening either view scrolls directly to the requested section within the single container, preventing floating cards from covering each other.
+*   **Key Actions Taken**:
+    *   Created `#unified-drawer-card` in `index.html`.
+    *   Updated tab navigation and panel display in `src/main.js`.
+    *   Rebuilt production bundle with `npm run build` and updated static `dist/index.html` classic execution defer tags.
+
+---
+
+### 🚀 Session 45: Expanded Course Profile Description Stats
+*   **Goal**: Provide a comprehensive course description containing distance, total elevation gain, total elevation loss, highest elevation, lowest elevation, aid station count, and longest gap between stations.
+*   **Decisions & Rationale**:
+    *   **Course Profile Grid Expansion**: Expanded `.stats-grid` in `index.html` into a two-column layout showing Distance, Aid Stations, Total Gain (green), Total Loss (red), Highest Elevation, Lowest Elevation, and Longest Gap (spanning full width).
+    *   **Dynamic Longest Gap Calculation**: Computes gaps between Start -> first station, consecutive stations, and last station -> Finish, displaying the maximum gap along with its exact start/end boundary points.
+*   **Key Actions Taken**:
+    *   Expanded `.stats-grid` inside `index.html`.
+    *   Updated `updateRouteStatsUI` in `src/main.js`.
+    *   Rebuilt production bundle with `npm run build` and updated static `dist/index.html` classic execution defer tags.
+
+---
+
+### 🚀 Session 46: Reliable Waypoint Marker Click Trigger
+*   **Goal**: Ensure clicking aid station pins reliably opens the Waypoint Details drawer.
+*   **Decisions & Rationale**:
+    *   **Direct SVG Event Attachment**: `<gmp-marker-3d>` elements wrapping complex HTML templates can intercept pointer events. Attached click event listeners directly onto the injected SVG marker node with `pointer-events: auto` to guarantee reliable hit detection.
+*   **Key Actions Taken**:
+    *   Updated marker creation in `src/map-3d.js`.
+    *   Rebuilt production bundle with `npm run build` and updated static `dist/index.html` classic execution defer tags.
+
+---
+
+### 🚀 Session 47: Restoring `gmp-marker-3d-interactive` Web Component Tag
+*   **Goal**: Fix non-responsive waypoint marker click detection on the 3D Satellite Map.
+*   **Decisions & Rationale**:
+    *   **Interactive Web Component Restoration**: Traced commit history (`c3a87c5`) and build journal, discovering that 3D pins require the `<gmp-marker-3d-interactive>` web component tag (instead of standard `<gmp-marker-3d>`) to successfully intercept and fire custom Google Maps 3D pointer interactions (`gmp-click`).
+*   **Key Actions Taken**:
+    *   Restored `document.createElement("gmp-marker-3d-interactive")` in `src/map-3d.js`.
+    *   Rebuilt production bundle with `npm run build` and updated static `dist/index.html` classic execution defer tags.
+
+---
+
+### 🚀 Session 48: Removing Deprecated Marker Dragging Logic
+*   **Goal**: Prevent pointer event interference between marker click popovers and leftover raycast drag handlers.
+*   **Decisions & Rationale**:
+    *   **Complete Drag Handler Removal**: Removing the leftover `gmp-dragend` listener entirely from waypoint markers in `src/map-3d.js` ensures clean event propagation.
+    *   **Defensive HUD Updates**: Added explicit null/undefined verification inside `updateHUD` in `src/main.js` to ensure waypoint clicks do not throw TypeErrors when `closestTrackpointIndex` is undefined.
+*   **Key Actions Taken**:
+    *   Removed `gmp-dragend` listener in `src/map-3d.js`.
+    *   Added defensive null checking to `updateHUD` in `src/main.js`.
+    *   Rebuilt production bundle with `npm run build` and updated static `dist/index.html` classic execution defer tags.
+
+---
+
+### 🚀 Session 49: Event Lifecycle Debug Logging
+*   **Goal**: Trace marker click propagation and dialog invocation lifecycle in the browser console.
+*   **Decisions & Rationale**:
+    *   **Diagnostic Event Tracing**: Added structured console logging across `src/map-3d.js` (`triggerClick`, `mapClickListener`) and `src/main.js` (`waypoint-click`, `showPoiDetailDialog`) to trace pointer hit detection, event dispatching, and drawer state changes.
+*   **Key Actions Taken**:
+    *   Added console logging to `src/map-3d.js` and `src/main.js`.
+    *   Rebuilt production bundle with `npm run build` and updated static `dist/index.html` classic execution defer tags.
+
+---
+
+### 🚀 Session 50: Fixing setupEventListeners Early Termination (Null Safety)
+*   **Goal**: Ensure `setupEventListeners` successfully completes registration of window and map event listeners.
+*   **Decisions & Rationale**:
+    *   **Diagnosed `TypeError` on Missing Header Close Button**: Traced why `MARKER CLICK TRIGGERED` executed but `window.addEventListener("waypoint-click", ...)` never fired. Diagnosed that an element lookup for `poi-dialog-close-header` returned `null`, causing `poiDialogCloseHeader.addEventListener("click", ...)` to throw an uncaught `TypeError` that prematurely aborted `setupEventListeners()`.
+    *   **Comprehensive Null Checks**: Wrapped all element `.addEventListener` calls inside `setupEventListeners()` with defensive null checks to guarantee robust completion.
+*   **Key Actions Taken**:
+    *   Added defensive null checks to all element listeners in `src/main.js`.
+    *   Rebuilt production bundle with `npm run build` and updated static `dist/index.html` classic execution defer tags.
+
+---
+
+### 🚀 Session 51: Aligning POI Dialog within Unified Drawer (CSS Flex Container)
+*   **Goal**: Ensure `poi-detail-dialog` sits correctly framed within the frosted glass background of `unified-drawer-card`.
+*   **Decisions & Rationale**:
+    *   **Relative Flex Container Alignment**: Changed `.poi-dialog` positioning from `absolute` (`left: 378px; bottom: 210px`) to `relative` (`width: 100%`) in `src/style.css`. This prevents the waypoint details view from breaking out of the unified drawer card flex layout and floating over the map with a transparent background.
+*   **Key Actions Taken**:
+    *   Updated `.poi-dialog` positioning to `relative` in `src/style.css`.
+    *   Rebuilt production bundle with `npm run build` and updated static `dist/index.html` classic execution defer tags.
+
+---
+
+### 🚀 Session 52: Polishing Unified Drawer Ergonomics (Mutual Exclusion & Header Layout)
+*   **Goal**: Prevent button truncation in the POI header and eliminate visual overlap between active tabs.
+*   **Decisions & Rationale**:
+    *   **Wider Drawer Footprint & Stacked Header**: Expanded `unified-drawer-card` width to `480px` and organized the `.poi-header` elements into stacked flex rows (`title` on top, `quick-metrics` and `actions` below). This prevents action buttons (like `CONTINUE ➔`) from clipping on the right edge.
+    *   **Enforced Tab Exclusivity**: Updated tab switch listeners (`tabPoiMode`, `tabChatMode`) in `src/main.js` to explicitly toggle `.hidden` on opposing panels (`poiDetailDialog` vs. `cardGeminiChat`), ensuring only one view renders at any given time.
+*   **Key Actions Taken**:
+    *   Updated header layout and card width in `index.html`.
+    *   Enforced mutual exclusion inside tab switch listeners in `src/main.js`.
+    *   Rebuilt production bundle with `npm run build` and updated static `dist/index.html` classic execution defer tags.
+

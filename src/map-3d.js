@@ -214,7 +214,7 @@ export class Map3DController {
   setEditLock(isLocked) {
     this.isEditLocked = isLocked;
     this.markers.forEach(marker => {
-      marker.gmpDraggable = !isLocked;
+      marker.gmpDraggable = false;
     });
   }
 
@@ -421,17 +421,18 @@ export class Map3DController {
     }
 
     route.waypoints.forEach((wpt) => {
-      const marker = new this.Marker3DInteractiveElement({
-        position: { lat: wpt.lat, lng: wpt.lon, altitude: 10 },
-        altitudeMode: "RELATIVE_TO_GROUND",
-        extruded: true,
-        drawsWhenOccluded: true
-      });
-      marker.waypoint = wpt; // Store direct reference to the waypoint details on the marker DOM instance
-      marker.gmpDraggable = !this.isEditLocked;
+      const marker = document.createElement("gmp-marker-3d-interactive");
+      marker.position = { lat: wpt.lat, lng: wpt.lon, altitude: 10 };
+      marker.altitudeMode = "RELATIVE_TO_GROUND";
+      marker.extruded = true;
+      marker.drawsWhenOccluded = true;
+      marker.label = wpt.name;
+      marker.waypoint = wpt;
+      marker.gmpDraggable = false;
 
       const svgElement = parseSvgStringToElement(getWaypointSvgString(wpt));
       svgElement.style.cursor = "pointer";
+      svgElement.style.pointerEvents = "auto";
 
       const template = document.createElement("template");
       template.content.appendChild(svgElement);
@@ -439,21 +440,15 @@ export class Map3DController {
 
       // Click trigger handler
       const triggerClick = (e) => {
+        console.log("[map-3d] MARKER CLICK TRIGGERED:", wpt.name, "Event:", e?.type);
         if (e) e.stopPropagation(); // prevent triggering map clicks
         const event = new CustomEvent("waypoint-click", { detail: wpt });
         window.dispatchEvent(event);
       };
 
+      svgElement.addEventListener("click", triggerClick);
       marker.addEventListener("click", triggerClick);
       marker.addEventListener("gmp-click", triggerClick);
-
-      // Draggable Editing logic
-      marker.addEventListener("gmp-dragend", () => {
-        const newPos = { lat: marker.position.lat, lng: marker.position.lng };
-        if (this.onWaypointDragEnd) {
-          this.onWaypointDragEnd(wpt, newPos);
-        }
-      });
 
       this.map.append(marker);
       this.markers.push(marker);
@@ -462,9 +457,11 @@ export class Map3DController {
     // Setup delegated click listeners on the map element to catch clicks on 3D markers
     if (this.mapClickListener) {
       this.map.removeEventListener("click", this.mapClickListener);
+      this.map.removeEventListener("gmp-click", this.mapClickListener);
     }
     
     this.mapClickListener = (e) => {
+      console.log("[map-3d] MAP CLICK LISTENER INTERCEPTED EVENT. Target:", e.target?.tagName, "Type:", e.type);
       // If they clicked the temporary placement marker, ignore it
       if (this.tempMarker && (this.tempMarker === e.target || this.tempMarker.contains(e.target))) {
         return;
@@ -473,9 +470,11 @@ export class Map3DController {
       // Find if the target is a marker
       const clickedMarker = this.markers.find(m => m === e.target || m.contains(e.target));
       if (clickedMarker && clickedMarker.waypoint) {
+        console.log("[map-3d] FOUND CLICKED MARKER VIA MAP LISTENER:", clickedMarker.waypoint.name);
         const event = new CustomEvent("waypoint-click", { detail: clickedMarker.waypoint });
         window.dispatchEvent(event);
       } else {
+        console.log("[map-3d] BACKGROUND MAP CLICK DETECTED.");
         // Map background click
         const pos = e.position || (e.detail && e.detail.position);
         if (pos && this.onMapClick) {
@@ -485,6 +484,7 @@ export class Map3DController {
     };
 
     this.map.addEventListener("click", this.mapClickListener);
+    this.map.addEventListener("gmp-click", this.mapClickListener);
 
     // Create scrubbing tracker cursor at the last known trackpoint progress index
     const cursorIdx = Math.min(Math.max(0, this.currentTrackpointIndex || 0), trackpoints.length - 1);
@@ -518,6 +518,24 @@ export class Map3DController {
     poly.originalColor = strokeColor;
     this.map.append(poly);
     this.polylines.push(poly);
+  }
+
+  /**
+   * Updates an individual waypoint marker and progress indicator without resetting map camera or range.
+   */
+  updateWaypointMarkerPosition(wpt, newPos, trkptIndex = null) {
+    if (!this.markers) return;
+    const marker = this.markers.find(m => m.waypoint === wpt);
+    if (marker) {
+      marker.position = { lat: newPos.lat, lng: newPos.lon || newPos.lng, altitude: 10 };
+    }
+    if (trkptIndex !== null && this.activeRoute && this.activeRoute.trackpoints[trkptIndex]) {
+      const pt = this.activeRoute.trackpoints[trkptIndex];
+      if (this.currentTrackMarker) {
+        this.currentTrackMarker.position = { lat: pt.lat, lng: pt.lon, altitude: 15 };
+      }
+      this.currentTrackpointIndex = trkptIndex;
+    }
   }
 
   /**

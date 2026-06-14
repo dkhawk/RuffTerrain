@@ -37,7 +37,7 @@ import { fetchWeatherForecast, getWeatherConditionStyle } from "./fetch-weather.
 // ==========================================
 
 // Credentials (API keys fallback to environment variables from .env.local)
-let apiKeyMaps = localStorage.getItem("gmaps_api_key") || import.meta.env.VITE_GMAPS_API_KEY || "";
+let apiKeyMaps = import.meta.env.VITE_GMAPS_API_KEY || localStorage.getItem("gmaps_api_key") || "";
 let apiKeyGemini = localStorage.getItem("gemini_api_key") || import.meta.env.VITE_GEMINI_API_KEY || "";
 let geminiModel = localStorage.getItem("gemini_model") || "models/gemini-2.0-flash";
 
@@ -113,6 +113,9 @@ const editLockCheckbox = document.getElementById("edit-lock-checkbox");
 const dragSnapCheckbox = document.getElementById("drag-snap-checkbox");
 
 const cardGeminiChat = document.getElementById("card-gemini-chat");
+const unifiedDrawerCard = document.getElementById("unified-drawer-card");
+const tabPoiMode = document.getElementById("tab-poi-mode");
+const tabChatMode = document.getElementById("tab-chat-mode");
 const chatMessages = document.getElementById("chat-messages");
 const chatInput = document.getElementById("chat-input");
 const chatSubmit = document.getElementById("chat-submit");
@@ -126,6 +129,9 @@ const statGain = document.getElementById("stat-gain");
 const statLoss = document.getElementById("stat-loss");
 const statWpts = document.getElementById("stat-wpts");
 const statElevRange = document.getElementById("stat-elev-range");
+const statMaxElev = document.getElementById("stat-max-elev");
+const statMinElev = document.getElementById("stat-min-elev");
+const statLongestGap = document.getElementById("stat-longest-gap");
 
 const activeClimbInfoBox = document.getElementById("active-climb-info-box");
 const activeClimbText = document.getElementById("active-climb-text");
@@ -238,6 +244,9 @@ const weatherCurrentHumidity = document.getElementById("weather-current-humidity
 const weatherCurrentPrecip = document.getElementById("weather-current-precip");
 const weatherCurrentClouds = document.getElementById("weather-current-clouds");
 const weatherForecastHoursList = document.getElementById("weather-forecast-hours-list");
+const weatherPlanStartInput = document.getElementById("weather-plan-start");
+const weatherPlanDurationInput = document.getElementById("weather-plan-duration");
+const weatherProjectedTimeLbl = document.getElementById("weather-projected-time");
 
 // POI Weather Section
 const poiWeatherSection = document.getElementById("poi-weather-section");
@@ -407,14 +416,14 @@ document.addEventListener("DOMContentLoaded", () => {
   // Bind event listeners to UI actions
   setupEventListeners();
 
-  // Auto-restore most recently loaded course if available in the history queue
-  if (recentCourses.length > 0) {
-    const mostRecent = recentCourses[0];
-    showToast(`Restoring course: ${mostRecent.name}...`);
-    setTimeout(() => {
-      processGpxContent(mostRecent.content, mostRecent.name);
-    }, 200);
-  }
+  setTimeout(() => {
+    fetch("./samples/enhanced_52m_start.gpx")
+      .then(res => res.text())
+      .then(text => {
+        processGpxContent(text, "enhanced_52m_start.gpx");
+      })
+      .catch(err => console.log("Sample load err:", err));
+  }, 200);
 });
 
 // ==========================================
@@ -674,7 +683,7 @@ async function updateWeatherUI(lat, lon) {
   if (weatherContent) weatherContent.classList.add("hidden");
 
   try {
-    const data = await fetchWeatherForecast(lat, lon, 3, apiKeyMaps);
+    const data = await fetchWeatherForecast(lat, lon, 48, apiKeyMaps);
     if (!data || !data.forecastHours || data.forecastHours.length === 0) {
       throw new Error("No forecast data returned.");
     }
@@ -694,7 +703,52 @@ async function updateWeatherUI(lat, lon) {
       weatherLocationSubtitle.textContent = locationName;
     }
 
-    const current = data.forecastHours[0];
+    let progressFraction = 0;
+    if (activeRoute && activeRoute.trackpoints && activeRoute.trackpoints.length > 0 && activeRoute.totalDistance > 0) {
+      const snapped = snapToRouteSegments(activeRoute, { lat, lng: lon });
+      if (snapped && snapped.dist_m !== undefined) {
+        progressFraction = Math.max(0, Math.min(1, snapped.dist_m / activeRoute.totalDistance));
+      }
+    }
+
+    let planStartMs = Date.now();
+    if (weatherPlanStartInput && weatherPlanStartInput.value) {
+      const parsed = new Date(weatherPlanStartInput.value);
+      if (!isNaN(parsed)) {
+        planStartMs = parsed.getTime();
+      }
+    }
+
+    const durationHrs = (weatherPlanDurationInput && parseFloat(weatherPlanDurationInput.value)) ? parseFloat(weatherPlanDurationInput.value) : 4.0;
+    const estArrivalMs = planStartMs + progressFraction * (durationHrs * 3600 * 1000);
+    const arrivalDate = new Date(estArrivalMs);
+
+    if (weatherProjectedTimeLbl) {
+      const arrDay = arrivalDate.toLocaleDateString([], { month: 'short', day: 'numeric' });
+      const arrTime = arrivalDate.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+      weatherProjectedTimeLbl.textContent = `Arrive (${Math.round(progressFraction * 100)}%): ${arrDay}, ${arrTime}`;
+    }
+
+    let selectedHour = data.forecastHours[0];
+    let minDiff = Infinity;
+
+    data.forecastHours.forEach(hr => {
+      let hrMs = Date.now();
+      if (hr.time) {
+        hrMs = new Date(hr.time).getTime();
+      } else if (hr.displayDateTime) {
+        const dt = hr.displayDateTime;
+        hrMs = new Date(dt.year || arrivalDate.getFullYear(), (dt.month || arrivalDate.getMonth() + 1) - 1, dt.day || arrivalDate.getDate(), dt.hours || 0).getTime();
+      }
+
+      const diff = Math.abs(hrMs - arrivalDate.getTime());
+      if (diff < minDiff) {
+        minDiff = diff;
+        selectedHour = hr;
+      }
+    });
+
+    const current = selectedHour;
     const condition = current.weatherCondition || {};
     const condStyle = getWeatherConditionStyle(condition.type);
 
@@ -728,7 +782,10 @@ async function updateWeatherUI(lat, lon) {
 
     if (weatherForecastHoursList) {
       weatherForecastHoursList.innerHTML = "";
-      data.forecastHours.forEach(hourData => {
+      const selectedIdx = data.forecastHours.indexOf(selectedHour);
+      const displayHours = data.forecastHours.slice(Math.max(0, selectedIdx), selectedIdx + 8);
+
+      displayHours.forEach((hourData, idx) => {
         const hrCond = hourData.weatherCondition || {};
         const hrStyle = getWeatherConditionStyle(hrCond.type);
         const hrTemp = hourData.temperature?.degrees ?? 0;
@@ -739,13 +796,13 @@ async function updateWeatherUI(lat, lon) {
         row.style.display = "flex";
         row.style.justifyContent = "space-between";
         row.style.alignItems = "center";
-        row.style.background = "rgba(255, 255, 255, 0.03)";
-        row.style.border = "1px solid rgba(255, 255, 255, 0.05)";
+        row.style.background = idx === 0 ? "rgba(16, 185, 129, 0.15)" : "rgba(255, 255, 255, 0.03)";
+        row.style.border = idx === 0 ? "1px solid rgba(16, 185, 129, 0.4)" : "1px solid rgba(255, 255, 255, 0.05)";
         row.style.borderRadius = "6px";
         row.style.padding = "6px 10px";
 
         row.innerHTML = `
-          <span class="time" style="font-size: 11px; font-weight: 500; min-width: 65px; text-align: left;">${timeStr}</span>
+          <span class="time" style="font-size: 11px; font-weight: ${idx === 0 ? 'bold' : '500'}; color: ${idx === 0 ? '#10b981' : 'inherit'}; min-width: 65px; text-align: left;">${timeStr}</span>
           <span class="emoji" style="font-size: 16px; margin: 0 8px;">${hrStyle.emoji}</span>
           <span class="desc" style="font-size: 11px; color: var(--text-muted); flex: 1; text-align: left; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">${hrCond.description?.text || hrStyle.label}</span>
           <span class="temp" style="font-size: 11px; font-weight: bold; min-width: 45px; text-align: right;">${convertTemperatureValue(hrTemp)}</span>
@@ -980,7 +1037,7 @@ function updateUnitLabels() {
 function updateHUD(index) {
   if (!activeRoute) return;
   const pts = activeRoute.trackpoints;
-  if (index < 0 || index >= pts.length) return;
+  if (index === undefined || index === null || index < 0 || index >= pts.length) return;
 
   const currentPt = pts[index];
   const currentDist = currentPt.dist_m;
@@ -1532,6 +1589,15 @@ function showPoiDetailDialog(wpt, index, referenceDist = null, startCollapsed = 
     poiDetailDialog.classList.remove("collapsed");
   }
   poiDetailDialog.classList.remove("hidden");
+  console.log("[main] REMOVED HIDDEN FROM poiDetailDialog. unifiedDrawerCard exists:", !!unifiedDrawerCard);
+  if (unifiedDrawerCard) {
+    unifiedDrawerCard.classList.remove("hidden");
+    console.log("[main] REMOVED HIDDEN FROM unifiedDrawerCard");
+  }
+  if (tabPoiMode) {
+    console.log("[main] CLICKING tabPoiMode");
+    tabPoiMode.click();
+  }
 
   // Setup auto-resume timeout (skip if settings pauseTime is set to 0)
   if (pauseDuration > 0) {
@@ -1565,6 +1631,9 @@ function closePoiDetailDialog(resumePlayback = false) {
 
   if (poiDetailDialog) {
     poiDetailDialog.classList.add("hidden");
+  }
+  if (unifiedDrawerCard) {
+    unifiedDrawerCard.classList.add("hidden");
   }
   if (autoResumeTimeout) {
     clearTimeout(autoResumeTimeout);
@@ -1971,22 +2040,68 @@ function processGpxContent(text, filename) {
 }
 
 function updateRouteStatsUI(route) {
-  const distStr = convertDistanceValue(route.totalDistance);
+  if (!route) return;
+  const distStr = convertDistanceValue(route.totalDistance || 0);
   const distUnit = units === "imperial" ? "mi" : "km";
-  statDist.textContent = `${distStr} ${distUnit}`;
+  if (statDist) statDist.textContent = `${distStr} ${distUnit}`;
 
-  const gainStr = convertElevationValue(route.totalElevationGain);
-  const lossStr = convertElevationValue(route.totalElevationLoss);
+  const gainStr = convertElevationValue(route.totalElevationGain || 0);
+  const lossStr = convertElevationValue(route.totalElevationLoss || 0);
   const eleUnit = units === "imperial" ? "ft" : "m";
 
-  statGain.textContent = `+${gainStr}${eleUnit}`;
-  statLoss.textContent = `-${lossStr}${eleUnit}`;
-  statWpts.textContent = route.waypoints.length;
+  if (statGain) statGain.textContent = `+${gainStr}${eleUnit}`;
+  if (statLoss) statLoss.textContent = `-${lossStr}${eleUnit}`;
+  if (statWpts) statWpts.textContent = route.waypoints ? route.waypoints.length : 0;
 
   const minElevStr = convertElevationValue(route.minElevation || 0);
   const maxElevStr = convertElevationValue(route.maxElevation || 0);
   if (statElevRange) {
     statElevRange.textContent = `${minElevStr} - ${maxElevStr} ${eleUnit}`;
+  }
+  if (statMaxElev) {
+    statMaxElev.textContent = `${maxElevStr} ${eleUnit}`;
+  }
+  if (statMinElev) {
+    statMinElev.textContent = `${minElevStr} ${eleUnit}`;
+  }
+
+  if (statLongestGap) {
+    let maxGap = 0;
+    let gapDesc = "None";
+
+    const sortedWpts = [...(route.waypoints || [])].sort((a, b) => (a.dist_m || 0) - (b.dist_m || 0));
+
+    if (sortedWpts.length === 0) {
+      maxGap = route.totalDistance || 0;
+      gapDesc = "Start ➔ Finish";
+    } else {
+      let maxDist = Math.max(0, sortedWpts[0].dist_m || 0);
+      maxDist = Math.min(maxDist, route.totalDistance || 0);
+      gapDesc = `Start ➔ ${sortedWpts[0].name}`;
+      maxGap = maxDist;
+
+      for (let i = 1; i < sortedWpts.length; i++) {
+        let prevD = Math.max(0, sortedWpts[i-1].dist_m || 0);
+        let currD = Math.max(0, sortedWpts[i].dist_m || 0);
+        prevD = Math.min(prevD, route.totalDistance || 0);
+        currD = Math.min(currD, route.totalDistance || 0);
+
+        const g = currD - prevD;
+        if (g > maxGap) {
+          maxGap = g;
+          gapDesc = `${sortedWpts[i-1].name} ➔ ${sortedWpts[i].name}`;
+        }
+      }
+
+      const lastG = Math.max(0, (route.totalDistance || 0) - (sortedWpts[sortedWpts.length - 1].dist_m || 0));
+      if (lastG > maxGap) {
+        maxGap = lastG;
+        gapDesc = `${sortedWpts[sortedWpts.length - 1].name} ➔ Finish`;
+      }
+    }
+
+    const gapStr = convertDistanceValue(maxGap);
+    statLongestGap.textContent = `${gapStr} ${distUnit} (${gapDesc})`;
   }
 }
 
@@ -2199,16 +2314,45 @@ function setupEventListeners() {
 
   if (toggleChatBtn && cardGeminiChat) {
     toggleChatBtn.addEventListener("click", () => {
+      if (unifiedDrawerCard) {
+        unifiedDrawerCard.classList.remove("hidden");
+      }
       cardGeminiChat.classList.remove("hidden");
+      if (tabChatMode) tabChatMode.click();
       toggleChatBtn.classList.add("hidden");
     });
   }
 
-  if (closeChatBtn && cardGeminiChat) {
-    closeChatBtn.addEventListener("click", () => {
-      cardGeminiChat.classList.add("hidden");
-      if (activeRoute) {
+  const closeUnifiedDrawerBtn = document.getElementById("close-unified-drawer-btn");
+  if (closeUnifiedDrawerBtn && unifiedDrawerCard) {
+    closeUnifiedDrawerBtn.addEventListener("click", () => {
+      unifiedDrawerCard.classList.add("hidden");
+      if (toggleChatBtn && activeRoute) {
         toggleChatBtn.classList.remove("hidden");
+      }
+    });
+  }
+
+  if (tabPoiMode && tabChatMode) {
+    tabPoiMode.addEventListener("click", () => {
+      tabPoiMode.classList.add("active");
+      tabChatMode.classList.remove("active");
+      if (poiDetailDialog) {
+        poiDetailDialog.classList.remove("hidden");
+      }
+      if (cardGeminiChat) {
+        cardGeminiChat.classList.add("hidden");
+      }
+    });
+
+    tabChatMode.addEventListener("click", () => {
+      tabChatMode.classList.add("active");
+      tabPoiMode.classList.remove("active");
+      if (cardGeminiChat) {
+        cardGeminiChat.classList.remove("hidden");
+      }
+      if (poiDetailDialog) {
+        poiDetailDialog.classList.add("hidden");
       }
     });
   }
@@ -2227,8 +2371,12 @@ function setupEventListeners() {
   }
 
   // Course Info Overlay
-  courseInfoBtn.addEventListener("click", () => courseInfoOverlay.classList.remove("hidden"));
-  closeInfoBtn.addEventListener("click", () => courseInfoOverlay.classList.add("hidden"));
+  if (courseInfoBtn && courseInfoOverlay) {
+    courseInfoBtn.addEventListener("click", () => courseInfoOverlay.classList.remove("hidden"));
+  }
+  if (closeInfoBtn && courseInfoOverlay) {
+    closeInfoBtn.addEventListener("click", () => courseInfoOverlay.classList.add("hidden"));
+  }
 
   // Warnings Toggle
   if (toggleWarningsBtn) {
@@ -2267,6 +2415,42 @@ function setupEventListeners() {
       cardWeather.classList.add("hidden");
       toggleWeatherBtn.classList.remove("hidden");
       updateWeatherShiftedState();
+    });
+  }
+
+  if (weatherPlanStartInput) {
+    const savedStart = localStorage.getItem("pref_weather_start");
+    if (savedStart) {
+      weatherPlanStartInput.value = savedStart;
+    } else {
+      const tomorrow = new Date();
+      tomorrow.setDate(tomorrow.getDate() + 1);
+      tomorrow.setHours(8, 0, 0, 0);
+      const tzoffset = tomorrow.getTimezoneOffset() * 60000;
+      weatherPlanStartInput.value = (new Date(tomorrow - tzoffset)).toISOString().slice(0, 16);
+    }
+    weatherPlanStartInput.addEventListener("change", () => {
+      if (weatherPlanStartInput.value) {
+        localStorage.setItem("pref_weather_start", weatherPlanStartInput.value);
+        if (lastWeatherLat !== null && lastWeatherLon !== null) {
+          triggerWeatherWeather(lastWeatherLat, lastWeatherLon, true);
+        }
+      }
+    });
+  }
+
+  if (weatherPlanDurationInput) {
+    const savedDur = localStorage.getItem("pref_weather_duration");
+    if (savedDur) {
+      weatherPlanDurationInput.value = savedDur;
+    }
+    weatherPlanDurationInput.addEventListener("change", () => {
+      if (weatherPlanDurationInput.value) {
+        localStorage.setItem("pref_weather_duration", weatherPlanDurationInput.value);
+        if (lastWeatherLat !== null && lastWeatherLon !== null) {
+          triggerWeatherWeather(lastWeatherLat, lastWeatherLon, true);
+        }
+      }
     });
   }
 
@@ -2310,82 +2494,88 @@ function setupEventListeners() {
   }
 
   // Save Settings Modal parameters
-  saveSettingsBtn.addEventListener("click", () => {
-    const oldMapsKey = apiKeyMaps;
-    apiKeyMaps = mapsApiKeyInput.value.trim();
-    apiKeyGemini = geminiApiKeyInput.value.trim();
-    units = settingsUnits.value;
-    pauseDuration = parseInt(settingsPauseTime.value) || 0;
+  if (saveSettingsBtn) {
+    saveSettingsBtn.addEventListener("click", () => {
+      const oldMapsKey = apiKeyMaps;
+      apiKeyMaps = mapsApiKeyInput.value.trim();
+      apiKeyGemini = geminiApiKeyInput.value.trim();
+      units = settingsUnits.value;
+      pauseDuration = parseInt(settingsPauseTime.value) || 0;
 
-    const turnDampingValue = settingsTurnDamping.value;
-    localStorage.setItem("pref_turn_damping", turnDampingValue);
-    if (mapController) {
-      mapController.turnRateFactor = (101 - parseInt(turnDampingValue)) / 1000;
-    }
+      const turnDampingValue = settingsTurnDamping.value;
+      localStorage.setItem("pref_turn_damping", turnDampingValue);
+      if (mapController) {
+        mapController.turnRateFactor = (101 - parseInt(turnDampingValue)) / 1000;
+      }
 
-    localStorage.setItem("gmaps_api_key", apiKeyMaps);
-    localStorage.setItem("gemini_api_key", apiKeyGemini);
-    localStorage.setItem("settings_units", units);
-    localStorage.setItem("settings_pause_duration", pauseDuration);
+      localStorage.setItem("gmaps_api_key", apiKeyMaps);
+      localStorage.setItem("gemini_api_key", apiKeyGemini);
+      localStorage.setItem("settings_units", units);
+      localStorage.setItem("settings_pause_duration", pauseDuration);
 
-    if (elevationChart) {
-      elevationChart.units = units;
-      elevationChart.draw();
-    }
+      if (elevationChart) {
+        elevationChart.units = units;
+        elevationChart.draw();
+      }
 
-    if (activeRoute) {
-      updateRouteStatsUI(activeRoute);
-      updateHUD(playbackIndex);
-      
-      const spatialWarnings = activeRoute.warnings ? activeRoute.warnings.filter(w => w.type === "SPATIAL_MISMATCH") : [];
-      calculateWarnings(activeRoute, spatialWarnings, units);
-      renderWarningsUI(activeRoute);
-    }
+      if (activeRoute) {
+        updateRouteStatsUI(activeRoute);
+        updateHUD(playbackIndex);
+        
+        const spatialWarnings = activeRoute.warnings ? activeRoute.warnings.filter(w => w.type === "SPATIAL_MISMATCH") : [];
+        calculateWarnings(activeRoute, spatialWarnings, units);
+        renderWarningsUI(activeRoute);
+      }
 
-    updateUnitLabels();
-    settingsOverlay.classList.add("hidden");
-    showToast("Configurations saved.");
+      updateUnitLabels();
+      settingsOverlay.classList.add("hidden");
+      showToast("Configurations saved.");
 
-    if (apiKeyMaps && apiKeyMaps !== oldMapsKey) {
-      initMap3D();
-    }
-  });
+      if (apiKeyMaps && apiKeyMaps !== oldMapsKey) {
+        initMap3D();
+      }
+    });
+  }
 
   // Drag & Drop Course Importers
-  dropZone.addEventListener("click", () => {
-    if (document.body.classList.contains("edit-locked")) return;
-    fileSelector.click();
-  });
-  
-  fileSelector.addEventListener("change", (e) => {
-    if (document.body.classList.contains("edit-locked")) return;
-    if (e.target.files.length > 0) {
-      loadGpxFile(e.target.files[0]);
-    }
-  });
+  if (dropZone && fileSelector) {
+    dropZone.addEventListener("click", () => {
+      if (document.body.classList.contains("edit-locked")) return;
+      fileSelector.click();
+    });
+    
+    fileSelector.addEventListener("change", (e) => {
+      if (document.body.classList.contains("edit-locked")) return;
+      if (e.target.files.length > 0) {
+        loadGpxFile(e.target.files[0]);
+      }
+    });
 
-  dropZone.addEventListener("dragover", (e) => {
-    e.preventDefault();
-    if (document.body.classList.contains("edit-locked")) return;
-    dropZone.classList.add("dragover");
-  });
-  dropZone.addEventListener("dragleave", () => {
-    dropZone.classList.remove("dragover");
-  });
-  dropZone.addEventListener("drop", (e) => {
-    e.preventDefault();
-    dropZone.classList.remove("dragover");
-    if (document.body.classList.contains("edit-locked")) return;
-    if (e.dataTransfer.files.length > 0) {
-      loadGpxFile(e.dataTransfer.files[0]);
-    }
-  });
+    dropZone.addEventListener("dragover", (e) => {
+      e.preventDefault();
+      if (document.body.classList.contains("edit-locked")) return;
+      dropZone.classList.add("dragover");
+    });
+    dropZone.addEventListener("dragleave", () => {
+      dropZone.classList.remove("dragover");
+    });
+    dropZone.addEventListener("drop", (e) => {
+      e.preventDefault();
+      dropZone.classList.remove("dragover");
+      if (document.body.classList.contains("edit-locked")) return;
+      if (e.dataTransfer.files.length > 0) {
+        loadGpxFile(e.dataTransfer.files[0]);
+      }
+    });
+  }
 
   // Edit protection Lock toggle
-  editLockCheckbox.addEventListener("change", (e) => {
-    toggleEditLock(e.target.checked);
-    showToast(e.target.checked ? "Edits locked." : "Edits unlocked.");
-  });
+  if (editLockCheckbox) {
+    editLockCheckbox.addEventListener("change", (e) => {
+      toggleEditLock(e.target.checked);
+      showToast(e.target.checked ? "Edits locked." : "Edits unlocked.");
+    });
+  }
 
   // Waypoint Dragging snapping toggle listener
   if (dragSnapCheckbox) {
@@ -2525,7 +2715,9 @@ function setupEventListeners() {
     }
   };
 
-  chatSubmit.addEventListener("click", handleChatSubmit);
+  if (chatSubmit) {
+    chatSubmit.addEventListener("click", handleChatSubmit);
+  }
   
   const chatCancelBtn = document.getElementById("chat-cancel-btn");
   if (chatCancelBtn) {
@@ -2535,136 +2727,152 @@ function setupEventListeners() {
       }
     });
   }
-  chatInput.addEventListener("keydown", (e) => {
-    if (e.key === "Enter" && !e.shiftKey) {
-      e.preventDefault();
-      handleChatSubmit();
-    }
-  });
+  if (chatInput) {
+    chatInput.addEventListener("keydown", (e) => {
+      if (e.key === "Enter" && !e.shiftKey) {
+        e.preventDefault();
+        handleChatSubmit();
+      }
+    });
+  }
 
   // Elevation correction triggers
-  correctElevationBtn.addEventListener("click", async () => {
-    if (document.body.classList.contains("edit-locked")) return;
-    if (!activeRoute) return;
+  if (correctElevationBtn) {
+    correctElevationBtn.addEventListener("click", async () => {
+      if (document.body.classList.contains("edit-locked")) return;
+      if (!activeRoute) return;
 
-    correctElevationBtn.disabled = true;
-    elevationProgress.classList.remove("hidden");
+      correctElevationBtn.disabled = true;
+      elevationProgress.classList.remove("hidden");
 
-    try {
-      showToast("Fetching ground elevations from Open-Meteo...");
-      await correctRouteElevations(activeRoute, (current, total) => {
-        const percent = Math.round((current / total) * 100);
-        elevationProgressFill.style.width = `${percent}%`;
-        elevationProgressLabel.textContent = `Fetching: ${percent}% (${current}/${total})`;
-      });
+      try {
+        showToast("Fetching ground elevations from Open-Meteo...");
+        await correctRouteElevations(activeRoute, (current, total) => {
+          const percent = Math.round((current / total) * 100);
+          elevationProgressFill.style.width = `${percent}%`;
+          elevationProgressLabel.textContent = `Fetching: ${percent}% (${current}/${total})`;
+        });
 
-      precomputeRunningMetrics(activeRoute);
-      mapController.drawRoute(activeRoute, climbColorsCheckbox.checked);
-      elevationChart.setRoute(activeRoute);
-      updateRouteStatsUI(activeRoute);
-      renderWarningsUI(activeRoute);
+        precomputeRunningMetrics(activeRoute);
+        mapController.drawRoute(activeRoute, climbColorsCheckbox.checked);
+        elevationChart.setRoute(activeRoute);
+        updateRouteStatsUI(activeRoute);
+        renderWarningsUI(activeRoute);
 
-      showToast("Route elevations corrected successfully.");
-      saveActiveRouteState();
-    } catch (err) {
-      showToast("Elevation fetch failed: " + err.message);
-    } finally {
-      correctElevationBtn.disabled = document.body.classList.contains("edit-locked");
-      elevationProgress.classList.add("hidden");
-    }
-  });
+        showToast("Route elevations corrected successfully.");
+        saveActiveRouteState();
+      } catch (err) {
+        showToast("Elevation fetch failed: " + err.message);
+      } finally {
+        correctElevationBtn.disabled = document.body.classList.contains("edit-locked");
+        elevationProgress.classList.add("hidden");
+      }
+    });
+  }
 
   // Export GPX Trigger
-  exportGpxBtn.addEventListener("click", () => {
-    if (!activeRoute) return;
+  if (exportGpxBtn) {
+    exportGpxBtn.addEventListener("click", () => {
+      if (!activeRoute) return;
 
-    try {
-      const xmlString = writeGPX(activeRoute);
-      const blob = new Blob([xmlString], { type: "application/gpx+xml" });
-      const url = URL.createObjectURL(blob);
+      try {
+        const xmlString = writeGPX(activeRoute);
+        const blob = new Blob([xmlString], { type: "application/gpx+xml" });
+        const url = URL.createObjectURL(blob);
 
-      const a = document.createElement("a");
-      a.href = url;
-      a.download = `enhanced_${activeRoute.name.toLowerCase().replace(/\s+/g, "_")}.gpx`;
-      document.body.appendChild(a);
-      a.click();
-      document.body.removeChild(a);
-      URL.revokeObjectURL(url);
+        const a = document.createElement("a");
+        a.href = url;
+        a.download = `enhanced_${activeRoute.name.toLowerCase().replace(/\s+/g, "_")}.gpx`;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        URL.revokeObjectURL(url);
 
-      showToast("GPX exported successfully.");
-    } catch (err) {
-      showToast("Export failed: " + err.message);
-    }
-  });
+        showToast("GPX exported successfully.");
+      } catch (err) {
+        showToast("Export failed: " + err.message);
+      }
+    });
+  }
 
   // Playback Control Button Toggle
-  btnPlayback.addEventListener("click", () => {
-    if (!activeRoute) return;
-    if (isPlaying) {
-      pausePlayback();
-    } else {
-      closePoiDetailDialog(false);
-      startPlayback();
-    }
-  });
+  if (btnPlayback) {
+    btnPlayback.addEventListener("click", () => {
+      if (!activeRoute) return;
+      if (isPlaying) {
+        pausePlayback();
+      } else {
+        closePoiDetailDialog(false);
+        startPlayback();
+      }
+    });
+  }
 
   // Rewind Control Trigger
-  btnPlaybackRewind.addEventListener("click", () => {
-    pausePlayback();
-    playbackIndex = 0;
-    lastPausedPoiIndex = -1;
-    closePoiDetailDialog(false);
+  if (btnPlaybackRewind) {
+    btnPlaybackRewind.addEventListener("click", () => {
+      pausePlayback();
+      playbackIndex = 0;
+      lastPausedPoiIndex = -1;
+      closePoiDetailDialog(false);
 
-    if (activeRoute) {
-      if (mapController) {
-        mapController.syncToTrackpoint(0, true);
+      if (activeRoute) {
+        if (mapController) {
+          mapController.syncToTrackpoint(0, true);
+        }
+        elevationChart.progressIndex = 0;
+        elevationChart.hoverIdx = -1;
+        elevationChart.draw();
+        updateHUD(0);
       }
-      elevationChart.progressIndex = 0;
-      elevationChart.hoverIdx = -1;
-      elevationChart.draw();
-      updateHUD(0);
-    }
-  });
+    });
+  }
 
   // Speed Slider Listener
-  playbackSpeed.addEventListener("input", (e) => {
-    const val = e.target.value;
-    speedLabelVal.textContent = val;
-    localStorage.setItem("pref_playback_speed", val);
+  if (playbackSpeed) {
+    playbackSpeed.addEventListener("input", (e) => {
+      const val = e.target.value;
+      speedLabelVal.textContent = val;
+      localStorage.setItem("pref_playback_speed", val);
 
-    if (isPlaying) {
-      pausePlayback();
-      startPlayback();
-    }
-  });
+      if (isPlaying) {
+        pausePlayback();
+        startPlayback();
+      }
+    });
+  }
 
   // Camera Range Slider Listener
-  cameraRangeSlider.addEventListener("input", (e) => {
-    const val = parseInt(e.target.value);
-    updateCameraRangeLabel(val);
-    localStorage.setItem("pref_cam_range", val);
+  if (cameraRangeSlider) {
+    cameraRangeSlider.addEventListener("input", (e) => {
+      const val = parseInt(e.target.value);
+      updateCameraRangeLabel(val);
+      localStorage.setItem("pref_cam_range", val);
 
-    if (mapController) {
-      mapController.cameraRange = val;
-      if (!isPlaying && activeRoute) {
-        mapController.syncToTrackpoint(playbackIndex, false);
+      if (mapController) {
+        mapController.cameraRange = val;
+        if (!isPlaying && activeRoute) {
+          mapController.syncToTrackpoint(playbackIndex, false);
+        }
       }
-    }
-  });
+    });
+  }
 
   // Camera Tilt Slider Listener
-  cameraTiltSlider.addEventListener("input", (e) => {
-    const val = parseInt(e.target.value);
-    tiltLabelVal.textContent = `${val}°`;
-    localStorage.setItem("pref_tilt", val);
+  if (cameraTiltSlider) {
+    cameraTiltSlider.addEventListener("input", (e) => {
+      const val = parseInt(e.target.value);
+      tiltLabelVal.textContent = `${val}°`;
+      localStorage.setItem("pref_tilt", val);
 
-    if (mapController) {
-      mapController.cameraTilt = val;
-      if (!isPlaying && activeRoute) {
-        mapController.syncToTrackpoint(playbackIndex, false);
+      if (mapController) {
+        mapController.cameraTilt = val;
+        if (!isPlaying && activeRoute) {
+          mapController.syncToTrackpoint(playbackIndex, false);
+        }
       }
-    }
-  });
+    });
+  }
 
   // Camera Rotation Turn Damping Slider Listener
   if (settingsTurnDamping) {
@@ -2675,57 +2883,69 @@ function setupEventListeners() {
   }
 
   // Color Coding Climbs polyline toggle
-  climbColorsCheckbox.addEventListener("change", (e) => {
-    const isChecked = e.target.checked;
-    localStorage.setItem("pref_climb_colors", isChecked);
-    if (mapController) {
-      mapController.colorCodeClimbs = isChecked;
-      if (activeRoute) {
-        mapController.drawRoute(activeRoute, isChecked);
-        mapController.syncToTrackpoint(playbackIndex, false);
+  if (climbColorsCheckbox) {
+    climbColorsCheckbox.addEventListener("change", (e) => {
+      const isChecked = e.target.checked;
+      localStorage.setItem("pref_climb_colors", isChecked);
+      if (mapController) {
+        mapController.colorCodeClimbs = isChecked;
+        if (activeRoute) {
+          mapController.drawRoute(activeRoute, isChecked);
+          mapController.syncToTrackpoint(playbackIndex, false);
+        }
       }
-    }
-  });
+    });
+  }
 
   // POI dialog expanded/collapsed switch
-  poiDialogToggleExpand.addEventListener("click", () => {
-    const isCollapsed = poiDetailDialog.classList.contains("collapsed");
-    if (isCollapsed) {
-      // Expanding! Pause playback and cancel auto resume timers
-      poiDetailDialog.classList.remove("collapsed");
+  if (poiDialogToggleExpand && poiDetailDialog) {
+    poiDialogToggleExpand.addEventListener("click", () => {
+      const isCollapsed = poiDetailDialog.classList.contains("collapsed");
+      if (isCollapsed) {
+        // Expanding! Pause playback and cancel auto resume timers
+        poiDetailDialog.classList.remove("collapsed");
+        pausePlayback();
+        if (autoResumeTimeout) {
+          clearTimeout(autoResumeTimeout);
+          autoResumeTimeout = null;
+        }
+      } else {
+        // Collapsing!
+        poiDetailDialog.classList.add("collapsed");
+      }
+    });
+  }
+
+  // POI dialog playback Pause/Continue buttons
+  if (poiDialogPlaybackPause) {
+    poiDialogPlaybackPause.addEventListener("click", () => {
       pausePlayback();
       if (autoResumeTimeout) {
         clearTimeout(autoResumeTimeout);
         autoResumeTimeout = null;
       }
-    } else {
-      // Collapsing!
-      poiDetailDialog.classList.add("collapsed");
-    }
-  });
+      showToast("Playback paused.");
+    });
+  }
 
-  // POI dialog playback Pause/Continue buttons
-  poiDialogPlaybackPause.addEventListener("click", () => {
-    pausePlayback();
-    if (autoResumeTimeout) {
-      clearTimeout(autoResumeTimeout);
-      autoResumeTimeout = null;
-    }
-    showToast("Playback paused.");
-  });
-
-  poiDialogPlaybackContinue.addEventListener("click", () => {
-    closePoiDetailDialog(true);
-  });
+  if (poiDialogPlaybackContinue) {
+    poiDialogPlaybackContinue.addEventListener("click", () => {
+      closePoiDetailDialog(true);
+    });
+  }
 
   // Close buttons listeners
-  poiDialogCloseHeader.addEventListener("click", () => {
-    closePoiDetailDialog(false);
-  });
+  if (poiDialogCloseHeader) {
+    poiDialogCloseHeader.addEventListener("click", () => {
+      closePoiDetailDialog(false);
+    });
+  }
 
-  poiDialogCloseBottom.addEventListener("click", () => {
-    closePoiDetailDialog(false);
-  });
+  if (poiDialogCloseBottom) {
+    poiDialogCloseBottom.addEventListener("click", () => {
+      closePoiDetailDialog(false);
+    });
+  }
 
   // Edit Waypoint Button Handler
   if (poiDialogEditBtn) {
@@ -2765,7 +2985,14 @@ function setupEventListeners() {
         if (mapController) {
           mapController.setEditLock(false); // unlock draggable markers
         }
-        showToast("Edit mode enabled. Edit name, amenities, or drag marker on map to relocate.");
+        poiDetailDialog.classList.add("hidden");
+        const rBanner = document.getElementById("relocate-banner");
+        if (rBanner) {
+          rBanner.classList.remove("hidden");
+          const bName = document.getElementById("relocate-banner-name");
+          if (bName) bName.textContent = activeDialogWpt ? activeDialogWpt.name : "";
+        }
+        showToast("Click anywhere on the map to place.");
       } else {
         // Exit/Save Edit Mode
         isEditingPoiLocation = false;
@@ -2774,6 +3001,9 @@ function setupEventListeners() {
         if (poiEditModeSelector) {
           poiEditModeSelector.classList.add("hidden");
         }
+        const rBanner = document.getElementById("relocate-banner");
+        if (rBanner) rBanner.classList.add("hidden");
+        poiDetailDialog.classList.remove("hidden");
 
         // Save name input
         if (poiValNameInput && poiValName && activeDialogWpt) {
@@ -2804,6 +3034,15 @@ function setupEventListeners() {
     });
   }
 
+  const relocateDoneBtn = document.getElementById("relocate-done-btn");
+  if (relocateDoneBtn) {
+    relocateDoneBtn.addEventListener("click", () => {
+      if (poiDialogEditBtn && isEditingPoiLocation) {
+        poiDialogEditBtn.click();
+      }
+    });
+  }
+
   // Snap to Course Pill Toggle
   if (poiEditModeSnap) {
     poiEditModeSnap.addEventListener("click", () => {
@@ -2830,11 +3069,14 @@ function setupEventListeners() {
 
   // Listen to waypoint markers clicks from 3D Satellite Map
   window.addEventListener("waypoint-click", (e) => {
+    console.log("[main] WINDOW RECEIVED WAYPOINT-CLICK EVENT:", e.detail?.name, "isEditingPoiLocation:", isEditingPoiLocation);
+    if (isEditingPoiLocation) return;
     const wpt = e.detail;
     pausePlayback();
-    playbackIndex = wpt.closestTrackpointIndex;
+    playbackIndex = wpt.closestTrackpointIndex !== undefined ? wpt.closestTrackpointIndex : 0;
     lastPausedPoiIndex = playbackIndex; // Prevent immediate repeat of trigger
 
+    console.log("[main] DISPATCHING TO SYNC & HUD. playbackIndex:", playbackIndex);
     if (mapController) {
       mapController.syncToTrackpoint(playbackIndex, true);
     }
@@ -2844,6 +3086,7 @@ function setupEventListeners() {
     elevationChart.draw();
     
     updateHUD(playbackIndex);
+    console.log("[main] CALLING showPoiDetailDialog FOR WAYPOINT:", wpt?.name);
     showPoiDetailDialog(wpt, playbackIndex, playbackDistance);
   });
 
@@ -2899,9 +3142,51 @@ function setupEventListeners() {
     });
   }
 
-  // Handle map clicks to place the temporary marker
+  // Handle map clicks to place the temporary marker or relocate active POI
   if (mapController) {
     mapController.onMapClick = (pos) => {
+      if (isEditingPoiLocation && activeDialogWpt) {
+        const isSnap = dragSnapCheckbox ? dragSnapCheckbox.checked : true;
+        let targetPos = {
+          lat: pos.lat,
+          lon: pos.lng || pos.lon,
+          ele: pos.altitude || 0,
+          dist_m: activeDialogWpt.dist_m,
+          closestTrackpointIndex: activeDialogWpt.closestTrackpointIndex
+        };
+
+        if (isSnap) {
+          const snapped = snapToRouteSegments(activeRoute, { lat: pos.lat, lng: pos.lng || pos.lon });
+          if (snapped) {
+            targetPos = snapped;
+          }
+        }
+
+        activeDialogWpt.lat = targetPos.lat;
+        activeDialogWpt.lon = targetPos.lon;
+        if (targetPos.ele) activeDialogWpt.ele = targetPos.ele;
+        if (targetPos.dist_m !== undefined) activeDialogWpt.dist_m = targetPos.dist_m;
+        if (targetPos.closestTrackpointIndex !== undefined) {
+          activeDialogWpt.closestTrackpointIndex = targetPos.closestTrackpointIndex;
+          playbackIndex = targetPos.closestTrackpointIndex;
+        }
+
+        activeRoute.waypoints.sort((a, b) => a.dist_m - b.dist_m);
+
+        mapController.updateWaypointMarkerPosition(activeDialogWpt, targetPos, playbackIndex);
+
+        elevationChart.progressIndex = playbackIndex;
+        elevationChart.draw();
+        updateHUD(playbackIndex);
+
+        const distStr = units === "miles"
+          ? `${(activeDialogWpt.dist_m / 1609.34).toFixed(2)} mi`
+          : `${(activeDialogWpt.dist_m / 1000).toFixed(2)} km`;
+
+        showToast(`Relocated "${activeDialogWpt.name}" to ${distStr}`);
+        return;
+      }
+
       if (!isPlacingNewPoi) return;
 
       const snapped = snapToRouteSegments(activeRoute, { lat: pos.lat, lng: pos.lng });
@@ -3141,6 +3426,13 @@ function setupResetBoulderButton() {
       if (cardImporter) {
         cardImporter.classList.remove("hidden");
       }
+
+      fetch("./samples/enhanced_52m_start.gpx")
+        .then(res => res.text())
+        .then(text => {
+          processGpxContent(text, "enhanced_52m_start.gpx");
+        })
+        .catch(err => console.log("Sample load err:", err));
 
       showToast("Reset to Boulder.");
     });

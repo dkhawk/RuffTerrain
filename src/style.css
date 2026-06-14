@@ -982,12 +982,9 @@ hr {
 
 /* COLLAPSIBLE POI DIALOG OVERLAY (Screenshot 4) */
 .poi-dialog {
-  position: absolute;
-  bottom: 210px;
-  left: 378px;
-  right: 348px;
+  position: relative;
+  width: 100%;
   height: auto;
-  z-index: 8;
   border-radius: var(--radius-card);
   transition: var(--transition-smooth);
 }

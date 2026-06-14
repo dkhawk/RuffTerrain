@@ -105,7 +105,8 @@ export function snapToRouteSegments(route, pos, nominalDistM = null) {
           lon: projLon,
           ele: A.ele + t * (B.ele - A.ele),
           dist_m: A.dist_m + t * (B.dist_m - A.dist_m),
-          closestTrackpointIndex: i
+          closestTrackpointIndex: Math.round(i + t),
+          fractionalIndex: i + t
         };
       }
     }
