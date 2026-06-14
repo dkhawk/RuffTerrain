@@ -628,3 +628,14 @@ This journal records all design decisions, architecture patterns, development st
     *   Added console logging to `src/map-3d.js` and `src/main.js`.
     *   Rebuilt production bundle with `npm run build` and updated static `dist/index.html` classic execution defer tags.
 
+---
+
+### 🚀 Session 50: Fixing setupEventListeners Early Termination (Null Safety)
+*   **Goal**: Ensure `setupEventListeners` successfully completes registration of window and map event listeners.
+*   **Decisions & Rationale**:
+    *   **Diagnosed `TypeError` on Missing Header Close Button**: Traced why `MARKER CLICK TRIGGERED` executed but `window.addEventListener("waypoint-click", ...)` never fired. Diagnosed that an element lookup for `poi-dialog-close-header` returned `null`, causing `poiDialogCloseHeader.addEventListener("click", ...)` to throw an uncaught `TypeError` that prematurely aborted `setupEventListeners()`.
+    *   **Comprehensive Null Checks**: Wrapped all element `.addEventListener` calls inside `setupEventListeners()` with defensive null checks to guarantee robust completion.
+*   **Key Actions Taken**:
+    *   Added defensive null checks to all element listeners in `src/main.js`.
+    *   Rebuilt production bundle with `npm run build` and updated static `dist/index.html` classic execution defer tags.
+
