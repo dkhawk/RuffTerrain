@@ -17,7 +17,7 @@
     <!-- Main Application Stylesheet -->
     <!-- PDF.js client-side parser library -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.4.120/pdf.min.js"></script>
-    <script defer src="./assets/index-jMtxiW_E.js"></script>
+    <script defer src="./assets/index-ARUb53bn.js"></script>
   </head>
   <body>
     <!-- Top HUD Dashboard (Header Bar matching Screenshot 1) -->
@@ -208,27 +208,36 @@
         <button id="close-stats-btn" class="close-btn" style="background: none; border: none; color: var(--text-secondary); font-size: 20px; cursor: pointer; padding: 0; line-height: 1;">&times;</button>
       </header>
       <div class="card-body">
-        <div class="stats-grid">
+        <div class="stats-grid" style="display: grid; grid-template-columns: repeat(2, 1fr); gap: 8px;">
           <div class="stat-box">
-            <span class="label">Distance</span>
-            <span id="stat-dist" class="value">0.0 mi</span>
-          </div>
-          <div class="stat-box">
-            <span class="label">Waypoints</span>
-            <span id="stat-wpts" class="value">0</span>
+            <span class="label" style="font-size: 9px; color: var(--text-muted); text-transform: uppercase; font-weight: bold;">Distance</span>
+            <span id="stat-dist" class="value" style="font-size: 13px; font-weight: 700;">0.0 mi</span>
           </div>
           <div class="stat-box">
-            <span class="label">Elev Gain</span>
-            <span id="stat-gain" class="value">+0m</span>
+            <span class="label" style="font-size: 9px; color: var(--text-muted); text-transform: uppercase; font-weight: bold;">Aid Stations</span>
+            <span id="stat-wpts" class="value" style="font-size: 13px; font-weight: 700;">0</span>
           </div>
           <div class="stat-box">
-            <span class="label">Elev Loss</span>
-            <span id="stat-loss" class="value">-0m</span>
+            <span class="label" style="font-size: 9px; color: var(--text-muted); text-transform: uppercase; font-weight: bold;">Total Gain</span>
+            <span id="stat-gain" class="value" style="font-size: 13px; font-weight: 700; color: #10b981;">+0m</span>
           </div>
-          <div class="stat-box full-width">
-            <span class="label">Elevation Range</span>
-            <span id="stat-elev-range" class="value">0 - 0 ft</span>
+          <div class="stat-box">
+            <span class="label" style="font-size: 9px; color: var(--text-muted); text-transform: uppercase; font-weight: bold;">Total Loss</span>
+            <span id="stat-loss" class="value" style="font-size: 13px; font-weight: 700; color: #ef4444;">-0m</span>
           </div>
+          <div class="stat-box">
+            <span class="label" style="font-size: 9px; color: var(--text-muted); text-transform: uppercase; font-weight: bold;">Highest Elev</span>
+            <span id="stat-max-elev" class="value" style="font-size: 13px; font-weight: 700;">0 ft</span>
+          </div>
+          <div class="stat-box">
+            <span class="label" style="font-size: 9px; color: var(--text-muted); text-transform: uppercase; font-weight: bold;">Lowest Elev</span>
+            <span id="stat-min-elev" class="value" style="font-size: 13px; font-weight: 700;">0 ft</span>
+          </div>
+          <div class="stat-box" style="grid-column: span 2;">
+            <span class="label" style="font-size: 9px; color: var(--text-muted); text-transform: uppercase; font-weight: bold;">Longest Gap</span>
+            <span id="stat-longest-gap" class="value" style="font-size: 11px; font-weight: 600; color: var(--accent-light);">--</span>
+          </div>
+          <span id="stat-elev-range" class="hidden"></span>
         </div>
 
         <div id="active-climb-info-box" class="active-climb-info hidden">

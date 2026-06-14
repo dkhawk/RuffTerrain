@@ -129,6 +129,9 @@ const statGain = document.getElementById("stat-gain");
 const statLoss = document.getElementById("stat-loss");
 const statWpts = document.getElementById("stat-wpts");
 const statElevRange = document.getElementById("stat-elev-range");
+const statMaxElev = document.getElementById("stat-max-elev");
+const statMinElev = document.getElementById("stat-min-elev");
+const statLongestGap = document.getElementById("stat-longest-gap");
 
 const activeClimbInfoBox = document.getElementById("active-climb-info-box");
 const activeClimbText = document.getElementById("active-climb-text");
@@ -2032,22 +2035,68 @@ function processGpxContent(text, filename) {
 }
 
 function updateRouteStatsUI(route) {
-  const distStr = convertDistanceValue(route.totalDistance);
+  if (!route) return;
+  const distStr = convertDistanceValue(route.totalDistance || 0);
   const distUnit = units === "imperial" ? "mi" : "km";
-  statDist.textContent = `${distStr} ${distUnit}`;
+  if (statDist) statDist.textContent = `${distStr} ${distUnit}`;
 
-  const gainStr = convertElevationValue(route.totalElevationGain);
-  const lossStr = convertElevationValue(route.totalElevationLoss);
+  const gainStr = convertElevationValue(route.totalElevationGain || 0);
+  const lossStr = convertElevationValue(route.totalElevationLoss || 0);
   const eleUnit = units === "imperial" ? "ft" : "m";
 
-  statGain.textContent = `+${gainStr}${eleUnit}`;
-  statLoss.textContent = `-${lossStr}${eleUnit}`;
-  statWpts.textContent = route.waypoints.length;
+  if (statGain) statGain.textContent = `+${gainStr}${eleUnit}`;
+  if (statLoss) statLoss.textContent = `-${lossStr}${eleUnit}`;
+  if (statWpts) statWpts.textContent = route.waypoints ? route.waypoints.length : 0;
 
   const minElevStr = convertElevationValue(route.minElevation || 0);
   const maxElevStr = convertElevationValue(route.maxElevation || 0);
   if (statElevRange) {
     statElevRange.textContent = `${minElevStr} - ${maxElevStr} ${eleUnit}`;
+  }
+  if (statMaxElev) {
+    statMaxElev.textContent = `${maxElevStr} ${eleUnit}`;
+  }
+  if (statMinElev) {
+    statMinElev.textContent = `${minElevStr} ${eleUnit}`;
+  }
+
+  if (statLongestGap) {
+    let maxGap = 0;
+    let gapDesc = "None";
+
+    const sortedWpts = [...(route.waypoints || [])].sort((a, b) => (a.dist_m || 0) - (b.dist_m || 0));
+
+    if (sortedWpts.length === 0) {
+      maxGap = route.totalDistance || 0;
+      gapDesc = "Start ➔ Finish";
+    } else {
+      let maxDist = Math.max(0, sortedWpts[0].dist_m || 0);
+      maxDist = Math.min(maxDist, route.totalDistance || 0);
+      gapDesc = `Start ➔ ${sortedWpts[0].name}`;
+      maxGap = maxDist;
+
+      for (let i = 1; i < sortedWpts.length; i++) {
+        let prevD = Math.max(0, sortedWpts[i-1].dist_m || 0);
+        let currD = Math.max(0, sortedWpts[i].dist_m || 0);
+        prevD = Math.min(prevD, route.totalDistance || 0);
+        currD = Math.min(currD, route.totalDistance || 0);
+
+        const g = currD - prevD;
+        if (g > maxGap) {
+          maxGap = g;
+          gapDesc = `${sortedWpts[i-1].name} ➔ ${sortedWpts[i].name}`;
+        }
+      }
+
+      const lastG = Math.max(0, (route.totalDistance || 0) - (sortedWpts[sortedWpts.length - 1].dist_m || 0));
+      if (lastG > maxGap) {
+        maxGap = lastG;
+        gapDesc = `${sortedWpts[sortedWpts.length - 1].name} ➔ Finish`;
+      }
+    }
+
+    const gapStr = convertDistanceValue(maxGap);
+    statLongestGap.textContent = `${gapStr} ${distUnit} (${gapDesc})`;
   }
 }
 
