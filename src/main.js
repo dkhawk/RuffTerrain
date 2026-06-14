@@ -2367,8 +2367,12 @@ function setupEventListeners() {
   }
 
   // Course Info Overlay
-  courseInfoBtn.addEventListener("click", () => courseInfoOverlay.classList.remove("hidden"));
-  closeInfoBtn.addEventListener("click", () => courseInfoOverlay.classList.add("hidden"));
+  if (courseInfoBtn && courseInfoOverlay) {
+    courseInfoBtn.addEventListener("click", () => courseInfoOverlay.classList.remove("hidden"));
+  }
+  if (closeInfoBtn && courseInfoOverlay) {
+    closeInfoBtn.addEventListener("click", () => courseInfoOverlay.classList.add("hidden"));
+  }
 
   // Warnings Toggle
   if (toggleWarningsBtn) {
@@ -2486,82 +2490,88 @@ function setupEventListeners() {
   }
 
   // Save Settings Modal parameters
-  saveSettingsBtn.addEventListener("click", () => {
-    const oldMapsKey = apiKeyMaps;
-    apiKeyMaps = mapsApiKeyInput.value.trim();
-    apiKeyGemini = geminiApiKeyInput.value.trim();
-    units = settingsUnits.value;
-    pauseDuration = parseInt(settingsPauseTime.value) || 0;
+  if (saveSettingsBtn) {
+    saveSettingsBtn.addEventListener("click", () => {
+      const oldMapsKey = apiKeyMaps;
+      apiKeyMaps = mapsApiKeyInput.value.trim();
+      apiKeyGemini = geminiApiKeyInput.value.trim();
+      units = settingsUnits.value;
+      pauseDuration = parseInt(settingsPauseTime.value) || 0;
 
-    const turnDampingValue = settingsTurnDamping.value;
-    localStorage.setItem("pref_turn_damping", turnDampingValue);
-    if (mapController) {
-      mapController.turnRateFactor = (101 - parseInt(turnDampingValue)) / 1000;
-    }
+      const turnDampingValue = settingsTurnDamping.value;
+      localStorage.setItem("pref_turn_damping", turnDampingValue);
+      if (mapController) {
+        mapController.turnRateFactor = (101 - parseInt(turnDampingValue)) / 1000;
+      }
 
-    localStorage.setItem("gmaps_api_key", apiKeyMaps);
-    localStorage.setItem("gemini_api_key", apiKeyGemini);
-    localStorage.setItem("settings_units", units);
-    localStorage.setItem("settings_pause_duration", pauseDuration);
+      localStorage.setItem("gmaps_api_key", apiKeyMaps);
+      localStorage.setItem("gemini_api_key", apiKeyGemini);
+      localStorage.setItem("settings_units", units);
+      localStorage.setItem("settings_pause_duration", pauseDuration);
 
-    if (elevationChart) {
-      elevationChart.units = units;
-      elevationChart.draw();
-    }
+      if (elevationChart) {
+        elevationChart.units = units;
+        elevationChart.draw();
+      }
 
-    if (activeRoute) {
-      updateRouteStatsUI(activeRoute);
-      updateHUD(playbackIndex);
-      
-      const spatialWarnings = activeRoute.warnings ? activeRoute.warnings.filter(w => w.type === "SPATIAL_MISMATCH") : [];
-      calculateWarnings(activeRoute, spatialWarnings, units);
-      renderWarningsUI(activeRoute);
-    }
+      if (activeRoute) {
+        updateRouteStatsUI(activeRoute);
+        updateHUD(playbackIndex);
+        
+        const spatialWarnings = activeRoute.warnings ? activeRoute.warnings.filter(w => w.type === "SPATIAL_MISMATCH") : [];
+        calculateWarnings(activeRoute, spatialWarnings, units);
+        renderWarningsUI(activeRoute);
+      }
 
-    updateUnitLabels();
-    settingsOverlay.classList.add("hidden");
-    showToast("Configurations saved.");
+      updateUnitLabels();
+      settingsOverlay.classList.add("hidden");
+      showToast("Configurations saved.");
 
-    if (apiKeyMaps && apiKeyMaps !== oldMapsKey) {
-      initMap3D();
-    }
-  });
+      if (apiKeyMaps && apiKeyMaps !== oldMapsKey) {
+        initMap3D();
+      }
+    });
+  }
 
   // Drag & Drop Course Importers
-  dropZone.addEventListener("click", () => {
-    if (document.body.classList.contains("edit-locked")) return;
-    fileSelector.click();
-  });
-  
-  fileSelector.addEventListener("change", (e) => {
-    if (document.body.classList.contains("edit-locked")) return;
-    if (e.target.files.length > 0) {
-      loadGpxFile(e.target.files[0]);
-    }
-  });
+  if (dropZone && fileSelector) {
+    dropZone.addEventListener("click", () => {
+      if (document.body.classList.contains("edit-locked")) return;
+      fileSelector.click();
+    });
+    
+    fileSelector.addEventListener("change", (e) => {
+      if (document.body.classList.contains("edit-locked")) return;
+      if (e.target.files.length > 0) {
+        loadGpxFile(e.target.files[0]);
+      }
+    });
 
-  dropZone.addEventListener("dragover", (e) => {
-    e.preventDefault();
-    if (document.body.classList.contains("edit-locked")) return;
-    dropZone.classList.add("dragover");
-  });
-  dropZone.addEventListener("dragleave", () => {
-    dropZone.classList.remove("dragover");
-  });
-  dropZone.addEventListener("drop", (e) => {
-    e.preventDefault();
-    dropZone.classList.remove("dragover");
-    if (document.body.classList.contains("edit-locked")) return;
-    if (e.dataTransfer.files.length > 0) {
-      loadGpxFile(e.dataTransfer.files[0]);
-    }
-  });
+    dropZone.addEventListener("dragover", (e) => {
+      e.preventDefault();
+      if (document.body.classList.contains("edit-locked")) return;
+      dropZone.classList.add("dragover");
+    });
+    dropZone.addEventListener("dragleave", () => {
+      dropZone.classList.remove("dragover");
+    });
+    dropZone.addEventListener("drop", (e) => {
+      e.preventDefault();
+      dropZone.classList.remove("dragover");
+      if (document.body.classList.contains("edit-locked")) return;
+      if (e.dataTransfer.files.length > 0) {
+        loadGpxFile(e.dataTransfer.files[0]);
+      }
+    });
+  }
 
   // Edit protection Lock toggle
-  editLockCheckbox.addEventListener("change", (e) => {
-    toggleEditLock(e.target.checked);
-    showToast(e.target.checked ? "Edits locked." : "Edits unlocked.");
-  });
+  if (editLockCheckbox) {
+    editLockCheckbox.addEventListener("change", (e) => {
+      toggleEditLock(e.target.checked);
+      showToast(e.target.checked ? "Edits locked." : "Edits unlocked.");
+    });
+  }
 
   // Waypoint Dragging snapping toggle listener
   if (dragSnapCheckbox) {
@@ -2701,7 +2711,9 @@ function setupEventListeners() {
     }
   };
 
-  chatSubmit.addEventListener("click", handleChatSubmit);
+  if (chatSubmit) {
+    chatSubmit.addEventListener("click", handleChatSubmit);
+  }
   
   const chatCancelBtn = document.getElementById("chat-cancel-btn");
   if (chatCancelBtn) {
@@ -2711,136 +2723,152 @@ function setupEventListeners() {
       }
     });
   }
-  chatInput.addEventListener("keydown", (e) => {
-    if (e.key === "Enter" && !e.shiftKey) {
-      e.preventDefault();
-      handleChatSubmit();
-    }
-  });
+  if (chatInput) {
+    chatInput.addEventListener("keydown", (e) => {
+      if (e.key === "Enter" && !e.shiftKey) {
+        e.preventDefault();
+        handleChatSubmit();
+      }
+    });
+  }
 
   // Elevation correction triggers
-  correctElevationBtn.addEventListener("click", async () => {
-    if (document.body.classList.contains("edit-locked")) return;
-    if (!activeRoute) return;
+  if (correctElevationBtn) {
+    correctElevationBtn.addEventListener("click", async () => {
+      if (document.body.classList.contains("edit-locked")) return;
+      if (!activeRoute) return;
 
-    correctElevationBtn.disabled = true;
-    elevationProgress.classList.remove("hidden");
+      correctElevationBtn.disabled = true;
+      elevationProgress.classList.remove("hidden");
 
-    try {
-      showToast("Fetching ground elevations from Open-Meteo...");
-      await correctRouteElevations(activeRoute, (current, total) => {
-        const percent = Math.round((current / total) * 100);
-        elevationProgressFill.style.width = `${percent}%`;
-        elevationProgressLabel.textContent = `Fetching: ${percent}% (${current}/${total})`;
-      });
+      try {
+        showToast("Fetching ground elevations from Open-Meteo...");
+        await correctRouteElevations(activeRoute, (current, total) => {
+          const percent = Math.round((current / total) * 100);
+          elevationProgressFill.style.width = `${percent}%`;
+          elevationProgressLabel.textContent = `Fetching: ${percent}% (${current}/${total})`;
+        });
 
-      precomputeRunningMetrics(activeRoute);
-      mapController.drawRoute(activeRoute, climbColorsCheckbox.checked);
-      elevationChart.setRoute(activeRoute);
-      updateRouteStatsUI(activeRoute);
-      renderWarningsUI(activeRoute);
+        precomputeRunningMetrics(activeRoute);
+        mapController.drawRoute(activeRoute, climbColorsCheckbox.checked);
+        elevationChart.setRoute(activeRoute);
+        updateRouteStatsUI(activeRoute);
+        renderWarningsUI(activeRoute);
 
-      showToast("Route elevations corrected successfully.");
-      saveActiveRouteState();
-    } catch (err) {
-      showToast("Elevation fetch failed: " + err.message);
-    } finally {
-      correctElevationBtn.disabled = document.body.classList.contains("edit-locked");
-      elevationProgress.classList.add("hidden");
-    }
-  });
+        showToast("Route elevations corrected successfully.");
+        saveActiveRouteState();
+      } catch (err) {
+        showToast("Elevation fetch failed: " + err.message);
+      } finally {
+        correctElevationBtn.disabled = document.body.classList.contains("edit-locked");
+        elevationProgress.classList.add("hidden");
+      }
+    });
+  }
 
   // Export GPX Trigger
-  exportGpxBtn.addEventListener("click", () => {
-    if (!activeRoute) return;
+  if (exportGpxBtn) {
+    exportGpxBtn.addEventListener("click", () => {
+      if (!activeRoute) return;
 
-    try {
-      const xmlString = writeGPX(activeRoute);
-      const blob = new Blob([xmlString], { type: "application/gpx+xml" });
-      const url = URL.createObjectURL(blob);
+      try {
+        const xmlString = writeGPX(activeRoute);
+        const blob = new Blob([xmlString], { type: "application/gpx+xml" });
+        const url = URL.createObjectURL(blob);
 
-      const a = document.createElement("a");
-      a.href = url;
-      a.download = `enhanced_${activeRoute.name.toLowerCase().replace(/\s+/g, "_")}.gpx`;
-      document.body.appendChild(a);
-      a.click();
-      document.body.removeChild(a);
-      URL.revokeObjectURL(url);
+        const a = document.createElement("a");
+        a.href = url;
+        a.download = `enhanced_${activeRoute.name.toLowerCase().replace(/\s+/g, "_")}.gpx`;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        URL.revokeObjectURL(url);
 
-      showToast("GPX exported successfully.");
-    } catch (err) {
-      showToast("Export failed: " + err.message);
-    }
-  });
+        showToast("GPX exported successfully.");
+      } catch (err) {
+        showToast("Export failed: " + err.message);
+      }
+    });
+  }
 
   // Playback Control Button Toggle
-  btnPlayback.addEventListener("click", () => {
-    if (!activeRoute) return;
-    if (isPlaying) {
-      pausePlayback();
-    } else {
-      closePoiDetailDialog(false);
-      startPlayback();
-    }
-  });
+  if (btnPlayback) {
+    btnPlayback.addEventListener("click", () => {
+      if (!activeRoute) return;
+      if (isPlaying) {
+        pausePlayback();
+      } else {
+        closePoiDetailDialog(false);
+        startPlayback();
+      }
+    });
+  }
 
   // Rewind Control Trigger
-  btnPlaybackRewind.addEventListener("click", () => {
-    pausePlayback();
-    playbackIndex = 0;
-    lastPausedPoiIndex = -1;
-    closePoiDetailDialog(false);
+  if (btnPlaybackRewind) {
+    btnPlaybackRewind.addEventListener("click", () => {
+      pausePlayback();
+      playbackIndex = 0;
+      lastPausedPoiIndex = -1;
+      closePoiDetailDialog(false);
 
-    if (activeRoute) {
-      if (mapController) {
-        mapController.syncToTrackpoint(0, true);
+      if (activeRoute) {
+        if (mapController) {
+          mapController.syncToTrackpoint(0, true);
+        }
+        elevationChart.progressIndex = 0;
+        elevationChart.hoverIdx = -1;
+        elevationChart.draw();
+        updateHUD(0);
       }
-      elevationChart.progressIndex = 0;
-      elevationChart.hoverIdx = -1;
-      elevationChart.draw();
-      updateHUD(0);
-    }
-  });
+    });
+  }
 
   // Speed Slider Listener
-  playbackSpeed.addEventListener("input", (e) => {
-    const val = e.target.value;
-    speedLabelVal.textContent = val;
-    localStorage.setItem("pref_playback_speed", val);
+  if (playbackSpeed) {
+    playbackSpeed.addEventListener("input", (e) => {
+      const val = e.target.value;
+      speedLabelVal.textContent = val;
+      localStorage.setItem("pref_playback_speed", val);
 
-    if (isPlaying) {
-      pausePlayback();
-      startPlayback();
-    }
-  });
+      if (isPlaying) {
+        pausePlayback();
+        startPlayback();
+      }
+    });
+  }
 
   // Camera Range Slider Listener
-  cameraRangeSlider.addEventListener("input", (e) => {
-    const val = parseInt(e.target.value);
-    updateCameraRangeLabel(val);
-    localStorage.setItem("pref_cam_range", val);
+  if (cameraRangeSlider) {
+    cameraRangeSlider.addEventListener("input", (e) => {
+      const val = parseInt(e.target.value);
+      updateCameraRangeLabel(val);
+      localStorage.setItem("pref_cam_range", val);
 
-    if (mapController) {
-      mapController.cameraRange = val;
-      if (!isPlaying && activeRoute) {
-        mapController.syncToTrackpoint(playbackIndex, false);
+      if (mapController) {
+        mapController.cameraRange = val;
+        if (!isPlaying && activeRoute) {
+          mapController.syncToTrackpoint(playbackIndex, false);
+        }
       }
-    }
-  });
+    });
+  }
 
   // Camera Tilt Slider Listener
-  cameraTiltSlider.addEventListener("input", (e) => {
-    const val = parseInt(e.target.value);
-    tiltLabelVal.textContent = `${val}°`;
-    localStorage.setItem("pref_tilt", val);
+  if (cameraTiltSlider) {
+    cameraTiltSlider.addEventListener("input", (e) => {
+      const val = parseInt(e.target.value);
+      tiltLabelVal.textContent = `${val}°`;
+      localStorage.setItem("pref_tilt", val);
 
-    if (mapController) {
-      mapController.cameraTilt = val;
-      if (!isPlaying && activeRoute) {
-        mapController.syncToTrackpoint(playbackIndex, false);
+      if (mapController) {
+        mapController.cameraTilt = val;
+        if (!isPlaying && activeRoute) {
+          mapController.syncToTrackpoint(playbackIndex, false);
+        }
       }
-    }
-  });
+    });
+  }
 
   // Camera Rotation Turn Damping Slider Listener
   if (settingsTurnDamping) {
@@ -2851,57 +2879,69 @@ function setupEventListeners() {
   }
 
   // Color Coding Climbs polyline toggle
-  climbColorsCheckbox.addEventListener("change", (e) => {
-    const isChecked = e.target.checked;
-    localStorage.setItem("pref_climb_colors", isChecked);
-    if (mapController) {
-      mapController.colorCodeClimbs = isChecked;
-      if (activeRoute) {
-        mapController.drawRoute(activeRoute, isChecked);
-        mapController.syncToTrackpoint(playbackIndex, false);
+  if (climbColorsCheckbox) {
+    climbColorsCheckbox.addEventListener("change", (e) => {
+      const isChecked = e.target.checked;
+      localStorage.setItem("pref_climb_colors", isChecked);
+      if (mapController) {
+        mapController.colorCodeClimbs = isChecked;
+        if (activeRoute) {
+          mapController.drawRoute(activeRoute, isChecked);
+          mapController.syncToTrackpoint(playbackIndex, false);
+        }
       }
-    }
-  });
+    });
+  }
 
   // POI dialog expanded/collapsed switch
-  poiDialogToggleExpand.addEventListener("click", () => {
-    const isCollapsed = poiDetailDialog.classList.contains("collapsed");
-    if (isCollapsed) {
-      // Expanding! Pause playback and cancel auto resume timers
-      poiDetailDialog.classList.remove("collapsed");
+  if (poiDialogToggleExpand && poiDetailDialog) {
+    poiDialogToggleExpand.addEventListener("click", () => {
+      const isCollapsed = poiDetailDialog.classList.contains("collapsed");
+      if (isCollapsed) {
+        // Expanding! Pause playback and cancel auto resume timers
+        poiDetailDialog.classList.remove("collapsed");
+        pausePlayback();
+        if (autoResumeTimeout) {
+          clearTimeout(autoResumeTimeout);
+          autoResumeTimeout = null;
+        }
+      } else {
+        // Collapsing!
+        poiDetailDialog.classList.add("collapsed");
+      }
+    });
+  }
+
+  // POI dialog playback Pause/Continue buttons
+  if (poiDialogPlaybackPause) {
+    poiDialogPlaybackPause.addEventListener("click", () => {
       pausePlayback();
       if (autoResumeTimeout) {
         clearTimeout(autoResumeTimeout);
         autoResumeTimeout = null;
       }
-    } else {
-      // Collapsing!
-      poiDetailDialog.classList.add("collapsed");
-    }
-  });
+      showToast("Playback paused.");
+    });
+  }
 
-  // POI dialog playback Pause/Continue buttons
-  poiDialogPlaybackPause.addEventListener("click", () => {
-    pausePlayback();
-    if (autoResumeTimeout) {
-      clearTimeout(autoResumeTimeout);
-      autoResumeTimeout = null;
-    }
-    showToast("Playback paused.");
-  });
-
-  poiDialogPlaybackContinue.addEventListener("click", () => {
-    closePoiDetailDialog(true);
-  });
+  if (poiDialogPlaybackContinue) {
+    poiDialogPlaybackContinue.addEventListener("click", () => {
+      closePoiDetailDialog(true);
+    });
+  }
 
   // Close buttons listeners
-  poiDialogCloseHeader.addEventListener("click", () => {
-    closePoiDetailDialog(false);
-  });
+  if (poiDialogCloseHeader) {
+    poiDialogCloseHeader.addEventListener("click", () => {
+      closePoiDetailDialog(false);
+    });
+  }
 
-  poiDialogCloseBottom.addEventListener("click", () => {
-    closePoiDetailDialog(false);
-  });
+  if (poiDialogCloseBottom) {
+    poiDialogCloseBottom.addEventListener("click", () => {
+      closePoiDetailDialog(false);
+    });
+  }
 
   // Edit Waypoint Button Handler
   if (poiDialogEditBtn) {
