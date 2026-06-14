@@ -639,3 +639,13 @@ This journal records all design decisions, architecture patterns, development st
     *   Added defensive null checks to all element listeners in `src/main.js`.
     *   Rebuilt production bundle with `npm run build` and updated static `dist/index.html` classic execution defer tags.
 
+---
+
+### 🚀 Session 51: Aligning POI Dialog within Unified Drawer (CSS Flex Container)
+*   **Goal**: Ensure `poi-detail-dialog` sits correctly framed within the frosted glass background of `unified-drawer-card`.
+*   **Decisions & Rationale**:
+    *   **Relative Flex Container Alignment**: Changed `.poi-dialog` positioning from `absolute` (`left: 378px; bottom: 210px`) to `relative` (`width: 100%`) in `src/style.css`. This prevents the waypoint details view from breaking out of the unified drawer card flex layout and floating over the map with a transparent background.
+*   **Key Actions Taken**:
+    *   Updated `.poi-dialog` positioning to `relative` in `src/style.css`.
+    *   Rebuilt production bundle with `npm run build` and updated static `dist/index.html` classic execution defer tags.
+
