@@ -17,7 +17,7 @@
     <!-- Main Application Stylesheet -->
     <!-- PDF.js client-side parser library -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.4.120/pdf.min.js"></script>
-    <script defer src="./assets/index-nTfmVUO5.js"></script>
+    <script defer src="./assets/index-jMtxiW_E.js"></script>
   </head>
   <body>
     <!-- Top HUD Dashboard (Header Bar matching Screenshot 1) -->
@@ -197,57 +197,7 @@
     </section>
 
     <!-- Card 2: Gemini Chat panel (Bottom Left) -->
-    <section id="card-gemini-chat" class="glass-card panel-bottom-left hidden">
-      <header class="card-header" style="display: flex; justify-content: space-between; align-items: center;">
-        <div style="display: flex; align-items: center; gap: 0.5rem;">
-          <span class="status-indicator online"></span>
-          <h3 style="margin: 0;">Gemini Course Architect</h3>
-        </div>
-        <div style="display: flex; align-items: center; gap: 0.5rem;">
-          <button id="clear-chat-context-btn" class="btn btn-secondary btn-sm" style="padding: 2px 6px; font-size: 9px;" title="Clear Chat Context">Clear Context</button>
-          <button id="close-chat-btn" class="close-card-btn" style="line-height: 1;" title="Hide Chat Panel">&times;</button>
-        </div>
-      </header>
-      
-      <div class="card-body chat-body">
-        <div id="chat-messages" class="chat-messages">
-          <div class="message assistant">
-            <p>I'm ready! Paste race details or ask me to add/modify stations. I'll snap them to the correct course coordinates.</p>
-          </div>
-        </div>
-        
-        <div id="chat-status" class="chat-status hidden" style="display: flex; align-items: center; justify-content: space-between; gap: 8px;">
-          <div style="display: flex; align-items: center; gap: 8px;">
-            <span class="spinner"></span> <span id="chat-status-text">Processing...</span>
-          </div>
-          <button id="chat-cancel-btn" class="btn btn-secondary" style="font-size: 10px; padding: 2px 8px; height: 22px; border-radius: 4px; border: 1px solid rgba(255,255,255,0.15); background: rgba(255,255,255,0.05); color: var(--text-color); cursor: pointer;">Cancel</button>
-        </div>
-
-        <div class="chat-input-area" style="display: flex; flex-direction: column; gap: 8px; border-top: 1px solid rgba(255,255,255,0.08); padding-top: 12px; margin-top: 8px;">
-          <!-- Attached files list badges -->
-          <div id="chat-attached-files-container" style="display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 2px;"></div>
-          <div style="display: flex; gap: 8px; width: 100%;">
-            <textarea id="chat-input" placeholder="Paste aid station list or ask Gemini to add checkpoints..." rows="8" style="flex: 1; resize: none; background: rgba(0,0,0,0.2); border: 1px solid rgba(255,255,255,0.1); color: var(--text-color); font-family: var(--font-ui); font-size: 13px; border-radius: 6px; padding: 8px;"></textarea>
-            <div style="display: flex; flex-direction: column; gap: 6px; align-self: flex-end;">
-              <button id="chat-attach-btn" class="btn btn-secondary btn-icon" title="Attach file (Text, PDF, Image)" style="height: 38px; width: 38px; display: flex; align-items: center; justify-content: center; font-size: 16px; border-radius: 6px; background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.1); cursor: pointer; color: var(--text-color);">📎</button>
-              <button id="chat-submit" class="btn btn-primary btn-icon" title="Send" style="height: 38px; width: 38px; min-width: 38px; display: flex; align-items: center; justify-content: center; font-size: 16px; border-radius: 6px;">➔</button>
-            </div>
-            <input type="file" id="chat-file-input" multiple accept=".txt,.csv,.json,.gpx,.xml,.png,.jpg,.jpeg,.webp,.pdf" style="display: none;" />
-          </div>
-          <div class="chat-model-selector-row" style="display: flex; align-items: center; justify-content: space-between; gap: 8px;">
-            <div style="display: flex; align-items: center; gap: 6px;">
-              <span style="font-size: 10px; color: var(--text-muted);">Model:</span>
-              <select id="chat-gemini-model" style="background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.1); color: var(--text-color); border-radius: 4px; font-size: 10px; padding: 2px 6px; cursor: pointer; outline: none;">
-                <option value="models/gemini-2.0-flash">Gemini 2.0 Flash</option>
-                <option value="models/gemini-1.5-flash">Gemini 1.5 Flash</option>
-                <option value="models/gemini-2.5-pro">Gemini 2.5 Pro</option>
-              </select>
-            </div>
-            <a href="#" id="chat-fetch-models-link" style="font-size: 9px; color: var(--accent-light); text-decoration: underline;" title="Fetch latest models list from API">Refresh list</a>
-          </div>
-        </div>
-      </div>
-    </section>
+    <!-- Unified Chat Assistant integrated into bottom drawer -->
 
     <!-- RIGHT SIDEBAR OVERLAYS -->
 
@@ -386,106 +336,167 @@
       </div>
     </section>
 
-    <!-- Collapsible POI Detail Dialog Card (Screenshot 4) -->
-    <section id="poi-detail-dialog" class="glass-card poi-dialog hidden collapsed">
-      <header class="poi-header">
-        <div class="poi-title-section">
-          <h2 id="poi-val-name">Waypoint Details</h2>
-          <input type="text" id="poi-val-name-input" class="hidden" style="font-size: 16px; font-weight: bold; background: rgba(0,0,0,0.4); border: 1px solid rgba(255,255,255,0.2); color: var(--text-color); border-radius: 4px; padding: 4px 8px; width: 100%; box-sizing: border-box; outline: none; margin-bottom: 4px;" />
-          <span id="poi-val-pass-tag" class="poi-pass-tag">Waypoint</span>
-          <span id="poi-val-cutoff-tag" class="poi-cutoff-badge hidden"></span>
+    <!-- UNIFIED COMMAND DRAWER (Combining POI Detail & Gemini AI Chat with Tabs & Scrolling) -->
+    <section id="unified-drawer-card" class="glass-card panel-bottom-left hidden" style="width: 440px; max-height: 85vh; display: flex; flex-direction: column; z-index: 900;">
+      <header class="card-header unified-header" style="display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid rgba(255,255,255,0.1); padding-bottom: 8px;">
+        <div class="unified-tabs" style="display: flex; gap: 8px;">
+          <button id="tab-poi-mode" class="btn btn-sm btn-secondary active" style="font-size: 11px; padding: 4px 10px; border-radius: 16px;">📍 Waypoint Details</button>
+          <button id="tab-chat-mode" class="btn btn-sm btn-secondary" style="font-size: 11px; padding: 4px 10px; border-radius: 16px;">✨ Gemini AI Chat</button>
         </div>
-        
-        <div class="poi-quick-metrics">
-          <div class="metric-group">
-            <span class="lbl">ARRIVE</span>
-            <span id="poi-val-arrive" class="val">-</span>
-          </div>
-          <div class="metric-group">
-            <span class="lbl">PREV</span>
-            <span id="poi-val-prev" class="val">-</span>
-          </div>
-          <div class="metric-group">
-            <span class="lbl">NEXT</span>
-            <span id="poi-val-next" class="val">-</span>
-          </div>
-        </div>
-
-        <div class="poi-header-actions">
-          <button id="poi-dialog-playback-pause" class="btn btn-secondary btn-sm btn-poi-action">PAUSE ⏸</button>
-          <button id="poi-dialog-playback-continue" class="btn btn-primary btn-sm btn-poi-action">CONTINUE ➔</button>
-          <button id="poi-dialog-toggle-expand" class="poi-caret-btn" title="Toggle Detail View">▲</button>
-          <button id="poi-dialog-close-header" class="close-card-btn" title="Close Dialog">&times;</button>
-        </div>
+        <button id="close-unified-drawer-btn" class="close-card-btn" title="Close Drawer">&times;</button>
       </header>
 
-      <div class="poi-body" id="poi-body-container">
-        <!-- Renders passes and timeline lists -->
-        <div class="poi-detail-grid">
-          <div class="poi-timeline-list">
-            <h4>Waypoint Passes:</h4>
-            <ul id="poi-timeline-passes-list">
-              <!-- Render list of passes e.g. Pass 1: 2.6 Miles, Pass 2: 7.7 Miles (Cutoff: 9:15am)... -->
-            </ul>
-          </div>
-          
-          <div class="poi-services-checklist">
-            <h4>Available Amenities:</h4>
-            <div class="poi-icons-row" id="poi-services-icons-row">
-              <!-- Inline SVGs/emojis representing water, food, aid, sleep, etc. -->
+      <div class="unified-drawer-body" style="overflow-y: auto; padding-top: 10px; display: flex; flex-direction: column; gap: 24px;">
+        <!-- SECTION 1: POI Waypoint Details -->
+        <div id="poi-detail-dialog" class="poi-dialog">
+          <header class="poi-header">
+            <div class="poi-title-section">
+              <h2 id="poi-val-name">Waypoint Details</h2>
+              <input type="text" id="poi-val-name-input" class="hidden" style="font-size: 16px; font-weight: bold; background: rgba(0,0,0,0.4); border: 1px solid rgba(255,255,255,0.2); color: var(--text-color); border-radius: 4px; padding: 4px 8px; width: 100%; box-sizing: border-box; outline: none; margin-bottom: 4px;" />
+              <span id="poi-val-pass-tag" class="poi-pass-tag">Waypoint</span>
+              <span id="poi-val-cutoff-tag" class="poi-cutoff-badge hidden"></span>
             </div>
-          </div>
-        </div>
-
-        <!-- Waypoint Weather Forecast Section -->
-        <div id="poi-weather-section" class="poi-weather-section hidden" style="margin-top: 10px; padding-top: 10px; border-top: 1px solid rgba(255, 255, 255, 0.08);">
-          <h4 style="margin: 0 0 6px 0; font-size: 11px; text-transform: uppercase; color: var(--text-muted); letter-spacing: 0.5px;">Weather Forecast:</h4>
-          <div class="poi-weather-card" style="display: flex; align-items: center; justify-content: space-between; background: rgba(255,255,255,0.02); border: 1px solid rgba(255,255,255,0.05); padding: 8px 12px; border-radius: 8px;">
-            <div style="display: flex; gap: 10px; align-items: center;">
-              <span id="poi-weather-emoji" style="font-size: 24px; line-height: 1;">🌡️</span>
-              <div style="display: flex; flex-direction: column; text-align: left;">
-                <span id="poi-weather-desc" style="font-size: 12px; font-weight: 500;">Loading...</span>
-                <span id="poi-weather-wind" style="font-size: 10px; color: var(--text-muted);">Wind: --</span>
+            
+            <div class="poi-quick-metrics">
+              <div class="metric-group">
+                <span class="lbl">ARRIVE</span>
+                <span id="poi-val-arrive" class="val">-</span>
+              </div>
+              <div class="metric-group">
+                <span class="lbl">PREV</span>
+                <span id="poi-val-prev" class="val">-</span>
+              </div>
+              <div class="metric-group">
+                <span class="lbl">NEXT</span>
+                <span id="poi-val-next" class="val">-</span>
               </div>
             </div>
-            <div style="text-align: right; display: flex; flex-direction: column;">
-              <span id="poi-weather-temp" style="font-size: 16px; font-weight: bold; font-family: var(--font-display);">--°C</span>
-              <span id="poi-weather-precip" style="font-size: 10px; color: var(--text-muted);">Rain: --%</span>
+
+            <div class="poi-header-actions">
+              <button id="poi-dialog-playback-pause" class="btn btn-secondary btn-sm btn-poi-action">PAUSE ⏸</button>
+              <button id="poi-dialog-playback-continue" class="btn btn-primary btn-sm btn-poi-action">CONTINUE ➔</button>
+              <button id="poi-dialog-toggle-expand" class="poi-caret-btn" title="Toggle Detail View">▲</button>
+            </div>
+          </header>
+
+          <div class="poi-body" id="poi-body-container">
+            <!-- Renders passes and timeline lists -->
+            <div class="poi-detail-grid">
+              <div class="poi-timeline-list">
+                <h4>Waypoint Passes:</h4>
+                <ul id="poi-timeline-passes-list">
+                  <!-- Render list of passes -->
+                </ul>
+              </div>
+              
+              <div class="poi-services-checklist">
+                <h4>Available Amenities:</h4>
+                <div class="poi-icons-row" id="poi-services-icons-row">
+                  <!-- Inline SVGs/emojis representing water, food, aid, sleep, etc. -->
+                </div>
+              </div>
+            </div>
+
+            <!-- Waypoint Weather Forecast Section -->
+            <div id="poi-weather-section" class="poi-weather-section hidden" style="margin-top: 10px; padding-top: 10px; border-top: 1px solid rgba(255, 255, 255, 0.08);">
+              <h4 style="margin: 0 0 6px 0; font-size: 11px; text-transform: uppercase; color: var(--text-muted); letter-spacing: 0.5px;">Weather Forecast:</h4>
+              <div class="poi-weather-card" style="display: flex; align-items: center; justify-content: space-between; background: rgba(255,255,255,0.02); border: 1px solid rgba(255,255,255,0.05); padding: 8px 12px; border-radius: 8px;">
+                <div style="display: flex; gap: 10px; align-items: center;">
+                  <span id="poi-weather-emoji" style="font-size: 24px; line-height: 1;">🌡️</span>
+                  <div style="display: flex; flex-direction: column; text-align: left;">
+                    <span id="poi-weather-desc" style="font-size: 12px; font-weight: 500;">Loading...</span>
+                    <span id="poi-weather-wind" style="font-size: 10px; color: var(--text-muted);">Wind: --</span>
+                  </div>
+                </div>
+                <div style="text-align: right; display: flex; flex-direction: column;">
+                  <span id="poi-weather-temp" style="font-size: 16px; font-weight: bold; font-family: var(--font-display);">--°C</span>
+                  <span id="poi-weather-precip" style="font-size: 10px; color: var(--text-muted);">Rain: --%</span>
+                </div>
+              </div>
+            </div>
+
+            <!-- Metric Snapped Timeline Grid Table -->
+            <div class="poi-table-container">
+              <table class="poi-table">
+                <thead>
+                  <tr>
+                    <th>PASS</th>
+                    <th>ARRIVE AT</th>
+                    <th>FROM PREV</th>
+                    <th>TO NEXT</th>
+                    <th>CUT-OFF</th>
+                  </tr>
+                </thead>
+                <tbody id="poi-table-rows">
+                  <!-- Render table rows dynamically -->
+                </tbody>
+              </table>
+            </div>
+
+            <!-- Relocation mode selector (hidden by default) -->
+            <div id="poi-edit-mode-selector" class="hidden" style="display: flex; flex-direction: column; gap: 6px; padding: 10px; border-radius: 6px; background: rgba(255,255,255,0.03); border: 1px dashed rgba(255,255,255,0.1); margin-top: 12px; margin-bottom: 8px;">
+              <span style="font-size: 11px; font-weight: bold; color: var(--text-secondary); text-transform: uppercase; letter-spacing: 0.5px;">Relocation Mode:</span>
+              <div style="display: flex; gap: 6px;">
+                <button id="poi-edit-mode-snap" class="btn btn-sm btn-secondary flex-grow-1 active" style="font-size: 11px; padding: 6px 10px;">🔗 Snap to Course</button>
+                <button id="poi-edit-mode-free" class="btn btn-sm btn-secondary flex-grow-1" style="font-size: 11px; padding: 6px 10px;">🌐 Free Drag</button>
+              </div>
+              <span style="font-size: 10px; color: var(--text-secondary); line-height: 1.3; margin-top: 2px;">
+                💡 <em>Drag the marker on the 3D map to relocate it.</em>
+              </span>
+            </div>
+
+            <div class="poi-edit-controls-row mt-3" style="display: flex; gap: 8px;">
+              <button id="poi-dialog-edit-btn" class="btn btn-primary flex-grow-1" style="font-size: 13px; font-weight: bold; background-color: var(--primary-color);">✏️ Edit Location</button>
+              <button id="poi-dialog-close-bottom" class="btn btn-secondary flex-grow-1" style="font-size: 13px;">Close Info & Resume</button>
             </div>
           </div>
         </div>
 
-        <!-- Metric Snapped Timeline Grid Table -->
-        <div class="poi-table-container">
-          <table class="poi-table">
-            <thead>
-              <tr>
-                <th>PASS</th>
-                <th>ARRIVE AT</th>
-                <th>FROM PREV</th>
-                <th>TO NEXT</th>
-                <th>CUT-OFF</th>
-              </tr>
-            </thead>
-            <tbody id="poi-table-rows">
-              <!-- Render table rows dynamically -->
-            </tbody>
-          </table>
-        <!-- Relocation mode selector (hidden by default) -->
-        <div id="poi-edit-mode-selector" class="hidden" style="display: flex; flex-direction: column; gap: 6px; padding: 10px; border-radius: 6px; background: rgba(255,255,255,0.03); border: 1px dashed rgba(255,255,255,0.1); margin-top: 12px; margin-bottom: 8px;">
-          <span style="font-size: 11px; font-weight: bold; color: var(--text-secondary); text-transform: uppercase; letter-spacing: 0.5px;">Relocation Mode:</span>
-          <div style="display: flex; gap: 6px;">
-            <button id="poi-edit-mode-snap" class="btn btn-sm btn-secondary flex-grow-1 active" style="font-size: 11px; padding: 6px 10px;">🔗 Snap to Course</button>
-            <button id="poi-edit-mode-free" class="btn btn-sm btn-secondary flex-grow-1" style="font-size: 11px; padding: 6px 10px;">🌐 Free Drag</button>
+        <!-- SECTION 2: Gemini AI Chat Assistant -->
+        <div id="card-gemini-chat" class="chat-body" style="border-top: 1px solid rgba(255,255,255,0.15); padding-top: 16px;">
+          <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px;">
+            <div style="display: flex; align-items: center; gap: 6px;">
+              <span class="status-indicator online"></span>
+              <h4 style="margin: 0; font-size: 12px;">Gemini Course Architect</h4>
+            </div>
+            <button id="clear-chat-context-btn" class="btn btn-secondary btn-sm" style="padding: 2px 6px; font-size: 9px;" title="Clear Chat Context">Clear Context</button>
           </div>
-          <span style="font-size: 10px; color: var(--text-secondary); line-height: 1.3; margin-top: 2px;">
-            💡 <em>Drag the marker on the 3D map to relocate it.</em>
-          </span>
-        </div>
+          
+          <div id="chat-messages" class="chat-messages">
+            <div class="message assistant">
+              <p>I'm ready! Paste race details or ask me to add/modify stations. I'll snap them to the correct course coordinates.</p>
+            </div>
+          </div>
+          
+          <div id="chat-status" class="chat-status hidden" style="display: flex; align-items: center; justify-content: space-between; gap: 8px;">
+            <div style="display: flex; align-items: center; gap: 8px;">
+              <span class="spinner"></span> <span id="chat-status-text">Processing...</span>
+            </div>
+            <button id="chat-cancel-btn" class="btn btn-secondary" style="font-size: 10px; padding: 2px 8px; height: 22px; border-radius: 4px; border: 1px solid rgba(255,255,255,0.15); background: rgba(255,255,255,0.05); color: var(--text-color); cursor: pointer;">Cancel</button>
+          </div>
 
-        <div class="poi-edit-controls-row mt-3" style="display: flex; gap: 8px;">
-          <button id="poi-dialog-edit-btn" class="btn btn-primary flex-grow-1" style="font-size: 13px; font-weight: bold; background-color: var(--primary-color);">✏️ Edit Location</button>
-          <button id="poi-dialog-close-bottom" class="btn btn-secondary flex-grow-1" style="font-size: 13px;">Close Info & Resume</button>
+          <div class="chat-input-area" style="display: flex; flex-direction: column; gap: 8px; border-top: 1px solid rgba(255,255,255,0.08); padding-top: 12px; margin-top: 8px;">
+            <div id="chat-attached-files-container" style="display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 2px;"></div>
+            <div style="display: flex; gap: 8px; width: 100%;">
+              <textarea id="chat-input" placeholder="Paste aid station list or ask Gemini to add checkpoints..." rows="6" style="flex: 1; resize: none; background: rgba(0,0,0,0.2); border: 1px solid rgba(255,255,255,0.1); color: var(--text-color); font-family: var(--font-ui); font-size: 13px; border-radius: 6px; padding: 8px;"></textarea>
+              <div style="display: flex; flex-direction: column; gap: 6px; align-self: flex-end;">
+                <button id="chat-attach-btn" class="btn btn-secondary btn-icon" title="Attach file (Text, PDF, Image)" style="height: 38px; width: 38px; display: flex; align-items: center; justify-content: center; font-size: 16px; border-radius: 6px; background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.1); cursor: pointer; color: var(--text-color);">📎</button>
+                <button id="chat-submit" class="btn btn-primary btn-icon" title="Send" style="height: 38px; width: 38px; min-width: 38px; display: flex; align-items: center; justify-content: center; font-size: 16px; border-radius: 6px;">➔</button>
+              </div>
+              <input type="file" id="chat-file-input" multiple accept=".txt,.csv,.json,.gpx,.xml,.png,.jpg,.jpeg,.webp,.pdf" style="display: none;" />
+            </div>
+            <div class="chat-model-selector-row" style="display: flex; align-items: center; justify-content: space-between; gap: 8px;">
+              <div style="display: flex; align-items: center; gap: 6px;">
+                <span style="font-size: 10px; color: var(--text-muted);">Model:</span>
+                <select id="chat-gemini-model" style="background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.1); color: var(--text-color); border-radius: 4px; font-size: 10px; padding: 2px 6px; cursor: pointer; outline: none;">
+                  <option value="models/gemini-2.0-flash">Gemini 2.0 Flash</option>
+                  <option value="models/gemini-1.5-flash">Gemini 1.5 Flash</option>
+                  <option value="models/gemini-2.5-pro">Gemini 2.5 Pro</option>
+                </select>
+              </div>
+              <a href="#" id="chat-fetch-models-link" style="font-size: 9px; color: var(--accent-light); text-decoration: underline;" title="Fetch latest models list from API">Refresh list</a>
+            </div>
+          </div>
         </div>
       </div>
     </section>

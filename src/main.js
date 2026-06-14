@@ -113,6 +113,9 @@ const editLockCheckbox = document.getElementById("edit-lock-checkbox");
 const dragSnapCheckbox = document.getElementById("drag-snap-checkbox");
 
 const cardGeminiChat = document.getElementById("card-gemini-chat");
+const unifiedDrawerCard = document.getElementById("unified-drawer-card");
+const tabPoiMode = document.getElementById("tab-poi-mode");
+const tabChatMode = document.getElementById("tab-chat-mode");
 const chatMessages = document.getElementById("chat-messages");
 const chatInput = document.getElementById("chat-input");
 const chatSubmit = document.getElementById("chat-submit");
@@ -1583,6 +1586,10 @@ function showPoiDetailDialog(wpt, index, referenceDist = null, startCollapsed = 
     poiDetailDialog.classList.remove("collapsed");
   }
   poiDetailDialog.classList.remove("hidden");
+  if (unifiedDrawerCard) {
+    unifiedDrawerCard.classList.remove("hidden");
+  }
+  if (tabPoiMode) tabPoiMode.click();
 
   // Setup auto-resume timeout (skip if settings pauseTime is set to 0)
   if (pauseDuration > 0) {
@@ -1616,6 +1623,9 @@ function closePoiDetailDialog(resumePlayback = false) {
 
   if (poiDetailDialog) {
     poiDetailDialog.classList.add("hidden");
+  }
+  if (unifiedDrawerCard) {
+    unifiedDrawerCard.classList.add("hidden");
   }
   if (autoResumeTimeout) {
     clearTimeout(autoResumeTimeout);
@@ -2250,16 +2260,41 @@ function setupEventListeners() {
 
   if (toggleChatBtn && cardGeminiChat) {
     toggleChatBtn.addEventListener("click", () => {
+      if (unifiedDrawerCard) {
+        unifiedDrawerCard.classList.remove("hidden");
+      }
       cardGeminiChat.classList.remove("hidden");
+      if (tabChatMode) tabChatMode.click();
       toggleChatBtn.classList.add("hidden");
     });
   }
 
-  if (closeChatBtn && cardGeminiChat) {
-    closeChatBtn.addEventListener("click", () => {
-      cardGeminiChat.classList.add("hidden");
-      if (activeRoute) {
+  const closeUnifiedDrawerBtn = document.getElementById("close-unified-drawer-btn");
+  if (closeUnifiedDrawerBtn && unifiedDrawerCard) {
+    closeUnifiedDrawerBtn.addEventListener("click", () => {
+      unifiedDrawerCard.classList.add("hidden");
+      if (toggleChatBtn && activeRoute) {
         toggleChatBtn.classList.remove("hidden");
+      }
+    });
+  }
+
+  if (tabPoiMode && tabChatMode) {
+    tabPoiMode.addEventListener("click", () => {
+      tabPoiMode.classList.add("active");
+      tabChatMode.classList.remove("active");
+      if (poiDetailDialog) {
+        poiDetailDialog.classList.remove("hidden");
+        poiDetailDialog.scrollIntoView({ behavior: "smooth" });
+      }
+    });
+
+    tabChatMode.addEventListener("click", () => {
+      tabChatMode.classList.add("active");
+      tabPoiMode.classList.remove("active");
+      if (cardGeminiChat) {
+        cardGeminiChat.classList.remove("hidden");
+        cardGeminiChat.scrollIntoView({ behavior: "smooth" });
       }
     });
   }
