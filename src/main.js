@@ -1037,7 +1037,7 @@ function updateUnitLabels() {
 function updateHUD(index) {
   if (!activeRoute) return;
   const pts = activeRoute.trackpoints;
-  if (index < 0 || index >= pts.length) return;
+  if (index === undefined || index === null || index < 0 || index >= pts.length) return;
 
   const currentPt = pts[index];
   const currentDist = currentPt.dist_m;
@@ -3023,7 +3023,7 @@ function setupEventListeners() {
     if (isEditingPoiLocation) return;
     const wpt = e.detail;
     pausePlayback();
-    playbackIndex = wpt.closestTrackpointIndex;
+    playbackIndex = wpt.closestTrackpointIndex !== undefined ? wpt.closestTrackpointIndex : 0;
     lastPausedPoiIndex = playbackIndex; // Prevent immediate repeat of trigger
 
     if (mapController) {

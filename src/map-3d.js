@@ -449,14 +449,6 @@ export class Map3DController {
       marker.addEventListener("click", triggerClick);
       marker.addEventListener("gmp-click", triggerClick);
 
-      // Draggable Editing logic
-      marker.addEventListener("gmp-dragend", () => {
-        const newPos = { lat: marker.position.lat, lng: marker.position.lng };
-        if (this.onWaypointDragEnd) {
-          this.onWaypointDragEnd(wpt, newPos);
-        }
-      });
-
       this.map.append(marker);
       this.markers.push(marker);
     });
