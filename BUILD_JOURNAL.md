@@ -574,3 +574,15 @@ This journal records all design decisions, architecture patterns, development st
     *   Updated tab navigation and panel display in `src/main.js`.
     *   Rebuilt production bundle with `npm run build` and updated static `dist/index.html` classic execution defer tags.
 
+---
+
+### 🚀 Session 45: Expanded Course Profile Description Stats
+*   **Goal**: Provide a comprehensive course description containing distance, total elevation gain, total elevation loss, highest elevation, lowest elevation, aid station count, and longest gap between stations.
+*   **Decisions & Rationale**:
+    *   **Course Profile Grid Expansion**: Expanded `.stats-grid` in `index.html` into a two-column layout showing Distance, Aid Stations, Total Gain (green), Total Loss (red), Highest Elevation, Lowest Elevation, and Longest Gap (spanning full width).
+    *   **Dynamic Longest Gap Calculation**: Computes gaps between Start -> first station, consecutive stations, and last station -> Finish, displaying the maximum gap along with its exact start/end boundary points.
+*   **Key Actions Taken**:
+    *   Expanded `.stats-grid` inside `index.html`.
+    *   Updated `updateRouteStatsUI` in `src/main.js`.
+    *   Rebuilt production bundle with `npm run build` and updated static `dist/index.html` classic execution defer tags.
+
