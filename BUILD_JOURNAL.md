@@ -649,3 +649,15 @@ This journal records all design decisions, architecture patterns, development st
     *   Updated `.poi-dialog` positioning to `relative` in `src/style.css`.
     *   Rebuilt production bundle with `npm run build` and updated static `dist/index.html` classic execution defer tags.
 
+---
+
+### 🚀 Session 52: Polishing Unified Drawer Ergonomics (Mutual Exclusion & Header Layout)
+*   **Goal**: Prevent button truncation in the POI header and eliminate visual overlap between active tabs.
+*   **Decisions & Rationale**:
+    *   **Wider Drawer Footprint & Stacked Header**: Expanded `unified-drawer-card` width to `480px` and organized the `.poi-header` elements into stacked flex rows (`title` on top, `quick-metrics` and `actions` below). This prevents action buttons (like `CONTINUE ➔`) from clipping on the right edge.
+    *   **Enforced Tab Exclusivity**: Updated tab switch listeners (`tabPoiMode`, `tabChatMode`) in `src/main.js` to explicitly toggle `.hidden` on opposing panels (`poiDetailDialog` vs. `cardGeminiChat`), ensuring only one view renders at any given time.
+*   **Key Actions Taken**:
+    *   Updated header layout and card width in `index.html`.
+    *   Enforced mutual exclusion inside tab switch listeners in `src/main.js`.
+    *   Rebuilt production bundle with `npm run build` and updated static `dist/index.html` classic execution defer tags.
+
