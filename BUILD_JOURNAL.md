@@ -606,3 +606,15 @@ This journal records all design decisions, architecture patterns, development st
     *   Restored `document.createElement("gmp-marker-3d-interactive")` in `src/map-3d.js`.
     *   Rebuilt production bundle with `npm run build` and updated static `dist/index.html` classic execution defer tags.
 
+---
+
+### 🚀 Session 48: Removing Deprecated Marker Dragging Logic
+*   **Goal**: Prevent pointer event interference between marker click popovers and leftover raycast drag handlers.
+*   **Decisions & Rationale**:
+    *   **Complete Drag Handler Removal**: Removing the leftover `gmp-dragend` listener entirely from waypoint markers in `src/map-3d.js` ensures clean event propagation.
+    *   **Defensive HUD Updates**: Added explicit null/undefined verification inside `updateHUD` in `src/main.js` to ensure waypoint clicks do not throw TypeErrors when `closestTrackpointIndex` is undefined.
+*   **Key Actions Taken**:
+    *   Removed `gmp-dragend` listener in `src/map-3d.js`.
+    *   Added defensive null checking to `updateHUD` in `src/main.js`.
+    *   Rebuilt production bundle with `npm run build` and updated static `dist/index.html` classic execution defer tags.
+
