@@ -421,13 +421,12 @@ export class Map3DController {
     }
 
     route.waypoints.forEach((wpt) => {
-      const MarkerClass = this.Marker3DInteractiveElement || this.Marker3DElement;
-      const marker = new MarkerClass({
-        position: { lat: wpt.lat, lng: wpt.lon, altitude: 10 },
-        altitudeMode: "RELATIVE_TO_GROUND",
-        extruded: true,
-        drawsWhenOccluded: true
-      });
+      const marker = document.createElement("gmp-marker-3d-interactive");
+      marker.position = { lat: wpt.lat, lng: wpt.lon, altitude: 10 };
+      marker.altitudeMode = "RELATIVE_TO_GROUND";
+      marker.extruded = true;
+      marker.drawsWhenOccluded = true;
+      marker.label = wpt.name;
       marker.waypoint = wpt;
       marker.gmpDraggable = false;
 
