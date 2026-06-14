@@ -618,3 +618,13 @@ This journal records all design decisions, architecture patterns, development st
     *   Added defensive null checking to `updateHUD` in `src/main.js`.
     *   Rebuilt production bundle with `npm run build` and updated static `dist/index.html` classic execution defer tags.
 
+---
+
+### 🚀 Session 49: Event Lifecycle Debug Logging
+*   **Goal**: Trace marker click propagation and dialog invocation lifecycle in the browser console.
+*   **Decisions & Rationale**:
+    *   **Diagnostic Event Tracing**: Added structured console logging across `src/map-3d.js` (`triggerClick`, `mapClickListener`) and `src/main.js` (`waypoint-click`, `showPoiDetailDialog`) to trace pointer hit detection, event dispatching, and drawer state changes.
+*   **Key Actions Taken**:
+    *   Added console logging to `src/map-3d.js` and `src/main.js`.
+    *   Rebuilt production bundle with `npm run build` and updated static `dist/index.html` classic execution defer tags.
+
