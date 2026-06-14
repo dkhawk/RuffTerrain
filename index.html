@@ -346,7 +346,7 @@
     </section>
 
     <!-- UNIFIED COMMAND DRAWER (Combining POI Detail & Gemini AI Chat with Tabs & Scrolling) -->
-    <section id="unified-drawer-card" class="glass-card panel-bottom-left hidden" style="width: 440px; max-height: 85vh; display: flex; flex-direction: column; z-index: 900;">
+    <section id="unified-drawer-card" class="glass-card panel-bottom-left hidden" style="width: 480px; max-height: 85vh; display: flex; flex-direction: column; z-index: 900;">
       <header class="card-header unified-header" style="display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid rgba(255,255,255,0.1); padding-bottom: 8px;">
         <div class="unified-tabs" style="display: flex; gap: 8px;">
           <button id="tab-poi-mode" class="btn btn-sm btn-secondary active" style="font-size: 11px; padding: 4px 10px; border-radius: 16px;">📍 Waypoint Details</button>
@@ -355,36 +355,39 @@
         <button id="close-unified-drawer-btn" class="close-card-btn" title="Close Drawer">&times;</button>
       </header>
 
-      <div class="unified-drawer-body" style="overflow-y: auto; padding-top: 10px; display: flex; flex-direction: column; gap: 24px;">
+      <div class="unified-drawer-body" style="overflow-y: auto; padding-top: 10px; display: flex; flex-direction: column;">
         <!-- SECTION 1: POI Waypoint Details -->
         <div id="poi-detail-dialog" class="poi-dialog">
-          <header class="poi-header">
-            <div class="poi-title-section">
-              <h2 id="poi-val-name">Waypoint Details</h2>
-              <input type="text" id="poi-val-name-input" class="hidden" style="font-size: 16px; font-weight: bold; background: rgba(0,0,0,0.4); border: 1px solid rgba(255,255,255,0.2); color: var(--text-color); border-radius: 4px; padding: 4px 8px; width: 100%; box-sizing: border-box; outline: none; margin-bottom: 4px;" />
-              <span id="poi-val-pass-tag" class="poi-pass-tag">Waypoint</span>
-              <span id="poi-val-cutoff-tag" class="poi-cutoff-badge hidden"></span>
+          <header class="poi-header" style="display: flex; flex-direction: column; gap: 10px; align-items: stretch; padding: 12px 16px;">
+            <div class="poi-title-section" style="display: flex; justify-content: space-between; align-items: center;">
+              <div style="display: flex; align-items: center; gap: 10px;">
+                <h2 id="poi-val-name" style="margin: 0;">Waypoint Details</h2>
+                <span id="poi-val-pass-tag" class="poi-pass-tag">Waypoint</span>
+                <span id="poi-val-cutoff-tag" class="poi-cutoff-badge hidden"></span>
+              </div>
+              <button id="poi-dialog-toggle-expand" class="poi-caret-btn" title="Toggle Detail View">▲</button>
             </div>
             
-            <div class="poi-quick-metrics">
-              <div class="metric-group">
-                <span class="lbl">ARRIVE</span>
-                <span id="poi-val-arrive" class="val">-</span>
+            <div style="display: flex; justify-content: space-between; align-items: center; gap: 8px;">
+              <div class="poi-quick-metrics" style="display: flex; gap: 12px;">
+                <div class="metric-group">
+                  <span class="lbl">ARRIVE</span>
+                  <span id="poi-val-arrive" class="val">-</span>
+                </div>
+                <div class="metric-group">
+                  <span class="lbl">PREV</span>
+                  <span id="poi-val-prev" class="val">-</span>
+                </div>
+                <div class="metric-group">
+                  <span class="lbl">NEXT</span>
+                  <span id="poi-val-next" class="val">-</span>
+                </div>
               </div>
-              <div class="metric-group">
-                <span class="lbl">PREV</span>
-                <span id="poi-val-prev" class="val">-</span>
-              </div>
-              <div class="metric-group">
-                <span class="lbl">NEXT</span>
-                <span id="poi-val-next" class="val">-</span>
-              </div>
-            </div>
 
-            <div class="poi-header-actions">
-              <button id="poi-dialog-playback-pause" class="btn btn-secondary btn-sm btn-poi-action">PAUSE ⏸</button>
-              <button id="poi-dialog-playback-continue" class="btn btn-primary btn-sm btn-poi-action">CONTINUE ➔</button>
-              <button id="poi-dialog-toggle-expand" class="poi-caret-btn" title="Toggle Detail View">▲</button>
+              <div class="poi-header-actions" style="display: flex; gap: 4px;">
+                <button id="poi-dialog-playback-pause" class="btn btn-secondary btn-sm btn-poi-action" style="padding: 4px 8px; font-size: 11px;">PAUSE ⏸</button>
+                <button id="poi-dialog-playback-continue" class="btn btn-primary btn-sm btn-poi-action" style="padding: 4px 8px; font-size: 11px;">CONTINUE ➔</button>
+              </div>
             </div>
           </header>
 
@@ -462,7 +465,7 @@
         </div>
 
         <!-- SECTION 2: Gemini AI Chat Assistant -->
-        <div id="card-gemini-chat" class="chat-body" style="border-top: 1px solid rgba(255,255,255,0.15); padding-top: 16px;">
+        <div id="card-gemini-chat" class="chat-body hidden" style="border-top: 1px solid rgba(255,255,255,0.15); padding-top: 16px;">
           <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px;">
             <div style="display: flex; align-items: center; gap: 6px;">
               <span class="status-indicator online"></span>

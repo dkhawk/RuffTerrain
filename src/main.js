@@ -2339,7 +2339,9 @@ function setupEventListeners() {
       tabChatMode.classList.remove("active");
       if (poiDetailDialog) {
         poiDetailDialog.classList.remove("hidden");
-        poiDetailDialog.scrollIntoView({ behavior: "smooth" });
+      }
+      if (cardGeminiChat) {
+        cardGeminiChat.classList.add("hidden");
       }
     });
 
@@ -2348,7 +2350,9 @@ function setupEventListeners() {
       tabPoiMode.classList.remove("active");
       if (cardGeminiChat) {
         cardGeminiChat.classList.remove("hidden");
-        cardGeminiChat.scrollIntoView({ behavior: "smooth" });
+      }
+      if (poiDetailDialog) {
+        poiDetailDialog.classList.add("hidden");
       }
     });
   }
