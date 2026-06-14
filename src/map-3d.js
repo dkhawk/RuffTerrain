@@ -421,7 +421,8 @@ export class Map3DController {
     }
 
     route.waypoints.forEach((wpt) => {
-      const marker = new this.Marker3DInteractiveElement({
+      const MarkerClass = this.Marker3DInteractiveElement || this.Marker3DElement;
+      const marker = new MarkerClass({
         position: { lat: wpt.lat, lng: wpt.lon, altitude: 10 },
         altitudeMode: "RELATIVE_TO_GROUND",
         extruded: true,
@@ -432,6 +433,7 @@ export class Map3DController {
 
       const svgElement = parseSvgStringToElement(getWaypointSvgString(wpt));
       svgElement.style.cursor = "pointer";
+      svgElement.style.pointerEvents = "auto";
 
       const template = document.createElement("template");
       template.content.appendChild(svgElement);
@@ -444,6 +446,7 @@ export class Map3DController {
         window.dispatchEvent(event);
       };
 
+      svgElement.addEventListener("click", triggerClick);
       marker.addEventListener("click", triggerClick);
       marker.addEventListener("gmp-click", triggerClick);
 
