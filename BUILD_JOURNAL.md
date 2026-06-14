@@ -586,3 +586,13 @@ This journal records all design decisions, architecture patterns, development st
     *   Updated `updateRouteStatsUI` in `src/main.js`.
     *   Rebuilt production bundle with `npm run build` and updated static `dist/index.html` classic execution defer tags.
 
+---
+
+### 🚀 Session 46: Reliable Waypoint Marker Click Trigger
+*   **Goal**: Ensure clicking aid station pins reliably opens the Waypoint Details drawer.
+*   **Decisions & Rationale**:
+    *   **Direct SVG Event Attachment**: `<gmp-marker-3d>` elements wrapping complex HTML templates can intercept pointer events. Attached click event listeners directly onto the injected SVG marker node with `pointer-events: auto` to guarantee reliable hit detection.
+*   **Key Actions Taken**:
+    *   Updated marker creation in `src/map-3d.js`.
+    *   Rebuilt production bundle with `npm run build` and updated static `dist/index.html` classic execution defer tags.
+
