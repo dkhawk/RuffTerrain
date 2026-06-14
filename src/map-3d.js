@@ -440,6 +440,7 @@ export class Map3DController {
 
       // Click trigger handler
       const triggerClick = (e) => {
+        console.log("[map-3d] MARKER CLICK TRIGGERED:", wpt.name, "Event:", e?.type);
         if (e) e.stopPropagation(); // prevent triggering map clicks
         const event = new CustomEvent("waypoint-click", { detail: wpt });
         window.dispatchEvent(event);
@@ -460,6 +461,7 @@ export class Map3DController {
     }
     
     this.mapClickListener = (e) => {
+      console.log("[map-3d] MAP CLICK LISTENER INTERCEPTED EVENT. Target:", e.target?.tagName, "Type:", e.type);
       // If they clicked the temporary placement marker, ignore it
       if (this.tempMarker && (this.tempMarker === e.target || this.tempMarker.contains(e.target))) {
         return;
@@ -468,9 +470,11 @@ export class Map3DController {
       // Find if the target is a marker
       const clickedMarker = this.markers.find(m => m === e.target || m.contains(e.target));
       if (clickedMarker && clickedMarker.waypoint) {
+        console.log("[map-3d] FOUND CLICKED MARKER VIA MAP LISTENER:", clickedMarker.waypoint.name);
         const event = new CustomEvent("waypoint-click", { detail: clickedMarker.waypoint });
         window.dispatchEvent(event);
       } else {
+        console.log("[map-3d] BACKGROUND MAP CLICK DETECTED.");
         // Map background click
         const pos = e.position || (e.detail && e.detail.position);
         if (pos && this.onMapClick) {

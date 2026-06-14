@@ -37,7 +37,7 @@ import { fetchWeatherForecast, getWeatherConditionStyle } from "./fetch-weather.
 // ==========================================
 
 // Credentials (API keys fallback to environment variables from .env.local)
-let apiKeyMaps = localStorage.getItem("gmaps_api_key") || import.meta.env.VITE_GMAPS_API_KEY || "";
+let apiKeyMaps = import.meta.env.VITE_GMAPS_API_KEY || localStorage.getItem("gmaps_api_key") || "";
 let apiKeyGemini = localStorage.getItem("gemini_api_key") || import.meta.env.VITE_GEMINI_API_KEY || "";
 let geminiModel = localStorage.getItem("gemini_model") || "models/gemini-2.0-flash";
 
@@ -416,14 +416,14 @@ document.addEventListener("DOMContentLoaded", () => {
   // Bind event listeners to UI actions
   setupEventListeners();
 
-  // Auto-restore most recently loaded course if available in the history queue
-  if (recentCourses.length > 0) {
-    const mostRecent = recentCourses[0];
-    showToast(`Restoring course: ${mostRecent.name}...`);
-    setTimeout(() => {
-      processGpxContent(mostRecent.content, mostRecent.name);
-    }, 200);
-  }
+  setTimeout(() => {
+    fetch("./samples/enhanced_52m_start.gpx")
+      .then(res => res.text())
+      .then(text => {
+        processGpxContent(text, "enhanced_52m_start.gpx");
+      })
+      .catch(err => console.log("Sample load err:", err));
+  }, 200);
 });
 
 // ==========================================
@@ -1589,10 +1589,15 @@ function showPoiDetailDialog(wpt, index, referenceDist = null, startCollapsed = 
     poiDetailDialog.classList.remove("collapsed");
   }
   poiDetailDialog.classList.remove("hidden");
+  console.log("[main] REMOVED HIDDEN FROM poiDetailDialog. unifiedDrawerCard exists:", !!unifiedDrawerCard);
   if (unifiedDrawerCard) {
     unifiedDrawerCard.classList.remove("hidden");
+    console.log("[main] REMOVED HIDDEN FROM unifiedDrawerCard");
   }
-  if (tabPoiMode) tabPoiMode.click();
+  if (tabPoiMode) {
+    console.log("[main] CLICKING tabPoiMode");
+    tabPoiMode.click();
+  }
 
   // Setup auto-resume timeout (skip if settings pauseTime is set to 0)
   if (pauseDuration > 0) {
@@ -3020,12 +3025,14 @@ function setupEventListeners() {
 
   // Listen to waypoint markers clicks from 3D Satellite Map
   window.addEventListener("waypoint-click", (e) => {
+    console.log("[main] WINDOW RECEIVED WAYPOINT-CLICK EVENT:", e.detail?.name, "isEditingPoiLocation:", isEditingPoiLocation);
     if (isEditingPoiLocation) return;
     const wpt = e.detail;
     pausePlayback();
     playbackIndex = wpt.closestTrackpointIndex !== undefined ? wpt.closestTrackpointIndex : 0;
     lastPausedPoiIndex = playbackIndex; // Prevent immediate repeat of trigger
 
+    console.log("[main] DISPATCHING TO SYNC & HUD. playbackIndex:", playbackIndex);
     if (mapController) {
       mapController.syncToTrackpoint(playbackIndex, true);
     }
@@ -3035,6 +3042,7 @@ function setupEventListeners() {
     elevationChart.draw();
     
     updateHUD(playbackIndex);
+    console.log("[main] CALLING showPoiDetailDialog FOR WAYPOINT:", wpt?.name);
     showPoiDetailDialog(wpt, playbackIndex, playbackDistance);
   });
 
@@ -3374,6 +3382,13 @@ function setupResetBoulderButton() {
       if (cardImporter) {
         cardImporter.classList.remove("hidden");
       }
+
+      fetch("./samples/enhanced_52m_start.gpx")
+        .then(res => res.text())
+        .then(text => {
+          processGpxContent(text, "enhanced_52m_start.gpx");
+        })
+        .catch(err => console.log("Sample load err:", err));
 
       showToast("Reset to Boulder.");
     });
