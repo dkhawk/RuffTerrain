@@ -563,3 +563,14 @@ This journal records all design decisions, architecture patterns, development st
     *   Updated `onMapClick` relocation handler in `src/main.js`.
     *   Rebuilt production bundle with `npm run build` and updated static `dist/index.html` classic execution defer tags.
 
+---
+
+### 🚀 Session 44: Unified Bottom-Left Command Drawer (POI Info & Gemini AI Chat)
+*   **Goal**: Combine the POI Waypoint Details dialog and the Gemini AI Chat Assistant into a single unified drawer card to eliminate overlay collisions.
+*   **Decisions & Rationale**:
+    *   **Unified Drawer Architecture**: Merged `#poi-detail-dialog` and `#card-gemini-chat` into a premium unified side drawer (`#unified-drawer-card`) with top navigation tabs (`📍 Waypoint Details` / `✨ Gemini AI Chat`) and smooth scrolling. Opening either view scrolls directly to the requested section within the single container, preventing floating cards from covering each other.
+*   **Key Actions Taken**:
+    *   Created `#unified-drawer-card` in `index.html`.
+    *   Updated tab navigation and panel display in `src/main.js`.
+    *   Rebuilt production bundle with `npm run build` and updated static `dist/index.html` classic execution defer tags.
+
