@@ -596,3 +596,13 @@ This journal records all design decisions, architecture patterns, development st
     *   Updated marker creation in `src/map-3d.js`.
     *   Rebuilt production bundle with `npm run build` and updated static `dist/index.html` classic execution defer tags.
 
+---
+
+### 🚀 Session 47: Restoring `gmp-marker-3d-interactive` Web Component Tag
+*   **Goal**: Fix non-responsive waypoint marker click detection on the 3D Satellite Map.
+*   **Decisions & Rationale**:
+    *   **Interactive Web Component Restoration**: Traced commit history (`c3a87c5`) and build journal, discovering that 3D pins require the `<gmp-marker-3d-interactive>` web component tag (instead of standard `<gmp-marker-3d>`) to successfully intercept and fire custom Google Maps 3D pointer interactions (`gmp-click`).
+*   **Key Actions Taken**:
+    *   Restored `document.createElement("gmp-marker-3d-interactive")` in `src/map-3d.js`.
+    *   Rebuilt production bundle with `npm run build` and updated static `dist/index.html` classic execution defer tags.
+
