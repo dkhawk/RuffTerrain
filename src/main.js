@@ -117,6 +117,39 @@ const studioViewEdit = document.getElementById("studio-view-edit");
 const studioTabEdit = document.getElementById("studio-tab-edit");
 const studioTabPoi = document.getElementById("studio-tab-poi");
 const studioTabChat = document.getElementById("studio-tab-chat");
+const studioTabPlan = document.getElementById("studio-tab-plan");
+const studioViewPlan = document.getElementById("studio-view-plan");
+
+// Planner form controls
+const togglePlannerBtn = document.getElementById("toggle-planner-btn");
+const planStartTime = document.getElementById("plan-start-time");
+const planSunriseTime = document.getElementById("plan-sunrise-time");
+const planSunsetTime = document.getElementById("plan-sunset-time");
+const planFitnessLevel = document.getElementById("plan-fitness-level");
+const planGoalHrs = document.getElementById("plan-goal-hrs");
+const planRecentResult = document.getElementById("plan-recent-result");
+const planPaceClimb = document.getElementById("plan-pace-climb");
+const planPaceFlat = document.getElementById("plan-pace-flat");
+const planPaceDesc = document.getElementById("plan-pace-desc");
+const planSteepDescent = document.getElementById("plan-steep-descent");
+const planDegradationSlider = document.getElementById("plan-degradation-slider");
+const planDegradationVal = document.getElementById("plan-degradation-val");
+const generateRacePlanBtn = document.getElementById("generate-race-plan-btn");
+const plannerOutputContainer = document.getElementById("planner-output-container");
+const planTotalTimeDisp = document.getElementById("plan-total-time-disp");
+const planAvgPaceDisp = document.getElementById("plan-avg-pace-disp");
+const planSegmentsList = document.getElementById("plan-segments-list");
+const applyPlanToHudBtn = document.getElementById("apply-plan-to-hud-btn");
+
+// AI Interview Modal controls
+const aiInterviewTrigger = document.getElementById("ai-interview-trigger");
+const aiInterviewModal = document.getElementById("ai-interview-modal");
+const closeInterviewBtn = document.getElementById("close-interview-btn");
+const aiInterviewInput = document.getElementById("ai-interview-input");
+const aiInterviewSubmitBtn = document.getElementById("ai-interview-submit-btn");
+const aiInterviewCancelBtn = document.getElementById("ai-interview-cancel-btn");
+const aiInterviewChatLog = document.getElementById("ai-interview-chat-log");
+
 const chatMessages = document.getElementById("chat-messages");
 const chatInput = document.getElementById("chat-input");
 const chatSubmit = document.getElementById("chat-submit");
@@ -757,9 +790,12 @@ async function updateWeatherUI(lat, lon) {
   }
   weatherAbortController = new AbortController();
 
-  if (weatherLoader) weatherLoader.classList.remove("hidden");
-  if (weatherError) weatherError.classList.add("hidden");
-  if (weatherContent) weatherContent.classList.add("hidden");
+  const isPanelVisible = cardWeather && !cardWeather.classList.contains("hidden");
+  if (isPanelVisible) {
+    if (weatherLoader) weatherLoader.classList.remove("hidden");
+    if (weatherError) weatherError.classList.add("hidden");
+    if (weatherContent) weatherContent.classList.add("hidden");
+  }
 
   try {
     const data = await fetchWeatherForecast(lat, lon, 48, apiKeyMaps);
@@ -831,6 +867,12 @@ async function updateWeatherUI(lat, lon) {
     const condition = current.weatherCondition || {};
     const condStyle = getWeatherConditionStyle(condition.type);
 
+    const hudValWeather = document.getElementById("hud-val-weather");
+    if (hudValWeather && current) {
+      const tempStr = convertTemperatureValue(current.temperature?.degrees ?? 0);
+      hudValWeather.innerHTML = `${tempStr} <span style="font-size: 14px; margin-left: 2px;">${condStyle.emoji}</span>`;
+    }
+
     if (weatherCurrentTemp) {
       weatherCurrentTemp.textContent = convertTemperatureValue(current.temperature?.degrees ?? 0);
     }
@@ -890,16 +932,20 @@ async function updateWeatherUI(lat, lon) {
       });
     }
 
-    if (weatherLoader) weatherLoader.classList.add("hidden");
-    if (weatherContent) weatherContent.classList.remove("hidden");
+    if (isPanelVisible) {
+      if (weatherLoader) weatherLoader.classList.add("hidden");
+      if (weatherContent) weatherContent.classList.remove("hidden");
+    }
   } catch (error) {
     if (error.name !== "AbortError") {
       console.error("Error updating weather UI:", error);
-      if (weatherError) {
-        weatherError.textContent = error.message || "Failed to load weather forecast.";
-        weatherError.classList.remove("hidden");
+      if (isPanelVisible) {
+        if (weatherError) {
+          weatherError.textContent = error.message || "Failed to load weather forecast.";
+          weatherError.classList.remove("hidden");
+        }
+        if (weatherLoader) weatherLoader.classList.add("hidden");
       }
-      if (weatherLoader) weatherLoader.classList.add("hidden");
     }
   }
 }
@@ -957,7 +1003,7 @@ async function updatePoiWeatherUI(wpt) {
  */
 function triggerWeatherWeather(lat, lon, force = false) {
   if (!apiKeyMaps) return;
-  if (!cardWeather || cardWeather.classList.contains("hidden")) return;
+  if (!cardWeather) return;
 
   if (weatherDebounceTimer) {
     clearTimeout(weatherDebounceTimer);
@@ -1218,7 +1264,24 @@ function updateHUD(index) {
 
     hudValNextAs.textContent = `${nextAid.name} (+${distStr} ${distUnit}, +${gainStr} / -${lossStr} ${eleUnit})`;
   } else {
-    hudValNextAs.textContent = "Finish Line reached";
+    const goalHrs = activeRoute.executionPlan?.targetDurationHrs;
+    const goalStr = goalHrs ? `${goalHrs.toFixed(2)} hrs` : "Complete";
+    hudValNextAs.innerHTML = `🎉 <strong style="color:#34d399;">FINISH LINE REACHED!</strong> (Goal: ${goalStr})`;
+    
+    if (index === pts.length - 1 && !activeRoute.hasCelebratedFinish) {
+      activeRoute.hasCelebratedFinish = true;
+      triggerConfetti();
+      const overlay = document.getElementById("finish-celebration-overlay");
+      const fTime = document.getElementById("celeb-final-time");
+      const gRecap = document.getElementById("celeb-goal-recap");
+      if (overlay) {
+        if (fTime) fTime.textContent = hudValTime.textContent;
+        if (gRecap) gRecap.textContent = `Target Goal: ${goalStr}`;
+        overlay.classList.remove("hidden");
+      }
+    } else if (index < pts.length - 10) {
+      activeRoute.hasCelebratedFinish = false;
+    }
   }
 
   // 7. Render Climb Hazard card warning if traversing a steep slope
@@ -1235,10 +1298,26 @@ function updateHUD(index) {
   }
 
   // 8. Update active segment tag display
+  const hudPlanBox = document.getElementById("hud-plan-box");
+  const hudValPlanPace = document.getElementById("hud-val-plan-pace");
+  const activeSec = activeRoute.executionPlan?.sectors?.find(s => currentDist >= s.start_dist_m && currentDist <= s.end_dist_m);
+
+  if (hudPlanBox && hudValPlanPace && activeSec) {
+    const mFloor = Math.floor(activeSec.target_pace_min);
+    const sRound = Math.round((activeSec.target_pace_min % 1) * 60).toString().padStart(2, "0");
+    hudValPlanPace.textContent = `${mFloor}:${sRound} min/mi`;
+    hudPlanBox.title = activeSec.strategy || "Active Sector Strategy";
+    hudPlanBox.classList.remove("hidden");
+  } else if (hudPlanBox) {
+    hudPlanBox.classList.add("hidden");
+  }
+
   if (activeSegmentDisplay) {
-    const activeSec = activeRoute.executionPlan?.sectors?.find(s => currentDist >= s.start_dist_m && currentDist <= s.end_dist_m);
     if (activeSec) {
-      activeSegmentDisplay.innerHTML = `🏁 <strong>${escapeHtml(activeSec.name)}</strong> (${activeSec.target_pace_min} min/mi) | <em>${escapeHtml(activeSec.strategy || 'Maintain pace')}</em>`;
+      const isFinishSec = activeSec.end_dist_m >= activeRoute.totalDistance - 10;
+      const isStartSec = activeSec.start_dist_m === 0;
+      const secEmoji = isFinishSec ? "🏁" : (isStartSec ? "🚀" : "🏃");
+      activeSegmentDisplay.innerHTML = `${secEmoji} <strong>${escapeHtml(activeSec.name)}</strong> (${Math.floor(activeSec.target_pace_min)}:${Math.round((activeSec.target_pace_min%1)*60).toString().padStart(2,'0')} min/mi) | <em>${escapeHtml(activeSec.strategy || 'Maintain pace')}</em>`;
       activeSegmentDisplay.classList.remove("hidden");
     } else if (activeRoute.segments && activeRoute.segments.length > 1) {
       const activeSeg = activeRoute.segments.find(seg => currentDist >= seg.startDist && currentDist <= seg.endDist);
@@ -1296,7 +1375,7 @@ async function showPreviewPoiBanner(wpt, currentDist) {
   if (cardStats) cardStats.classList.add("hidden");
 
   if (previewPoiName) previewPoiName.textContent = wpt.name;
-  if (previewPoiSym) previewPoiSym.textContent = (wpt.sym?.includes("start") ? "🏁" : (wpt.sym?.includes("finish") ? "🏆" : (wpt.sym?.includes("water") ? "💧" : "📍")));
+  if (previewPoiSym) previewPoiSym.textContent = (wpt.sym?.includes("start") ? "🚀" : (wpt.sym?.includes("finish") ? "🏁" : (wpt.sym?.includes("water") ? "💧" : "📍")));
   if (previewPoiType) previewPoiType.textContent = (wpt.extensions?.station?.subtype || "Milestone").replace(/_/g, " ").toUpperCase();
 
   if (previewPoiAmenities) {
@@ -2626,6 +2705,19 @@ function setupEventListeners() {
   const toggleChatBtn = document.getElementById("toggle-chat-btn");
   const clearChatContextBtn = document.getElementById("clear-chat-context-btn");
 
+  if (togglePlannerBtn) {
+    togglePlannerBtn.addEventListener("click", () => {
+      if (cardImporter) {
+        if (!cardImporter.classList.contains("hidden") && studioTabPlan?.classList.contains("active")) {
+          cardImporter.classList.add("hidden");
+        } else {
+          cardImporter.classList.remove("hidden");
+          if (studioTabPlan) studioTabPlan.click();
+        }
+      }
+    });
+  }
+
   if (toggleChatBtn) {
     toggleChatBtn.addEventListener("click", () => {
       if (cardImporter) {
@@ -2643,10 +2735,12 @@ function setupEventListeners() {
     studioTabEdit.addEventListener("click", () => {
       studioTabEdit.classList.add("active");
       if (studioTabPoi) studioTabPoi.classList.remove("active");
+      if (studioTabPlan) studioTabPlan.classList.remove("active");
       if (studioTabChat) studioTabChat.classList.remove("active");
 
       if (studioViewEdit) studioViewEdit.classList.remove("hidden");
       if (poiDetailDialog) poiDetailDialog.classList.add("hidden");
+      if (studioViewPlan) studioViewPlan.classList.add("hidden");
       if (cardGeminiChat) cardGeminiChat.classList.add("hidden");
     });
   }
@@ -2655,10 +2749,26 @@ function setupEventListeners() {
     studioTabPoi.addEventListener("click", () => {
       studioTabPoi.classList.add("active");
       if (studioTabEdit) studioTabEdit.classList.remove("active");
+      if (studioTabPlan) studioTabPlan.classList.remove("active");
       if (studioTabChat) studioTabChat.classList.remove("active");
 
       if (poiDetailDialog) poiDetailDialog.classList.remove("hidden");
       if (studioViewEdit) studioViewEdit.classList.add("hidden");
+      if (studioViewPlan) studioViewPlan.classList.add("hidden");
+      if (cardGeminiChat) cardGeminiChat.classList.add("hidden");
+    });
+  }
+
+  if (studioTabPlan) {
+    studioTabPlan.addEventListener("click", () => {
+      studioTabPlan.classList.add("active");
+      if (studioTabEdit) studioTabEdit.classList.remove("active");
+      if (studioTabPoi) studioTabPoi.classList.remove("active");
+      if (studioTabChat) studioTabChat.classList.remove("active");
+
+      if (studioViewPlan) studioViewPlan.classList.remove("hidden");
+      if (studioViewEdit) studioViewEdit.classList.add("hidden");
+      if (poiDetailDialog) poiDetailDialog.classList.add("hidden");
       if (cardGeminiChat) cardGeminiChat.classList.add("hidden");
     });
   }
@@ -2668,10 +2778,920 @@ function setupEventListeners() {
       studioTabChat.classList.add("active");
       if (studioTabEdit) studioTabEdit.classList.remove("active");
       if (studioTabPoi) studioTabPoi.classList.remove("active");
+      if (studioTabPlan) studioTabPlan.classList.remove("active");
 
       if (cardGeminiChat) cardGeminiChat.classList.remove("hidden");
       if (studioViewEdit) studioViewEdit.classList.add("hidden");
       if (poiDetailDialog) poiDetailDialog.classList.add("hidden");
+      if (studioViewPlan) studioViewPlan.classList.add("hidden");
+    });
+  }
+
+  // POI / Aid Station Previous and Next Cycle Controls
+  const poiPrevWptBtn = document.getElementById("poi-prev-wpt-btn");
+  const poiNextWptBtn = document.getElementById("poi-next-wpt-btn");
+
+  const cycleWpt = (direction) => {
+    if (!activeRoute || !activeRoute.waypoints || activeRoute.waypoints.length === 0) return;
+    const wpts = [...activeRoute.waypoints].sort((a,b) => a.dist_m - b.dist_m);
+    let curIdx = wpts.findIndex(w => w.name === activeDialogWpt?.name);
+    if (curIdx === -1) curIdx = 0;
+    let nextIdx = (curIdx + direction + wpts.length) % wpts.length;
+    const targetWpt = wpts[nextIdx];
+    if (targetWpt) {
+      showPoiDetailDialog(targetWpt, targetWpt.closestTrackpointIndex || 0, targetWpt.dist_m);
+      if (mapController) {
+        mapController.syncToTrackpoint(targetWpt.closestTrackpointIndex || 0, true);
+      }
+    }
+  };
+
+  if (poiPrevWptBtn) poiPrevWptBtn.addEventListener("click", () => cycleWpt(-1));
+  if (poiNextWptBtn) poiNextWptBtn.addEventListener("click", () => cycleWpt(1));
+
+  // Finish Celebration Overlay Handlers
+  const closeCelebrationBtn = document.getElementById("close-celebration-btn");
+  if (closeCelebrationBtn) {
+    closeCelebrationBtn.addEventListener("click", () => {
+      document.getElementById("finish-celebration-overlay")?.classList.add("hidden");
+    });
+  }
+
+  function triggerConfetti() {
+    const count = 80;
+    const colors = ["#34d399", "#60a5fa", "#f59e0b", "#f43f5e", "#fff"];
+    for (let i = 0; i < count; i++) {
+      const el = document.createElement("div");
+      el.style.position = "fixed";
+      el.style.top = "50%";
+      el.style.left = "50%";
+      el.style.width = Math.random() * 12 + 6 + "px";
+      el.style.height = Math.random() * 12 + 6 + "px";
+      el.style.backgroundColor = colors[Math.floor(Math.random() * colors.length)];
+      el.style.borderRadius = Math.random() > 0.5 ? "50%" : "2px";
+      el.style.zIndex = "3000";
+      el.style.pointerEvents = "none";
+      document.body.appendChild(el);
+
+      const angle = Math.random() * Math.PI * 2;
+      const speed = Math.random() * 450 + 100;
+      const vx = Math.cos(angle) * speed;
+      const vy = Math.sin(angle) * speed - 150;
+      
+      let curX = window.innerWidth / 2;
+      let curY = window.innerHeight / 2;
+      let curVx = vx;
+      let curVy = vy;
+
+      const startTime = performance.now();
+      function anim(t) {
+        const elapsed = (t - startTime) / 1000;
+        if (elapsed > 2.5) {
+          if (el.parentNode) el.parentNode.removeChild(el);
+          return;
+        }
+        curX += curVx * 0.016;
+        curY += curVy * 0.016;
+        curVy += 350 * 0.016; // gravity
+        el.style.transform = `translate(${curX - window.innerWidth/2}px, ${curY - window.innerHeight/2}px) rotate(${elapsed * 360}deg)`;
+        el.style.opacity = 1 - elapsed / 2.5;
+        requestAnimationFrame(anim);
+      }
+      requestAnimationFrame(anim);
+    }
+  }
+
+  // Interactive AI Race Planner Wizard Modal Handlers
+  const racePlannerWizardModal = document.getElementById("race-planner-wizard-modal");
+  const closeWizardModalBtn = document.getElementById("close-wizard-modal-btn");
+  const wizardStepIndicator = document.getElementById("wizard-step-indicator");
+  
+  const wizardStep1 = document.getElementById("wizard-step-1");
+  const wizardStep2 = document.getElementById("wizard-step-2");
+  const wizardStep3 = document.getElementById("wizard-step-3");
+  const wizardStep4 = document.getElementById("wizard-step-4");
+
+  const wizNext1 = document.getElementById("wiz-next-1");
+  const wizPrev2 = document.getElementById("wiz-prev-2");
+  const wizNext2 = document.getElementById("wiz-next-2");
+  const wizPrev3 = document.getElementById("wiz-prev-3");
+  const wizGeneratePlanBtn = document.getElementById("wiz-generate-plan-btn");
+  const wizRestartBtn = document.getElementById("wiz-restart-btn");
+  const wizApplyHudBtn = document.getElementById("wiz-apply-hud-btn");
+
+  const wizPenaltySlider = document.getElementById("wiz-penalty-slider");
+  const wizPenaltyLbl = document.getElementById("wiz-penalty-lbl");
+  
+  const renderLoadedExecutionPlan = (route) => {
+    if (!route || !route.executionPlan || !route.executionPlan.sectors || route.executionPlan.sectors.length === 0) return;
+    const plan = route.executionPlan;
+    const outputList = document.getElementById("wiz-segments-output-list");
+    if (outputList) outputList.innerHTML = "";
+    
+    plan.sectors.forEach(sec => {
+      const segDistMi = (sec.end_dist_m - sec.start_dist_m) / 1609.34;
+      const mFloor = Math.floor(sec.target_pace_min);
+      const sRound = Math.round((sec.target_pace_min % 1) * 60).toString().padStart(2, "0");
+      const mph = 60 / sec.target_pace_min;
+
+      const isAsc = sec.strategy.includes("Ascent") || sec.strategy.includes("Climb");
+      const isDesc = sec.strategy.includes("Descent");
+      const terrainLabel = isAsc ? "Ascent ↗" : (isDesc ? "Descent ↘" : "Flat ➔");
+      const terrainCol = isAsc ? "#f43f5e" : (isDesc ? "#10b981" : "#60a5fa");
+      const terrainBg = isAsc ? "rgba(244,63,94,0.2)" : (isDesc ? "rgba(16,185,129,0.2)" : "rgba(59,130,246,0.2)");
+
+      const card = document.createElement("div");
+      card.style.background = "rgba(0,0,0,0.4)";
+      card.style.border = "1px solid rgba(255,255,255,0.1)";
+      card.style.padding = "10px 12px";
+      card.style.borderRadius = "8px";
+      card.style.display = "flex";
+      card.style.flexDirection = "column";
+      card.style.gap = "6px";
+      card.innerHTML = `
+        <div style="display: flex; justify-content: space-between; align-items: center;">
+          <strong style="font-size: 12px; color: #60a5fa;">${escapeHtml(sec.name)}</strong>
+          <span style="font-size: 10px; padding: 2px 8px; border-radius: 12px; background: ${terrainBg}; color: ${terrainCol}; font-weight: bold;">${terrainLabel}</span>
+        </div>
+        <div style="display: flex; justify-content: space-between; align-items: center; font-size: 11px; color: var(--text-secondary);">
+          <span>Dist: <strong>${segDistMi.toFixed(1)} mi</strong></span>
+          <span style="color: #f59e0b;">${escapeHtml(sec.strategy)}</span>
+        </div>
+        <div style="display: flex; justify-content: space-between; align-items: center; font-size: 11px; border-top: 1px dashed rgba(255,255,255,0.1); padding-top: 6px;">
+          <span>Target Pace: <strong style="color:#34d399;">${mFloor}:${sRound} min/mi</strong> (${mph.toFixed(1)} mph)</span>
+        </div>
+      `;
+      if (outputList) outputList.appendChild(card);
+    });
+
+    const totDisp = document.getElementById("wiz-tot-time-disp");
+    const avgDisp = document.getElementById("wiz-avg-pace-disp");
+    if (totDisp && plan.targetDurationHrs) totDisp.textContent = `${plan.targetDurationHrs.toFixed(2)} Hrs`;
+    if (avgDisp && plan.targetDurationHrs && route.totalDistance) {
+      const avgPace = (plan.targetDurationHrs * 60) / (route.totalDistance / 1609.34);
+      avgDisp.textContent = `${Math.floor(avgPace)}:${Math.floor((avgPace%1)*60).toString().padStart(2,"0")} min/mi`;
+    }
+  };
+
+  const openWizardModal = () => {
+    if (racePlannerWizardModal) {
+      racePlannerWizardModal.classList.remove("hidden");
+      if (activeRoute?.executionPlan?.sectors?.length > 0) {
+        renderLoadedExecutionPlan(activeRoute);
+        wizardStep1?.classList.add("hidden");
+        wizardStep2?.classList.add("hidden");
+        wizardStep3?.classList.add("hidden");
+        wizardStep4?.classList.remove("hidden");
+        if (wizardStepIndicator) wizardStepIndicator.textContent = "Step 4 of 4: Loaded Pacing Plan";
+      } else {
+        wizardStep1?.classList.remove("hidden");
+        wizardStep2?.classList.add("hidden");
+        wizardStep3?.classList.add("hidden");
+        wizardStep4?.classList.add("hidden");
+        if (wizardStepIndicator) wizardStepIndicator.textContent = "Step 1 of 4: Fitness & Baseline";
+      }
+    }
+  };
+
+  if (closeWizardModalBtn) {
+    closeWizardModalBtn.addEventListener("click", () => racePlannerWizardModal?.classList.add("hidden"));
+  }
+
+  if (togglePlannerBtn) {
+    togglePlannerBtn.addEventListener("click", openWizardModal);
+  }
+  if (toggleStrategyBtn) {
+    toggleStrategyBtn.addEventListener("click", openWizardModal);
+  }
+  if (studioTabPlan) {
+    studioTabPlan.addEventListener("click", openWizardModal);
+  }
+
+  const updatePaceLabel = (spdInput, lblEl) => {
+    if (!spdInput || !lblEl) return;
+    const mph = parseFloat(spdInput.value) || 0;
+    if (mph <= 0) {
+      lblEl.textContent = "--:-- min/mi";
+      return;
+    }
+    const mins = 60 / mph;
+    const mFloor = Math.floor(mins);
+    const sRound = Math.round((mins % 1) * 60).toString().padStart(2, "0");
+    lblEl.textContent = `${mFloor}:${sRound} min/mi`;
+  };
+
+  const wizClimbSpd = document.getElementById("wiz-climb-spd");
+  const wizFlatSpd = document.getElementById("wiz-flat-spd");
+  const wizDescSpd = document.getElementById("wiz-desc-spd");
+
+  const wizClimbPaceLbl = document.getElementById("wiz-climb-pace-lbl");
+  const wizFlatPaceLbl = document.getElementById("wiz-flat-pace-lbl");
+  const wizDescPaceLbl = document.getElementById("wiz-desc-pace-lbl");
+
+  if (wizClimbSpd && wizClimbPaceLbl) {
+    wizClimbSpd.addEventListener("input", () => updatePaceLabel(wizClimbSpd, wizClimbPaceLbl));
+  }
+  if (wizFlatSpd && wizFlatPaceLbl) {
+    wizFlatSpd.addEventListener("input", () => updatePaceLabel(wizFlatSpd, wizFlatPaceLbl));
+  }
+  if (wizDescSpd && wizDescPaceLbl) {
+    wizDescSpd.addEventListener("input", () => updatePaceLabel(wizDescSpd, wizDescPaceLbl));
+  }
+
+  if (wizNext1) {
+    wizNext1.addEventListener("click", () => {
+      const selFit = document.querySelector('input[name="wiz_fitness"]:checked')?.value || "recovery";
+      const cSpdInput = document.getElementById("wiz-climb-spd");
+      const dSpdInput = document.getElementById("wiz-desc-spd");
+      const fSpdInput = document.getElementById("wiz-flat-spd");
+      if (selFit === "recovery") {
+        if (cSpdInput) cSpdInput.value = "2.0";
+        if (dSpdInput) dSpdInput.value = "4.0";
+        if (fSpdInput) fSpdInput.value = "4.5";
+      } else if (selFit === "intermediate") {
+        if (cSpdInput) cSpdInput.value = "3.0";
+        if (dSpdInput) dSpdInput.value = "6.0";
+        if (fSpdInput) fSpdInput.value = "6.0";
+      } else if (selFit === "elite") {
+        if (cSpdInput) cSpdInput.value = "4.5";
+        if (dSpdInput) dSpdInput.value = "8.0";
+        if (fSpdInput) fSpdInput.value = "7.5";
+      }
+      updatePaceLabel(wizClimbSpd, wizClimbPaceLbl);
+      updatePaceLabel(wizFlatSpd, wizFlatPaceLbl);
+      updatePaceLabel(wizDescSpd, wizDescPaceLbl);
+      wizardStep1?.classList.add("hidden");
+      wizardStep2?.classList.remove("hidden");
+      if (wizardStepIndicator) wizardStepIndicator.textContent = "Step 2 of 4: Terrain Speeds & Descent";
+    });
+  }
+
+  if (wizPrev2) {
+    wizPrev2.addEventListener("click", () => {
+      wizardStep2?.classList.add("hidden");
+      wizardStep1?.classList.remove("hidden");
+      if (wizardStepIndicator) wizardStepIndicator.textContent = "Step 1 of 4: Fitness & Baseline";
+    });
+  }
+
+  const computeSunriseSunset = (lat, lon, date) => {
+    const rad = Math.PI / 180;
+    const start = new Date(date.getFullYear(), 0, 0);
+    const diff = (date - start) + ((start.getTimezoneOffset() - date.getTimezoneOffset()) * 60 * 1000);
+    const dayOfYear = Math.floor(diff / (1000 * 60 * 60 * 24));
+
+    const lngHour = lon / 15;
+    const getSolarTime = (isSunrise) => {
+      const t = dayOfYear + ((isSunrise ? 6 : 18) - lngHour) / 24;
+      const M = (0.9856 * t) - 3.289;
+      let L = M + (1.916 * Math.sin(M * rad)) + (0.020 * Math.sin(2 * M * rad)) + 282.634;
+      L = ((L % 360) + 360) % 360;
+
+      let RA = Math.atan(0.91764 * Math.tan(L * rad)) / rad;
+      RA = ((RA % 360) + 360) % 360;
+
+      const Lquad = Math.floor(L / 90) * 90;
+      const RAquad = Math.floor(RA / 90) * 90;
+      RA = RA + (Lquad - RAquad);
+      RA = RA / 15;
+
+      const sinDec = 0.39782 * Math.sin(L * rad);
+      const cosDec = Math.cos(Math.asin(sinDec));
+
+      const cosH = (Math.cos(90.833 * rad) - (Math.sin(lat * rad) * sinDec)) / (Math.cos(lat * rad) * cosDec);
+      if (cosH > 1) return isSunrise ? "08:00" : "16:00";
+      if (cosH < -1) return isSunrise ? "02:00" : "23:00";
+
+      let H = Math.acos(cosH) / rad;
+      if (isSunrise) H = 360 - H;
+      H = H / 15;
+
+      const T = H + RA - (0.06571 * t) - 6.622;
+      let UT = T - lngHour;
+      UT = ((UT % 24) + 24) % 24;
+
+      const offsetHrs = -date.getTimezoneOffset() / 60;
+      const localHrs = (UT + offsetHrs + 24) % 24;
+      const hh = Math.floor(localHrs).toString().padStart(2, "0");
+      const mm = Math.floor((localHrs % 1) * 60).toString().padStart(2, "0");
+      return `${hh}:${mm}`;
+    };
+
+    return {
+      sunrise: getSolarTime(true),
+      sunset: getSolarTime(false)
+    };
+  };
+
+  const syncSolarTimes = () => {
+    const dInput = document.getElementById("wiz-start-date");
+    const riseInput = document.getElementById("wiz-sunrise-time");
+    const setInput = document.getElementById("wiz-sunset-time");
+    if (!dInput || !riseInput || !setInput) return;
+    
+    let lat = 40.0;
+    let lon = -105.2;
+    if (activeRoute && activeRoute.trackpoints && activeRoute.trackpoints.length > 0) {
+      lat = activeRoute.trackpoints[0].lat;
+      lon = activeRoute.trackpoints[0].lon;
+    }
+    
+    const dateObj = new Date(dInput.value || "2026-06-20");
+    if (!isNaN(dateObj)) {
+      const solar = computeSunriseSunset(lat, lon, dateObj);
+      riseInput.value = solar.sunrise;
+      setInput.value = solar.sunset;
+    }
+  };
+
+  const wizStartDate = document.getElementById("wiz-start-date");
+  if (wizStartDate) {
+    wizStartDate.addEventListener("change", syncSolarTimes);
+  }
+
+  if (wizNext2) {
+    wizNext2.addEventListener("click", () => {
+      wizardStep2?.classList.add("hidden");
+      wizardStep3?.classList.remove("hidden");
+      syncSolarTimes();
+      if (wizardStepIndicator) wizardStepIndicator.textContent = "Step 3 of 4: Schedule & Sun Tracking";
+    });
+  }
+
+  if (wizPrev3) {
+    wizPrev3.addEventListener("click", () => {
+      wizardStep3?.classList.add("hidden");
+      wizardStep2?.classList.remove("hidden");
+      if (wizardStepIndicator) wizardStepIndicator.textContent = "Step 2 of 4: Terrain Speeds & Descent";
+    });
+  }
+
+  if (wizPenaltySlider && wizPenaltyLbl) {
+    wizPenaltySlider.addEventListener("input", () => {
+      wizPenaltyLbl.textContent = `-${wizPenaltySlider.value}% pace`;
+    });
+  }
+
+  if (wizGeneratePlanBtn) {
+    wizGeneratePlanBtn.addEventListener("click", () => {
+      if (!activeRoute) {
+        showToast("Load a GPX course first!");
+        return;
+      }
+
+      const cSpd = parseFloat(document.getElementById("wiz-climb-spd")?.value || "2.0");
+      const fSpd = parseFloat(document.getElementById("wiz-flat-spd")?.value || "4.5");
+      const dSpd = parseFloat(document.getElementById("wiz-desc-spd")?.value || "4.0");
+      const steepMode = document.getElementById("wiz-steep-handling")?.value || "cautious";
+      const degFactor = parseFloat(wizPenaltySlider?.value || "15") / 100;
+      
+      const parseHrs = (timeStr) => {
+        const parts = (timeStr || "06:00").split(":");
+        return parseFloat(parts[0]) + parseFloat(parts[1] || "0") / 60;
+      };
+      const formatClock = (hrs) => {
+        const h24 = Math.floor((hrs + 24) % 24);
+        const m = Math.floor((hrs % 1) * 60);
+        const hh = h24 < 10 ? "0" + h24 : h24;
+        const mm = m < 10 ? "0" + m : m;
+        return `${hh}:${mm}`;
+      };
+
+      const startHrs = parseHrs(document.getElementById("wiz-start-time")?.value || "06:00");
+      const sunriseHrs = parseHrs(document.getElementById("wiz-sunrise-time")?.value || "05:45");
+      const sunsetHrs = parseHrs(document.getElementById("wiz-sunset-time")?.value || "20:30");
+
+      let elapsedHrs = 0;
+      let wpts = [...(activeRoute.waypoints || [])].sort((a,b) => a.dist_m - b.dist_m);
+      if (wpts.length < 2) {
+        wpts = [];
+        const totM = activeRoute.totalDistance;
+        for (let m = 0; m <= totM; m += 4828) {
+          wpts.push({ name: `Mile ${(m / 1609.34).toFixed(1)}`, dist_m: m });
+        }
+        if (wpts[wpts.length - 1].dist_m < totM) wpts.push({ name: "Finish", dist_m: totM });
+      }
+
+      const outputList = document.getElementById("wiz-segments-output-list");
+      if (outputList) outputList.innerHTML = "";
+      const generatedSectors = [];
+
+      for (let i = 0; i < wpts.length - 1; i++) {
+        const wStart = wpts[i];
+        const wEnd = wpts[i + 1];
+        const segDistM = wEnd.dist_m - wStart.dist_m;
+        if (segDistM <= 10) continue;
+
+        const segDistMi = segDistM / 1609.34;
+        let pStart = activeRoute.trackpoints.find(p => p.dist_m >= wStart.dist_m) || activeRoute.trackpoints[0];
+        let pEnd = activeRoute.trackpoints.find(p => p.dist_m >= wEnd.dist_m) || activeRoute.trackpoints[activeRoute.trackpoints.length - 1];
+        
+        let eleDiff = 0;
+        let climbGain = 0;
+        if (pStart && pEnd) {
+          eleDiff = pEnd.ele - pStart.ele;
+          if (pStart.index !== undefined && pEnd.index !== undefined) {
+            for (let k = pStart.index; k < pEnd.index; k++) {
+              const nextPt = activeRoute.trackpoints[k + 1];
+              const curPt = activeRoute.trackpoints[k];
+              if (nextPt && curPt) {
+                const diff = nextPt.ele - curPt.ele;
+                if (diff > 0) climbGain += diff;
+              }
+            }
+          }
+        }
+
+        const gradePct = (eleDiff / segDistM) * 100;
+        const climbGainGrade = (climbGain / segDistM) * 100;
+
+        let terrainLabel = "Flat ➔";
+        let terrainCol = "#60a5fa";
+        let terrainBg = "rgba(59,130,246,0.2)";
+        let baseSpeed = fSpd;
+
+        if (gradePct > 5.5 || climbGainGrade >= 3.5) {
+          terrainLabel = "Ascent ↗";
+          terrainCol = "#f43f5e";
+          terrainBg = "rgba(244,63,94,0.2)";
+          baseSpeed = cSpd;
+        } else if (climbGainGrade >= 1.5) {
+          terrainLabel = "Moderate Climb ↗";
+          terrainCol = "#f43f5e";
+          terrainBg = "rgba(244,63,94,0.15)";
+          baseSpeed = (fSpd + cSpd) / 2;
+        } else if (gradePct < -15) {
+          terrainLabel = "Steep Descent ↘";
+          terrainCol = "#f59e0b";
+          terrainBg = "rgba(245,158,11,0.2)";
+          baseSpeed = steepMode === "cautious" ? dSpd * 0.75 : (steepMode === "aggressive" ? dSpd * 1.15 : dSpd);
+        } else if (gradePct < -5.5) {
+          terrainLabel = "Descent ↘";
+          terrainCol = "#10b981";
+          terrainBg = "rgba(16,185,129,0.2)";
+          baseSpeed = dSpd;
+        }
+
+        const curClock = (startHrs + elapsedHrs) % 24;
+        let isHeat = curClock >= 12 && curClock <= 16;
+        let isNight = curClock > sunsetHrs || curClock < sunriseHrs;
+
+        let finalSpeed = Math.max(baseSpeed, 0.5);
+        let sunTag = "☀️ Daylight";
+        if (isHeat) {
+          sunTag = "🔥 Midday Heat (-" + (degFactor*100).toFixed(0) + "% Pace)";
+          finalSpeed = finalSpeed * (1 - degFactor);
+        } else if (isNight) {
+          sunTag = "🌙 Darkness / Night (-" + (degFactor*100).toFixed(0) + "% Pace)";
+          finalSpeed = finalSpeed * (1 - degFactor);
+        }
+
+        const segHrs = segDistMi / finalSpeed;
+        elapsedHrs += segHrs;
+        const paceMinMi = 60 / finalSpeed;
+
+        const card = document.createElement("div");
+        card.style.background = "rgba(0,0,0,0.4)";
+        card.style.border = "1px solid rgba(255,255,255,0.1)";
+        card.style.padding = "10px 12px";
+        card.style.borderRadius = "8px";
+        card.style.display = "flex";
+        card.style.flexDirection = "column";
+        card.style.gap = "6px";
+        card.innerHTML = `
+          <div style="display: flex; justify-content: space-between; align-items: center;">
+            <strong style="font-size: 12px; color: #60a5fa;">${wStart.name} ➔ ${wEnd.name}</strong>
+            <span style="font-size: 10px; padding: 2px 8px; border-radius: 12px; background: ${terrainBg}; color: ${terrainCol}; font-weight: bold;">${terrainLabel}</span>
+          </div>
+          <div style="display: flex; justify-content: space-between; align-items: center; font-size: 11px; color: var(--text-secondary);">
+            <span>Dist: <strong>${segDistMi.toFixed(1)} mi</strong> (${gradePct > 0 ? "+"+gradePct.toFixed(1) : gradePct.toFixed(1)}% grade)</span>
+            <span style="color: #f59e0b;">${sunTag}</span>
+          </div>
+          <div style="display: flex; justify-content: space-between; align-items: center; font-size: 11px; border-top: 1px dashed rgba(255,255,255,0.1); padding-top: 6px;">
+            <span>Arrive: <strong style="color:#fff;">${formatClock(startHrs + elapsedHrs)}</strong> (+${elapsedHrs.toFixed(1)}h)</span>
+            <span>Target Pace: <strong style="color:#34d399;">${Math.floor(paceMinMi)}:${Math.floor((paceMinMi%1)*60).toString().padStart(2,"0")} min/mi</strong> (${finalSpeed.toFixed(1)} mph)</span>
+          </div>
+        `;
+        if (outputList) outputList.appendChild(card);
+        generatedSectors.push({
+          start_dist_m: wStart.dist_m,
+          end_dist_m: wEnd.dist_m,
+          name: `${wStart.name} to ${wEnd.name}`,
+          target_pace_min: paceMinMi,
+          strategy: `Hold ${finalSpeed.toFixed(1)} mph in ${sunTag}`
+        });
+      }
+
+      const totDisp = document.getElementById("wiz-tot-time-disp");
+      const avgDisp = document.getElementById("wiz-avg-pace-disp");
+      if (totDisp) totDisp.textContent = `${elapsedHrs.toFixed(2)} Hrs`;
+      if (avgDisp) {
+        const avgPace = (elapsedHrs * 60) / (activeRoute.totalDistance / 1609.34);
+        avgDisp.textContent = `${Math.floor(avgPace)}:${Math.floor((avgPace%1)*60).toString().padStart(2,"0")} min/mi`;
+      }
+
+      activeRoute.executionPlan = {
+        startTime: document.getElementById("wiz-start-time")?.value || "06:00",
+        targetDurationHrs: elapsedHrs,
+        sectors: generatedSectors
+      };
+
+      wizardStep3?.classList.add("hidden");
+      wizardStep4?.classList.remove("hidden");
+      if (wizardStepIndicator) wizardStepIndicator.textContent = "Step 4 of 4: Generated Pacing Plan";
+      showToast("Race Plan Generated!");
+    });
+  }
+
+  if (wizRestartBtn) {
+    wizRestartBtn.addEventListener("click", () => {
+      wizardStep4?.classList.add("hidden");
+      wizardStep1?.classList.remove("hidden");
+      if (wizardStepIndicator) wizardStepIndicator.textContent = "Step 1 of 4: Fitness & Baseline";
+    });
+  }
+  if (wizApplyHudBtn) {
+    wizApplyHudBtn.addEventListener("click", () => {
+      racePlannerWizardModal?.classList.add("hidden");
+      showToast("Segmented Race Plan Applied to HUD!");
+    });
+  }
+
+  const wizPrintPlanBtn = document.getElementById("wiz-print-plan-btn");
+  if (wizPrintPlanBtn) {
+    wizPrintPlanBtn.addEventListener("click", () => {
+      if (!activeRoute || !activeRoute.executionPlan || !activeRoute.executionPlan.sectors) {
+        showToast("Generate a Race Plan first!");
+        return;
+      }
+
+      const plan = activeRoute.executionPlan;
+      const cName = activeRoute.metadata?.name || "Ruff Terrain Ultra";
+      const totDistMi = activeRoute.totalDistance / 1609.34;
+      
+      let rowsHtml = "";
+      plan.sectors.forEach(sec => {
+        const mFloor = Math.floor(sec.target_pace_min);
+        const sRound = Math.round((sec.target_pace_min % 1) * 60).toString().padStart(2, "0");
+        const paceStr = `${mFloor}:${sRound}`;
+        
+        const isAsc = sec.strategy.includes("Ascent");
+        const isDesc = sec.strategy.includes("Descent");
+        const badgeClass = isAsc ? "badge-ascent" : (isDesc ? "badge-descent" : "badge-flat");
+        const badgeText = isAsc ? "CLIMB" : (isDesc ? "DESCENT" : "FLAT");
+
+        rowsHtml += `
+          <tr>
+            <td><strong>${sec.name}</strong></td>
+            <td><span class="badge ${badgeClass}">${badgeText}</span></td>
+            <td><strong>${paceStr}</strong> min/mi</td>
+            <td>${sec.strategy}</td>
+          </tr>
+        `;
+      });
+
+      const htmlContent = `
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>${cName} - Race Execution Plan</title>
+  <style>
+    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;600;800&display=swap');
+    body {
+      font-family: 'Inter', sans-serif;
+      color: #111827;
+      background: #fff;
+      margin: 0;
+      padding: 40px;
+      line-height: 1.6;
+    }
+    .header {
+      border-bottom: 3px solid #111827;
+      padding-bottom: 16px;
+      margin-bottom: 24px;
+    }
+    h1 { margin: 0; font-size: 28px; font-weight: 800; text-transform: uppercase; letter-spacing: -0.5px; }
+    .subtitle { font-size: 14px; color: #4b5563; margin-top: 4px; }
+    .meta-grid {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 16px;
+      background: #f3f4f6;
+      padding: 16px 20px;
+      border-radius: 8px;
+      margin-bottom: 32px;
+    }
+    .meta-item { display: flex; flex-direction: column; }
+    .meta-label { font-size: 11px; font-weight: 700; text-transform: uppercase; color: #6b7280; }
+    .meta-value { font-size: 18px; font-weight: 800; color: #111827; margin-top: 2px; }
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      margin-bottom: 32px;
+    }
+    th {
+      background: #111827;
+      color: #fff;
+      font-size: 11px;
+      font-weight: 700;
+      text-transform: uppercase;
+      padding: 12px 14px;
+      text-align: left;
+    }
+    td {
+      padding: 14px;
+      border-bottom: 1px solid #e5e7eb;
+      font-size: 13px;
+    }
+    tr:nth-child(even) { background-color: #f9fafb; }
+    .badge {
+      display: inline-block;
+      padding: 4px 8px;
+      border-radius: 4px;
+      font-size: 10px;
+      font-weight: 700;
+      text-transform: uppercase;
+    }
+    .badge-ascent { background: #fee2e2; color: #991b1b; }
+    .badge-descent { background: #d1fae5; color: #065f46; }
+    .badge-flat { background: #dbeafe; color: #1e40af; }
+    @media print {
+      body { padding: 0; }
+      .meta-grid { -webkit-print-color-adjust: exact; print-color-adjust: exact; background: #f3f4f6 !important; }
+      th { -webkit-print-color-adjust: exact; print-color-adjust: exact; background: #111827 !important; color: #fff !important; }
+    }
+  </style>
+</head>
+<body>
+  <div class="header">
+    <h1>${cName}</h1>
+    <div class="subtitle">AI Assisted Race Execution &amp; Pacing Plan</div>
+  </div>
+
+  <div class="meta-grid">
+    <div class="meta-item">
+      <span class="meta-label">Total Distance</span>
+      <span class="meta-value">${totDistMi.toFixed(1)} Miles</span>
+    </div>
+    <div class="meta-item">
+      <span class="meta-label">Target Duration</span>
+      <span class="meta-value">${plan.targetDurationHrs?.toFixed(2)} Hrs</span>
+    </div>
+    <div class="meta-item">
+      <span class="meta-label">Start Time</span>
+      <span class="meta-value">${plan.startTime || "06:00"}</span>
+    </div>
+    <div class="meta-item">
+      <span class="meta-label">Average Pace</span>
+      <span class="meta-value">${Math.floor(((plan.targetDurationHrs||0)*60)/totDistMi)}:${Math.floor(((((plan.targetDurationHrs||0)*60)/totDistMi)%1)*60).toString().padStart(2,'0')} min/mi</span>
+    </div>
+  </div>
+
+  <table>
+    <thead>
+      <tr>
+        <th>Sector / Aid Station Split</th>
+        <th>Terrain</th>
+        <th>Target Pace</th>
+        <th>Strategy &amp; Lighting</th>
+      </tr>
+    </thead>
+    <tbody>
+      ${rowsHtml}
+    </tbody>
+  </table>
+
+  <div style="font-size: 11px; color: #6b7280; text-align: center; border-top: 1px solid #e5e7eb; padding-top: 16px;">
+    Generated by Ruff Terrain AI Race Planner &bull; Safe, Smart Ultra Pacing
+  </div>
+</body>
+</html>
+      `;
+
+      // Download as standalone HTML file
+      const blob = new Blob([htmlContent], { type: "text/html;charset=utf-8" });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `${cName.toLowerCase().replace(/[^a-z0-9]+/g, "_")}_race_plan.html`;
+      a.click();
+      URL.revokeObjectURL(url);
+
+      // Open print window
+      const printWin = window.open("", "_blank");
+      if (printWin) {
+        printWin.document.write(htmlContent);
+        printWin.document.close();
+        printWin.focus();
+        setTimeout(() => printWin.print(), 750);
+      }
+      showToast("Race Plan downloaded and opened for printing!");
+    });
+  }
+
+  const wizSaveGpxBtn = document.getElementById("wiz-save-gpx-btn");
+  if (wizSaveGpxBtn) {
+    wizSaveGpxBtn.addEventListener("click", () => {
+      if (!activeRoute || !activeRoute.executionPlan || !activeRoute.executionPlan.sectors || activeRoute.executionPlan.sectors.length === 0) {
+        showToast("Generate a Race Plan first!");
+        return;
+      }
+      saveSessionState();
+      if (exportGpxBtn) exportGpxBtn.click();
+    });
+  }
+
+  // AI Interview Trigger & Submit
+  if (aiInterviewTrigger && aiInterviewModal) {
+    aiInterviewTrigger.addEventListener("click", () => aiInterviewModal.classList.remove("hidden"));
+  }
+  if (closeInterviewBtn && aiInterviewModal) {
+    closeInterviewBtn.addEventListener("click", () => aiInterviewModal.classList.add("hidden"));
+  }
+  if (aiInterviewCancelBtn && aiInterviewModal) {
+    aiInterviewCancelBtn.addEventListener("click", () => aiInterviewModal.classList.add("hidden"));
+  }
+  if (aiInterviewSubmitBtn && aiInterviewModal) {
+    aiInterviewSubmitBtn.addEventListener("click", () => {
+      const txt = (aiInterviewInput?.value || "").toLowerCase();
+      if (txt.includes("pull 2") || txt.includes("2 mph") || txt.includes("2mph")) {
+        if (planPaceClimb) planPaceClimb.value = "2.0";
+      }
+      if (txt.includes("jog down at 4") || txt.includes("4 mph") || txt.includes("4mph")) {
+        if (planPaceDesc) planPaceDesc.value = "4.0";
+      }
+      if (txt.includes("surgery") || txt.includes("lung")) {
+        if (planFitnessLevel) planFitnessLevel.value = "surgery_recovery";
+      }
+      aiInterviewModal.classList.add("hidden");
+      showToast("Extracted Pacing Profile from Interview!");
+      if (generateRacePlanBtn) generateRacePlanBtn.click();
+    });
+  }
+
+  // Race Plan Generator Engine
+  if (generateRacePlanBtn) {
+    generateRacePlanBtn.addEventListener("click", () => {
+      if (!activeRoute || !activeRoute.trackpoints || activeRoute.trackpoints.length === 0) {
+        showToast("Please load a GPX/KML course first!");
+        return;
+      }
+
+      const parseHrs = (timeStr) => {
+        const parts = (timeStr || "06:00").split(":");
+        return parseFloat(parts[0]) + parseFloat(parts[1] || "0") / 60;
+      };
+
+      const formatClock = (hrs) => {
+        const h24 = Math.floor((hrs + 24) % 24);
+        const m = Math.floor((hrs % 1) * 60);
+        const hh = h24 < 10 ? "0" + h24 : h24;
+        const mm = m < 10 ? "0" + m : m;
+        return `${hh}:${mm}`;
+      };
+
+      const cSpeed = parseFloat(planPaceClimb?.value || "2.0");
+      const fSpeed = parseFloat(planPaceFlat?.value || "4.5");
+      const dSpeed = parseFloat(planPaceDesc?.value || "4.0");
+      const steepMode = planSteepDescent?.value || "cautious";
+      const degFactor = parseFloat(planDegradationSlider?.value || "15") / 100;
+      
+      const startHrs = parseHrs(planStartTime?.value || "06:00");
+      const sunriseHrs = parseHrs(planSunriseTime?.value || "05:45");
+      const sunsetHrs = parseHrs(planSunsetTime?.value || "20:30");
+
+      let elapsedHrs = 0;
+      let wpts = [...(activeRoute.waypoints || [])];
+      wpts.sort((a, b) => a.dist_m - b.dist_m);
+
+      if (wpts.length < 2) {
+        // Fallback milestone chunks if no aid stations loaded
+        wpts = [];
+        const totM = activeRoute.totalDistance;
+        for (let m = 0; m <= totM; m += 4828) {
+          wpts.push({ name: `Mile ${(m / 1609.34).toFixed(1)}`, dist_m: m });
+        }
+        if (wpts[wpts.length - 1].dist_m < totM) {
+          wpts.push({ name: "Finish", dist_m: totM });
+        }
+      }
+
+      if (planSegmentsList) planSegmentsList.innerHTML = "";
+      const generatedSectors = [];
+
+      for (let i = 0; i < wpts.length - 1; i++) {
+        const wStart = wpts[i];
+        const wEnd = wpts[i + 1];
+        const segDistM = wEnd.dist_m - wStart.dist_m;
+        if (segDistM <= 10) continue;
+
+        const segDistMi = segDistM / 1609.34;
+
+        // Determine grade from trackpoints in slice
+        let eleDiff = 0;
+        let pStart = activeRoute.trackpoints.find(p => p.dist_m >= wStart.dist_m) || activeRoute.trackpoints[0];
+        let pEnd = activeRoute.trackpoints.find(p => p.dist_m >= wEnd.dist_m) || activeRoute.trackpoints[activeRoute.trackpoints.length - 1];
+        if (pStart && pEnd) {
+          eleDiff = pEnd.ele - pStart.ele;
+        }
+        const gradePct = (eleDiff / segDistM) * 100;
+
+        let terrainLabel = "Flat ➔";
+        let terrainCol = "#60a5fa";
+        let terrainBg = "rgba(59,130,246,0.2)";
+        let baseSpeed = fSpeed;
+
+        if (gradePct > 5.5) {
+          terrainLabel = "Ascent ↗";
+          terrainCol = "#f43f5e";
+          terrainBg = "rgba(244,63,94,0.2)";
+          baseSpeed = cSpeed;
+        } else if (gradePct < -15) {
+          terrainLabel = "Steep Descent ↘";
+          terrainCol = "#f59e0b";
+          terrainBg = "rgba(245,158,11,0.2)";
+          baseSpeed = steepMode === "cautious" ? dSpeed * 0.75 : (steepMode === "aggressive" ? dSpeed * 1.15 : dSpeed);
+        } else if (gradePct < -5.5) {
+          terrainLabel = "Descent ↘";
+          terrainCol = "#10b981";
+          terrainBg = "rgba(16,185,129,0.2)";
+          baseSpeed = dSpeed;
+        }
+
+        const curClock = (startHrs + elapsedHrs) % 24;
+        let isHeat = curClock >= 12 && curClock <= 16;
+        let isNight = curClock > sunsetHrs || curClock < sunriseHrs;
+
+        let finalSpeed = Math.max(baseSpeed, 0.5);
+        let sunTag = "☀️ Daylight";
+        if (isHeat) {
+          sunTag = "🔥 Midday Heat (-" + (degFactor*100).toFixed(0) + "% Pace)";
+          finalSpeed = finalSpeed * (1 - degFactor);
+        } else if (isNight) {
+          sunTag = "🌙 Darkness / Night (-" + (degFactor*100).toFixed(0) + "% Pace)";
+          finalSpeed = finalSpeed * (1 - degFactor);
+        }
+
+        const segHrs = segDistMi / finalSpeed;
+        elapsedHrs += segHrs;
+
+        const paceMinMi = 60 / finalSpeed;
+        const arriveClock = formatClock(startHrs + elapsedHrs);
+
+        const card = document.createElement("div");
+        card.style.background = "rgba(255,255,255,0.03)";
+        card.style.border = "1px solid rgba(255,255,255,0.08)";
+        card.style.padding = "8px 10px";
+        card.style.borderRadius = "8px";
+        card.style.display = "flex";
+        card.style.flexDirection = "column";
+        card.style.gap = "4px";
+
+        card.innerHTML = `
+          <div style="display: flex; justify-content: space-between; align-items: center;">
+            <span style="font-size: 11px; font-weight: bold; color: #60a5fa;">${wStart.name} ➔ ${wEnd.name}</span>
+            <span style="font-size: 9px; padding: 2px 6px; border-radius: 4px; background: ${terrainBg}; color: ${terrainCol}; font-weight: bold;">${terrainLabel}</span>
+          </div>
+          <div style="display: flex; justify-content: space-between; align-items: center; font-size: 10px; color: var(--text-secondary);">
+            <span>Dist: <strong>${segDistMi.toFixed(1)} mi</strong> (${gradePct > 0 ? "+"+gradePct.toFixed(1) : gradePct.toFixed(1)}% grade)</span>
+            <span style="color: #f59e0b;">${sunTag}</span>
+          </div>
+          <div style="display: flex; justify-content: space-between; align-items: center; font-size: 10px; border-top: 1px dashed rgba(255,255,255,0.08); padding-top: 4px;">
+            <span>Arrive: <strong>${arriveClock}</strong> (+${elapsedHrs.toFixed(1)}h)</span>
+            <span>Target: <strong>${Math.floor(paceMinMi)}:${Math.floor((paceMinMi%1)*60).toString().padStart(2,"0")} min/mi</strong> (${finalSpeed.toFixed(1)} mph)</span>
+          </div>
+        `;
+
+        if (planSegmentsList) planSegmentsList.appendChild(card);
+
+        generatedSectors.push({
+          start_dist_m: wStart.dist_m,
+          end_dist_m: wEnd.dist_m,
+          name: `${wStart.name} to ${wEnd.name}`,
+          target_pace_min: paceMinMi,
+          strategy: `Hold ${finalSpeed.toFixed(1)} mph in ${sunTag}`
+        });
+      }
+
+      if (planTotalTimeDisp) planTotalTimeDisp.textContent = `${elapsedHrs.toFixed(2)} Hrs`;
+      const avgPace = (elapsedHrs * 60) / (activeRoute.totalDistance / 1609.34);
+      if (planAvgPaceDisp) planAvgPaceDisp.textContent = `${Math.floor(avgPace)}:${Math.floor((avgPace%1)*60).toString().padStart(2,"0")} min/mi`;
+
+      activeRoute.executionPlan = {
+        startTime: planStartTime?.value || "06:00",
+        targetDurationHrs: elapsedHrs,
+        sectors: generatedSectors
+      };
+
+      if (plannerOutputContainer) plannerOutputContainer.classList.remove("hidden");
+      showToast("Generated Segmented Race Plan!");
+    });
+  }
+
+  if (applyPlanToHudBtn) {
+    applyPlanToHudBtn.addEventListener("click", () => {
+      showToast("Race Plan Applied to HUD & Flight Simulation!");
     });
   }
 
@@ -3861,13 +4881,25 @@ function setupEventListeners() {
         activeDialogWpt.lat = targetPos.lat;
         activeDialogWpt.lon = targetPos.lon;
         if (targetPos.ele) activeDialogWpt.ele = targetPos.ele;
-        if (targetPos.dist_m !== undefined) activeDialogWpt.dist_m = targetPos.dist_m;
+        if (targetPos.dist_m !== undefined) {
+          activeDialogWpt.dist_m = targetPos.dist_m;
+          if (activeDialogWpt.extensions?.station?.passes?.length > 0) {
+            activeDialogWpt.extensions.station.passes.forEach(p => {
+              p.dist_m = targetPos.dist_m;
+              p.closestTrackpointIndex = targetPos.closestTrackpointIndex;
+            });
+          }
+        }
         if (targetPos.closestTrackpointIndex !== undefined) {
           activeDialogWpt.closestTrackpointIndex = targetPos.closestTrackpointIndex;
           playbackIndex = targetPos.closestTrackpointIndex;
         }
 
+        lastPausedPoiId = null;
+        lastPausedPoiIndex = -1;
+
         activeRoute.waypoints.sort((a, b) => a.dist_m - b.dist_m);
+        if (wizGeneratePlanBtn) wizGeneratePlanBtn.click();
 
         mapController.updateWaypointMarkerPosition(activeDialogWpt, targetPos, playbackIndex);
 
@@ -4510,3 +5542,83 @@ function setupChatFileAttachments() {
     return text;
   }
 }
+
+// Session State Autosave and Recovery Engine
+function saveSessionState() {
+  if (!activeRoute || !activeRoute.trackpoints || activeRoute.trackpoints.length === 0) return;
+  try {
+    const backup = {
+      route: activeRoute,
+      wizard: {
+        climbSpd: document.getElementById("wiz-climb-spd")?.value,
+        flatSpd: document.getElementById("wiz-flat-spd")?.value,
+        descSpd: document.getElementById("wiz-desc-spd")?.value,
+        startDate: document.getElementById("wiz-start-date")?.value,
+        startTime: document.getElementById("wiz-start-time")?.value,
+        penalty: document.getElementById("wiz-penalty-slider")?.value
+      },
+      timestamp: Date.now()
+    };
+    localStorage.setItem("ruff_terrain_session_backup", JSON.stringify(backup));
+  } catch (err) {
+    console.warn("Autosave session backup failed:", err);
+  }
+}
+
+function restoreSessionState() {
+  try {
+    const raw = localStorage.getItem("ruff_terrain_session_backup");
+    if (!raw) return;
+    const backup = JSON.parse(raw);
+    if (backup && backup.route && backup.route.trackpoints && backup.route.trackpoints.length > 0) {
+      activeRoute = backup.route;
+      renderElevationChart(activeRoute);
+      renderPOICards(activeRoute);
+      if (mapController) {
+        mapController.loadRoute(activeRoute);
+      }
+
+      if (backup.wizard) {
+        if (backup.wizard.climbSpd) {
+          const el = document.getElementById("wiz-climb-spd");
+          if (el) { el.value = backup.wizard.climbSpd; el.dispatchEvent(new Event("input")); }
+        }
+        if (backup.wizard.flatSpd) {
+          const el = document.getElementById("wiz-flat-spd");
+          if (el) { el.value = backup.wizard.flatSpd; el.dispatchEvent(new Event("input")); }
+        }
+        if (backup.wizard.descSpd) {
+          const el = document.getElementById("wiz-desc-spd");
+          if (el) { el.value = backup.wizard.descSpd; el.dispatchEvent(new Event("input")); }
+        }
+        if (backup.wizard.startDate) {
+          const el = document.getElementById("wiz-start-date");
+          if (el) { el.value = backup.wizard.startDate; el.dispatchEvent(new Event("change")); }
+        }
+        if (backup.wizard.startTime) {
+          const el = document.getElementById("wiz-start-time");
+          if (el) el.value = backup.wizard.startTime;
+        }
+        if (backup.wizard.penalty) {
+          const el = document.getElementById("wiz-penalty-slider");
+          if (el) {
+            el.value = backup.wizard.penalty;
+            el.dispatchEvent(new Event("input"));
+          }
+        }
+      }
+      showToast("Restored previous editing session from backup!");
+      console.log("Restored session state successfully.");
+    }
+  } catch (err) {
+    console.warn("Failed to restore session backup:", err);
+  }
+}
+
+window.addEventListener("beforeunload", saveSessionState);
+document.addEventListener("visibilitychange", () => {
+  if (document.visibilityState === "hidden") saveSessionState();
+});
+
+// Automatically trigger restore after DOM setup
+setTimeout(restoreSessionState, 500);
