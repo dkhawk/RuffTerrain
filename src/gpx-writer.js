@@ -31,6 +31,29 @@ export function writeGPX(route) {
   xml += '  <metadata>\n';
   xml += `    <name>${escapeXml(route.name)}</name>\n`;
   xml += `    <desc>${escapeXml(route.description)}</desc>\n`;
+  if (route.executionPlan) {
+    xml += '    <extensions>\n';
+    if (route.executionPlan.startTime || route.executionPlan.targetDurationHrs) {
+      let rpTag = '      <ca:race_plan';
+      if (route.executionPlan.startTime) rpTag += ` start_time="${escapeXml(route.executionPlan.startTime)}"`;
+      if (route.executionPlan.targetDurationHrs !== undefined && route.executionPlan.targetDurationHrs !== null) {
+        rpTag += ` target_duration_hrs="${route.executionPlan.targetDurationHrs}"`;
+      }
+      rpTag += ' />\n';
+      xml += rpTag;
+    }
+    if (route.executionPlan.sectors && route.executionPlan.sectors.length > 0) {
+      xml += '      <ca:execution_plan>\n';
+      route.executionPlan.sectors.forEach(sec => {
+        xml += `        <ca:sector start_dist_m="${sec.start_dist_m}" end_dist_m="${sec.end_dist_m}" name="${escapeXml(sec.name)}" target_pace_min="${sec.target_pace_min}">\n`;
+        if (sec.strategy) xml += `          <ca:strategy>${escapeXml(sec.strategy)}</ca:strategy>\n`;
+        if (sec.nutrition) xml += `          <ca:nutrition>${escapeXml(sec.nutrition)}</ca:nutrition>\n`;
+        xml += '        </ca:sector>\n';
+      });
+      xml += '      </ca:execution_plan>\n';
+    }
+    xml += '    </extensions>\n';
+  }
   xml += '  </metadata>\n';
 
   // Waypoints
@@ -66,6 +89,12 @@ export function writeGPX(route) {
           }
           if (pass.cutoff_elapsed) {
             passTag += ` cutoff_elapsed="${escapeXml(pass.cutoff_elapsed)}"`;
+          }
+          if (pass.target_arrival) {
+            passTag += ` target_arrival="${escapeXml(pass.target_arrival)}"`;
+          }
+          if (pass.stretch_strategy) {
+            passTag += ` stretch_strategy="${escapeXml(pass.stretch_strategy)}"`;
           }
           passTag += ' />\n';
           xml += passTag;
