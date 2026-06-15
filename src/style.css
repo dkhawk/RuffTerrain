@@ -165,6 +165,8 @@ body, html {
   font-size: 13px;
   font-weight: 600;
   color: #ffffff;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
 }
 
 .hud-metric-value .unit-lbl {

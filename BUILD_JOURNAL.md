@@ -775,6 +775,118 @@ This journal records all design decisions, architecture patterns, development st
 
 ---
 
+### 🚀 Session 63: AI-Assisted Race Planner Studio & Segmented Pacing Predictor
+*   **Goal**: Create a comprehensive AI-assisted race planner that questions the runner on fitness, goal times, and pacing abilities, generating a segmented pacing plan tied to terrain and sun tracking.
+*   **Decisions & Rationale**:
+    *   **Interactive Runner Interview**: Added the **`⏱️ Race Planner`** studio tab (`#studio-view-plan`) and HUD trigger button (`⏱️`), collecting fitness status, target goals, recent race benchmarks, and personalized paces for climbs, flats, and descents.
+    *   **Steep Descent & Sun Tracking**: Integrated confirmation questions for very steep descents (`>15% drop`) and automatic schedule calculations (Start Time, Sunrise, Sunset) paired with a late-race heat and night pacing degradation slider.
+    *   **Aid-Station Segment Splits**: Partitioned the generated plan strictly between aid stations, tagging terrain type (`Ascent`, `Descent`, `Flat`) and lighting state (`Daylight`, `Midday Heat`, `Darkness/Night`).
+*   **Key Actions Taken**:
+    *   Added planner form, prediction output, and AI Interview modal in `index.html`.
+    *   Implemented segment pacing generator engine in `main.js`.
+    *   Rebuilt production bundle successfully via `npm run build`.
+
+---
+
+### 🚀 Session 64: Interactive AI Race Planner Wizard & Aid Station Cycling
+*   **Goal**: Provide a true multi-step Race Planner Wizard UI and enable quick aid station cycling in the waypoint details panel using mathematical much-less-than (`≪`) and much-greater-than (`≫`) symbols.
+*   **Decisions & Rationale**:
+    *   **Aid Station Cycling (`≪` / `≫`)**: Added `&#8810;` (`≪`) and `&#8811;` (`≫`) buttons to the Waypoint Details panel header (`#poi-title-section`), allowing runners to instantly cycle forward and backward through aid stations while synchronizing the 3D map camera.
+    *   **Interactive 4-Step Race Planner Wizard**: Replaced static forms with a fully interactive modal wizard (`#race-planner-wizard-modal`). Step 1 establishes athlete fitness and benchmark times; Step 2 dials in climb/flat/descent paces and steep descent handling (`>15% drop`); Step 3 tracks sunrise/sunset and midday heat/night darkness slowing penalties; Step 4 presents the generated aid-station sector sequence.
+*   **Key Actions Taken**:
+    *   Added `#poi-prev-wpt-btn` / `#poi-next-wpt-btn` and `#race-planner-wizard-modal` in `index.html`.
+    *   Implemented waypoint cycle logic and 4-step wizard progression in `main.js`.
+    *   Rebuilt production bundle successfully via `npm run build`.
+
+---
+
+### 🚀 Session 65: Dynamic Real-Time Pace Calculation in Planner Wizard
+*   **Goal**: Ensure target paces (in minutes per mile) recalculate and update in real-time as runners adjust their climb, flat, and descent speeds in the planner wizard.
+*   **Decisions & Rationale**:
+    *   **Dynamic Pace Badges**: Replaced static pace labels in Step 2 (`#wizard-step-2`) with dynamic illuminated badges (`#wiz-climb-pace-lbl`, `#wiz-flat-pace-lbl`, `#wiz-desc-pace-lbl`), making MPH units explicit.
+    *   **Real-time Recalculation**: Added `input` event handlers to update pace strings instantly (`Math.floor(60/mph)` mins and seconds) whenever speed inputs or fitness baseline presets are modified.
+*   **Key Actions Taken**:
+    *   Updated speed input cards with dynamic pace badges in `index.html`.
+    *   Implemented `updatePaceLabel()` recalculation handler in `main.js`.
+    *   Rebuilt production bundle successfully via `npm run build`.
+
+---
+
+### 🚀 Session 66: Astronomical Sunrise & Sunset Calculation
+*   **Goal**: Automatically compute exact astronomical sunrise and sunset times based on the race start date and initial trackpoint geographic coordinates.
+*   **Decisions & Rationale**:
+    *   **Solar Astronomy Engine**: Implemented an approximate solar zenith equation (`computeSunriseSunset()`) taking latitude, longitude, and day-of-year.
+    *   **Automated Step 3 Synchronization**: Added a Race Date selector (`#wiz-start-date`). When entering Step 3 or adjusting the date, sunrise (`#wiz-sunrise-time`) and sunset (`#wiz-sunset-time`) automatically recalculate using the start coordinates (`activeRoute.trackpoints[0]`).
+*   **Key Actions Taken**:
+    *   Added Race Date input to Step 3 in `index.html`.
+    *   Implemented solar time computation and sync handler in `main.js`.
+    *   Rebuilt production bundle successfully via `npm run build`.
+
+---
+
+### 🚀 Session 67: Session State Autosave & Recovery Engine
+*   **Goal**: Ensure editing progress and course modifications are automatically preserved and restored across app restarts or interruptions.
+*   **Decisions & Rationale**:
+    *   **Autosave on Visibility / Unload**: Added `saveSessionState()` to persist `activeRoute` (including custom waypoints, trackpoints, execution plans, metadata) and Race Planner parameters to `localStorage` under key `ruff_terrain_session_backup`.
+    *   **Automated Session Recovery**: Added `restoreSessionState()` triggered on startup to automatically re-populate the 3D map, render elevation profiles, load POI cards, and restore wizard preferences if an interrupted session is detected.
+*   **Key Actions Taken**:
+    *   Implemented `saveSessionState()` and `restoreSessionState()` in `main.js`.
+    *   Rebuilt production bundle successfully via `npm run build`.
+
+---
+
+### 🚀 Session 68: Live Playback HUD Plan Pacing & Printable Race Plan Sheet
+*   **Goal**: Ensure relocated waypoints pause correctly at their new coordinates, reflect active Race Plan pacing directly on the playback HUD, and provide a downloadable/printable professional Race Plan document.
+*   **Decisions & Rationale**:
+    *   **Relocated Pause Synchronization**: Reset `lastPausedPoiId` and `lastPausedPoiIndex` upon relocation completion (`onMapClick`) to prevent preview fly-throughs from referencing stale coordinates.
+    *   **Live HUD Target Pacing**: Added a dedicated `"RACE PLAN PACE"` telemetry card (`#hud-plan-box`) to the primary playback HUD bar, dynamically displaying the target pace (min/mi) for the active terrain sector during 3D fly-throughs or scrubbing.
+    *   **Printable Standalone Plan Generator**: Added `"🖨️ Download / Print Plan"` to Step 4 of the wizard (`#wiz-print-plan-btn`). When clicked, it generates a fully self-contained HTML execution sheet (with print-optimized CSS, high-contrast tables, lighting/terrain badges, and overall race stats) that downloads locally and opens for immediate printing.
+*   **Key Actions Taken**:
+    *   Added `#hud-plan-box` and `#wiz-print-plan-btn` in `index.html`.
+    *   Updated relocation state cleanup, HUD telemetry, and printable HTML export in `main.js`.
+    *   Rebuilt production bundle successfully via `npm run build`.
+
+---
+
+### 🚀 Session 69: Rolling Climbing Gain Pacing & GPX Plan Extensions Persistence
+*   **Goal**: Accurately pace rolling segments (like Dry Fork to Upper Sheep Creek) that have significant total climbing gain despite a flat or negative net elevation change, and enable end-to-end saving/reloading of race plans into GPX extensions.
+*   **Decisions & Rationale**:
+    *   **Rolling Climbing Gain Engine**: Upgraded sector generation (`wizGeneratePlanBtn`) to measure total cumulative climbing gain (`climbGain`) across all intermediate trackpoints in a sector. If climbing gain exceeds `1.5%` grade, it classifies as `"Moderate Climb ↗"` (averaging flat and climb speeds); if $\ge 3.5\%$, it classifies as `"Ascent ↗"`.
+    *   **GPX Plan Persistence**: Added `"💾 Save to GPX"` to Step 4 (`#wiz-save-gpx-btn`) which serializes the active `executionPlan` into `<ca:race_plan>` and `<ca:execution_plan>` GPX XML extensions.
+    *   **Instant Plan Reloading**: Configured `openWizardModal()` to automatically present the loaded or cached execution plan on startup and jump directly to Step 4 (`#wizard-step-4`).
+*   **Key Actions Taken**:
+    *   Added Save to GPX button in `index.html`.
+    *   Updated sector gain classification loop and plan reloading in `main.js`.
+    *   Rebuilt production bundle successfully via `npm run build`.
+
+---
+
+### 🚀 Session 70: Finish Line Celebration Animation & HUD Goal Recap
+*   **Goal**: Create an unforgettable finishing celebration when reaching the final trackpoint, complete with confetti animations and a clear recap of the runner's target goal time.
+*   **Decisions & Rationale**:
+    *   **Celebration Modal & Confetti Burst**: Added a celebratory modal (`#finish-celebration-overlay`) and dynamic particle confetti burst (`triggerConfetti()`) triggered automatically upon reaching the finish line trackpoint (`index === pts.length - 1`).
+    *   **HUD Finish Celebration**: Upgraded the `NEXT AS` HUD indicator to pulsate `"🎉 FINISH LINE REACHED!"` alongside the target goal duration.
+*   **Key Actions Taken**:
+    *   Added celebration overlay in `index.html`.
+    *   Implemented `triggerConfetti()` and HUD finish detection in `main.js`.
+    *   Rebuilt production bundle successfully via `npm run build`.
+
+---
+
+### 🚀 Session 71: Live HUD Forecast Widget, Jitter-Free Monospace Alignment & Dynamic Start Icons
+*   **Goal**: Show a constantly updated forecast (weather emoji + temperature) on the main HUD bar, fix metric label bouncing by securing structural widths, and swap finish checkered flag symbols away from the course start.
+*   **Decisions & Rationale**:
+    *   **Live HUD Forecast Widget**: Added a dedicated `#hud-weather-box` to `#hud-metrics` that constantly updates temperature and condition emoji at the target coordinates for the simulated arrival hour, functioning even when the weather panel is collapsed.
+    *   **Jitter-Free Layout Alignment**: Enforced `font-variant-numeric: tabular-nums` and `white-space: nowrap` on `.hud-metric-value` alongside explicit `min-width` inline settings to prevent UI metrics from shifting during playback.
+    *   **Dynamic Sector Emojis**: Removed checkered flags `🏁` from the course start segments, switching to `🚀` for starting segments, `🏃` for active segments, and reserving `🏁` strictly for the final segment.
+*   **Key Actions Taken**:
+    *   Added forecast HUD container and inline min-width metrics bounds in `index.html`.
+    *   Refactored `triggerWeatherWeather` and `updateWeatherUI` to continuously populate HUD weather, and updated segment emojis in `main.js`.
+    *   Set tabular numerals styles in `src/style.css`.
+    *   Rebuilt production bundle successfully via `npm run build`.
+
+---
+
 ### 🚀 Session 62: Implicit Start & Finish Waypoint Generation on Course Import
 *   **Goal**: Ensure every imported route automatically includes explicit Course Start and Course Finish milestones if they are not defined in the GPX/KML source.
 *   **Decisions & Rationale**:
