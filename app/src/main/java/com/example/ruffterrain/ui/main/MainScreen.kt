@@ -19,6 +19,7 @@ package com.example.ruffterrain.ui.main
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -161,7 +162,7 @@ fun MainScreen(
             colors = CardDefaults.cardColors(containerColor = Color(0xDD0F172A)) // Sleek dark slate glass
         ) {
           Row(
-              modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
+              modifier = Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 4.dp),
               verticalAlignment = Alignment.CenterVertically,
               horizontalArrangement = Arrangement.SpaceBetween
           ) {
@@ -186,10 +187,10 @@ fun MainScreen(
 
             // Options drop-down trigger button
             Box {
-              Button(
-                  onClick = { showSettingsMenu = true },
-                  colors = ButtonDefaults.buttonColors(containerColor = Color.Transparent, contentColor = Color.White),
-                  shape = RoundedCornerShape(12.dp)
+              Box(
+                  modifier = Modifier
+                      .clickable { showSettingsMenu = true }
+                      .padding(8.dp)
               ) {
                 Text("⚙️", fontSize = 18.sp)
               }
@@ -500,6 +501,7 @@ fun ModeTabButton(
           contentColor = if (isSelected) Color.White else Color.LightGray
       ),
       shape = RoundedCornerShape(16.dp),
+      contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 8.dp, vertical = 4.dp),
       modifier = Modifier.padding(horizontal = 2.dp)
   ) {
     Text(text = title, fontSize = 13.sp, fontWeight = FontWeight.Bold)
