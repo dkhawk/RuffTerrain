@@ -17,6 +17,11 @@
             android:name="com.google.android.geo.maps3d.API_KEY"
             android:value="${MAPS3D_API_KEY}" />
 
+        <!-- Standard Google Maps 2D API Key -->
+        <meta-data
+            android:name="com.google.android.geo.API_KEY"
+            android:value="${MAPS3D_API_KEY}" />
+
         <activity
             android:name=".MainActivity"
             android:exported="true">

@@ -56,7 +56,9 @@ dependencies {
 
   // Core Android dependencies
   implementation(libs.androidx.core.ktx)
+  implementation(libs.play.services.maps)
   implementation(libs.play.services.maps3d)
+  implementation(libs.maps.compose)
   implementation(libs.androidx.lifecycle.runtime.ktx)
   implementation(libs.androidx.activity.compose)
 

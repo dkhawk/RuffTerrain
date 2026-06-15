@@ -2,6 +2,7 @@ package com.example.ruffterrain.ui.main
 
 import com.example.ruffterrain.data.DataRepository
 import com.example.ruffterrain.data.model.CourseData
+import com.example.ruffterrain.data.model.MapMode
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -46,6 +47,7 @@ class MainScreenViewModelTest {
         assertFalse(state.isLoading)
         assertNull(state.errorMessage)
         assertEquals(0.0, state.scrubberProgress, 0.001)
+        assertEquals(MapMode.MAP_3D, state.mapMode)
     }
 
     @Test
@@ -97,6 +99,58 @@ class MainScreenViewModelTest {
 
         viewModel.updateScrubberProgress(-0.1)
         assertEquals(0.0, viewModel.uiState.value.scrubberProgress, 0.001)
+    }
+
+    @Test
+    fun testToggleMapMode() = runTest {
+        val repository = FakeDataRepository()
+        val viewModel = MainScreenViewModel(repository)
+
+        // Initial mode should be MAP_3D
+        assertEquals(MapMode.MAP_3D, viewModel.uiState.value.mapMode)
+
+        // Toggle once -> MAP_2D
+        viewModel.toggleMapMode()
+        assertEquals(MapMode.MAP_2D, viewModel.uiState.value.mapMode)
+
+        viewModel.toggleMapMode()
+        assertEquals(MapMode.MAP_3D, viewModel.uiState.value.mapMode)
+    }
+
+    @Test
+    fun testUpdatePlaybackSpeed() = runTest {
+        val repository = FakeDataRepository()
+        val viewModel = MainScreenViewModel(repository)
+
+        // Initial speed should be 1.0f
+        assertEquals(1.0f, viewModel.uiState.value.playbackSpeed)
+
+        // Set to 5.0f
+        viewModel.updatePlaybackSpeed(5.0f)
+        assertEquals(5.0f, viewModel.uiState.value.playbackSpeed)
+    }
+
+    @Test
+    fun testRewind() = runTest {
+        val repository = FakeDataRepository()
+        val viewModel = MainScreenViewModel(repository)
+
+        viewModel.updateScrubberProgress(0.8)
+        assertEquals(0.8, viewModel.uiState.value.scrubberProgress, 0.001)
+
+        viewModel.rewind()
+        assertEquals(0.0, viewModel.uiState.value.scrubberProgress, 0.001)
+        assertFalse(viewModel.uiState.value.isProgressing)
+    }
+
+    @Test
+    fun testTogglePlaybackWithoutCourseDoesNothing() = runTest {
+        val repository = FakeDataRepository()
+        val viewModel = MainScreenViewModel(repository)
+
+        assertFalse(viewModel.uiState.value.isProgressing)
+        viewModel.togglePlayback()
+        assertFalse(viewModel.uiState.value.isProgressing) // Should still be false
     }
 }
 
