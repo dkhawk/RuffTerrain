@@ -661,3 +661,124 @@ This journal records all design decisions, architecture patterns, development st
     *   Enforced mutual exclusion inside tab switch listeners in `src/main.js`.
     *   Rebuilt production bundle with `npm run build` and updated static `dist/index.html` classic execution defer tags.
 
+---
+
+### 🚀 Session 53: Enhanced POI Preview Banner, Relative Distances, and Hazard Alert Synchronization
+*   **Goal**: Provide an uncluttered preview simulation with a floating POI banner, ensure all milestone distances are relative to the current waypoint, display expected arrival weather forecasts, and synchronize active hazard alerts with the preview marker.
+*   **Decisions & Rationale**:
+    *   **Uncluttered Preview Simulation**: Added `#preview-poi-banner` as a premium floating banner shown when approaching checkpoints during `startPlayback()`. Suppresses bulky side drawers (`unifiedDrawerCard`, `cardImporter`, `cardStats`) to maintain 100% map visibility.
+    *   **Relative Waypoint Distances**: Refactored `getSegmentingNeighbors` and metric renderers (`showPoiDetailDialog`, `showPreviewPoiBanner`) so all distances (to previous and next Major POIs) are computed and displayed relative to the active waypoint.
+    *   **Major POI Classification**: Enforced `isMajorPoi()` to filter milestones (Aid Stations, Water Sources, Major Summits, Finish line) while ignoring minor turns or scenic overlooks.
+    *   **Expected Arrival Weather**: Updated forecast lookup to select the hourly forecast corresponding to the waypoint's estimated arrival time.
+    *   **Hazard Alert Synchronization**: Updated `updatePlaybackFrame()` to highlight active hazards (`.active-hazard-pulse`) and smooth-scroll them into view in the Alerts panel as the preview marker passes through them.
+*   **Key Actions Taken**:
+    *   Created `#preview-poi-banner` in `index.html`.
+    *   Added `.active-hazard-pulse` and banner animations in `src/style.css`.
+    *   Implemented `isMajorPoi`, relative distance calculations, expected arrival weather, and alert synchronization in `src/main.js`.
+    *   Rebuilt production bundle with `npm run build`.
+
+---
+
+### 🚀 Session 54: Race Execution Strategy & Granular Sector Architecture
+*   **Goal**: Implement comprehensive race/event planning and strategy, allowing users to partition segments between aid stations into granular execution sectors (climb, plateau, fast descent) and sync them with real-time HUD and Aid Station details.
+*   **Decisions & Rationale**:
+    *   **GPX XML Schema Extensions**: Added `<ca:execution_plan>` and `<ca:sector>` serialization to `<metadata><extensions>` in `gpx-parser.js` and `gpx-writer.js`. Added `target_arrival` and `stretch_strategy` attributes to `<ca:pass>` inside `<ca:station>` for station pacing splits.
+    *   **Interactive Race Strategy Panel**: Built `#strategy-overlay` accessible via the header map icon (`🗺️`), providing global start time / duration configuration, custom sector adding/deleting, and a "Suggest AI Strategy" button that integrates directly with Gemini.
+    *   **Dynamic HUD & Aid Station Telemetry**: Updated `updateHUD()` to dynamically evaluate current distance against active execution sectors (`start_dist_m <= currentDist <= end_dist_m`), rendering real-time sector pacing and custom strategies in `#active-segment-display`.
+*   **Key Actions Taken**:
+    *   Extended `parseGPX` and `writeGPX` in `gpx-parser.js` and `gpx-writer.js`.
+    *   Added `#strategy-overlay` modal in `index.html`.
+    *   Implemented strategy modal lifecycle, sector adding/deleting, and HUD telemetry sync in `main.js`.
+    *   Rebuilt production bundle with `npm run build`.
+
+---
+
+### 🚀 Session 55: AI Athlete Profiler & Automatic Pacing Polyline Split Generator
+*   **Goal**: Create an interactive AI Race Planning Wizard that asks users for their climbing, descending, and flat running capabilities, discovers race start times, and automatically generates segmented race execution plans across all Aid Stations.
+*   **Decisions & Rationale**:
+    *   **Interactive Athlete Profiler**: Built a beautiful tabbed view in `#strategy-overlay` with sliders for Uphill climbing speed (`1-6 mph`), Downhill speed (`2-12 mph`), Flat run/walk speed (`1.5-10 mph`), and recovery presets.
+    *   **Automatic Terrain Sectorization**: Implemented a polyline grade analysis algorithm that partitions courses into ascent (`grade > 5.5%`), descent (`grade < -5.5%`), and rolling sectors, assigning personalized target paces and coaching notes.
+    *   **Aid Station Enrichment**: Automatically computes target arrival times (`target_arrival`) for every course waypoint based on cumulative pacing from the start time.
+*   **Key Actions Taken**:
+    *   Added AI Race Wizard UI tabs in `index.html`.
+    *   Implemented ability sliders, event start time discovery, and polyline split generation in `main.js`.
+    *   Rebuilt production bundle with `npm run build`.
+
+---
+
+### 🚀 Session 56: Interactive Aid Station Facets Editor & Uphill Relocation Disambiguation
+*   **Goal**: Enable users to edit all metadata facets of an Aid Station (name, type, predicted arrival time, amenities, and runner notes) via a dedicated modal while clarifying geographic relocation controls.
+*   **Decisions & Rationale**:
+    *   **Action Disambiguation**: Renamed the primary POI dialog button from `"✏️ Edit Location"` to `"📍 Move Waypoint"` to explicitly signify 3D pointer drag relocation mode.
+    *   **Dedicated Facet Editor**: Introduced `"✏️ Edit Aid Station"` alongside relocation controls, opening an interactive modal (`#poi-facets-modal`) to update station labels, classification (`water`, `summit`, `finish`), custom arrival times, interactive amenity toggle pills, and runner execution notes.
+*   **Key Actions Taken**:
+    *   Renamed relocation button and created `#poi-facets-modal` in `index.html`.
+    *   Implemented facet extraction, editing lifecycle, and persistence in `main.js`.
+    *   Rebuilt production bundle with `npm run build`.
+
+---
+
+### 🚀 Session 57: Configurable Resource Desert Alert Threshold
+*   **Goal**: Allow users to customize the distance gap threshold that constitutes a Resource Desert (defaulting to 8.0 miles).
+*   **Decisions & Rationale**:
+    *   **User-Configurable Hazard Sensitivity**: Added a range slider (`settings-desert-threshold`) to the Kokopelli settings modal allowing adjustment from 3 to 20 miles.
+    *   **Dynamic Parsing**: Updated `calculateWarnings()` in `gpx-parser.js` to evaluate gaps against the user's persisted threshold (`desertThresholdMiles`).
+*   **Key Actions Taken**:
+    *   Added slider to `index.html`.
+    *   Updated `calculateWarnings` in `gpx-parser.js` and preferences storage in `main.js`.
+    *   Rebuilt production bundle with `npm run build`.
+
+---
+
+### 🚀 Session 58: Persistent Gemini Chat Action Toggle
+*   **Goal**: Ensure Gemini Chat Assistant is always accessible via the top HUD header, even when an imported course contains zero waypoints.
+*   **Decisions & Rationale**:
+    *   **Always-Visible Header Trigger**: Removed automatic hiding (`classList.add("hidden")`) of `toggle-chat-btn` on course load.
+    *   **Toggle Ergonomics**: Refactored `toggleChatBtn` click behavior to toggle drawer visibility on/off rather than disappearing once opened.
+*   **Key Actions Taken**:
+    *   Updated course load and button click listeners in `main.js`.
+    *   Rebuilt production bundle with `npm run build`.
+
+---
+
+### 🚀 Session 59: Fixing selectedPoi ReferenceError & Ensuring Robust Dialog State
+*   **Goal**: Resolve runtime ReferenceErrors in facet editing modal and ensure stable drawer initialization.
+*   **Decisions & Rationale**:
+    *   **Variable Correction**: Corrected `selectedPoi` references to `activeDialogWpt` inside `poiDialogFacetsBtn` and `saveFacetsBtn` event listeners, matching the application's POI dialog state model.
+*   **Key Actions Taken**:
+    *   Corrected variable references in `main.js`.
+    *   Rebuilt production bundle with `npm run build`.
+
+---
+
+### 🚀 Session 60: Unified Master "Course & Race Studio" Dialog Consolidation
+*   **Goal**: Ensure permanent, seamless access to the Gemini AI Chat Assistant and eliminate modal sprawl by consolidating scattered dialogs into a unified **Master Course Studio** (`#card-importer`).
+*   **Decisions & Rationale**:
+    *   **Consolidated Tabbed Workspace**: Re-architected `#card-importer` into a multi-tabbed master studio card (`📁 Edit Course`, `📍 Waypoint Details`, `✨ Gemini Chat`).
+    *   **Universal Accessibility**: Guarantees that users can open the studio directly to the Gemini AI Chat Assistant via the HUD toggle button (`💬`), regardless of whether the imported GPX file contains waypoints.
+    *   **De-duplication**: Deleted the obsolete `#unified-drawer-card` container entirely from `index.html`, eliminating redundant markup and simplifying UI state management in `main.js`.
+*   **Key Actions Taken**:
+    *   Updated `#card-importer` with navigation tabs and removed `#unified-drawer-card` in `index.html`.
+    *   Updated tab navigation handlers and HUD toggle triggers in `main.js`.
+    *   Rebuilt production bundle successfully via `npm run build`.
+---
+
+### 🚀 Session 61: Refining Waypoint Relocation Controls & Amenity Filtering
+*   **Goal**: Streamline the details panel by rendering only active amenities and clarify 3D map relocation controls.
+*   **Decisions & Rationale**:
+    *   **Active Amenities Only**: Removed the `renderEditAmenities` invocation during relocation mode so that unavailable, grayed-out amenity badges are no longer rendered in the details panel.
+    *   **Explicit Relocation Action**: Renamed the primary waypoint action button to `"📍 Relocate Waypoint"` (paired with `"💾 Save Relocation"` when active) so users immediately recognize how to reposition markers on the 3D terrain.
+*   **Key Actions Taken**:
+    *   Updated button labels in `index.html`.
+    *   Updated button state and removed `renderEditAmenities` in `main.js`.
+    *   Rebuilt production bundle successfully via `npm run build`.
+
+---
+
+### 🚀 Session 62: Implicit Start & Finish Waypoint Generation on Course Import
+*   **Goal**: Ensure every imported route automatically includes explicit Course Start and Course Finish milestones if they are not defined in the GPX/KML source.
+*   **Decisions & Rationale**:
+    *   **Implicit Boundary Waypoints**: Added verification logic to both `parseGPX` and `parseKML` in `src/gpx-parser.js`. If a loaded course lacks waypoints at index 0 or at the final trackpoint, implicit `"Course Start"` (`icons/start.svg`) and `"Course Finish"` (`icons/finish.svg`) waypoints are automatically injected and sorted.
+*   **Key Actions Taken**:
+    *   Updated `parseGPX` and `parseKML` in `src/gpx-parser.js`.
+    *   Rebuilt production bundle successfully via `npm run build`.

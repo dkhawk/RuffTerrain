@@ -1679,3 +1679,34 @@ hr {
   border-color: rgba(255, 255, 255, 0.1) !important;
 }
 
+/* ==================== PREVIEW POI BANNER & ACTIVE HAZARDS ==================== */
+@keyframes popDown {
+  from { opacity: 0; transform: translateX(-50%) translateY(-15px); }
+  to { opacity: 1; transform: translateX(-50%) translateY(0); }
+}
+
+@keyframes hazardPulse {
+  0% { box-shadow: 0 0 0 0 rgba(239, 68, 68, 0.7); border-color: rgba(239, 68, 68, 0.9); }
+  70% { box-shadow: 0 0 15px 8px rgba(239, 68, 68, 0); border-color: rgba(239, 68, 68, 0.3); }
+  100% { box-shadow: 0 0 0 0 rgba(239, 68, 68, 0); border-color: rgba(239, 68, 68, 0.9); }
+}
+
+.active-hazard-pulse {
+  animation: hazardPulse 1.8s infinite ease-in-out !important;
+  background-color: rgba(239, 68, 68, 0.15) !important;
+  border-left: 4px solid #ef4444 !important;
+}
+
+.amenity-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 3px 8px;
+  border-radius: 6px;
+  background-color: rgba(255, 255, 255, 0.06);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  font-size: 11px;
+  color: var(--text-secondary);
+}
+
+

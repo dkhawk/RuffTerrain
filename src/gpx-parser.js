@@ -200,7 +200,7 @@ export function recalculateRouteMetrics(route) {
  * @param {string} gpxText Raw GPX XML string
  * @returns {Object} Structured route data
  */
-export function parseGPX(gpxText, units = "imperial") {
+export function parseGPX(gpxText, units = "imperial", desertThresholdMiles = 8.0) {
   // Get route name and description from metadata if available, otherwise first name/desc tags
   let routeName = "Imported Route";
   const metadataNameMatch = gpxText.match(/<metadata>[\s\S]*?<name>([\s\S]*?)<\/name>[\s\S]*?<\/metadata>/);
@@ -605,6 +605,60 @@ export function parseGPX(gpxText, units = "imperial") {
   // Sort waypoints by course distance
   waypoints.sort((a, b) => a.dist_m - b.dist_m);
 
+  if (trackpoints.length > 0) {
+    if (!waypoints.some(w => w.closestTrackpointIndex === 0 || w.dist_m < 100 || w.name?.toLowerCase().includes("start") || w.sym?.toLowerCase().includes("start"))) {
+      const firstPt = trackpoints[0];
+      waypoints.unshift({
+        id: "wpt-start",
+        name: "Course Start",
+        lat: firstPt.lat,
+        lon: firstPt.lon,
+        ele: firstPt.ele,
+        sym: "icons/start.svg",
+        desc: "Starting Line",
+        closestTrackpointIndex: 0,
+        dist_m: 0,
+        extensions: {
+          station: {
+            id: "station-start",
+            type: "start",
+            subtype: "start",
+            passes: [{ num: 1, dist_m: 0, target_arrival: "00:00", label: "Start" }],
+            services: {},
+            accessibility: {}
+          }
+        }
+      });
+    }
+
+    const lastIdx = trackpoints.length - 1;
+    const lastPt = trackpoints[lastIdx];
+    if (!waypoints.some(w => w.closestTrackpointIndex === lastIdx || Math.abs(lastPt.dist_m - w.dist_m) < 100 || w.name?.toLowerCase().includes("finish") || w.sym?.toLowerCase().includes("finish"))) {
+      waypoints.push({
+        id: "wpt-finish",
+        name: "Course Finish",
+        lat: lastPt.lat,
+        lon: lastPt.lon,
+        ele: lastPt.ele,
+        sym: "icons/finish.svg",
+        desc: "Finish Line",
+        closestTrackpointIndex: lastIdx,
+        dist_m: lastPt.dist_m,
+        extensions: {
+          station: {
+            id: "station-finish",
+            type: "finish",
+            subtype: "finish",
+            passes: [{ num: 1, dist_m: lastPt.dist_m, label: "Finish" }],
+            services: {},
+            accessibility: {}
+          }
+        }
+      });
+    }
+    waypoints.sort((a, b) => a.dist_m - b.dist_m);
+  }
+
   // Map segment distances using the final snapped trackpoint distances
   segments.forEach((seg) => {
     seg.startDist = trackpoints[seg.startIndex]?.dist_m || 0;
@@ -622,6 +676,49 @@ export function parseGPX(gpxText, units = "imperial") {
     maxElevation = 0;
   }
 
+  let executionPlan = {
+    startTime: null,
+    targetDurationHrs: null,
+    sectors: []
+  };
+
+  const planAttrsMatch = gpxText.match(/<(?:ca:)?race_plan\b([^>]*)\/?>/);
+  if (planAttrsMatch) {
+    const pAttrs = planAttrsMatch[1];
+    const stM = pAttrs.match(/start_time="([^"]+)"/);
+    const tdM = pAttrs.match(/target_duration_hrs="([^"]+)"/);
+    if (stM) executionPlan.startTime = stM[1];
+    if (tdM) executionPlan.targetDurationHrs = parseFloat(tdM[1]);
+  }
+
+  const execPlanMatch = gpxText.match(/<(?:ca:)?execution_plan[^>]*>([\s\S]*?)<\/(?:ca:)?execution_plan>/);
+  if (execPlanMatch) {
+    const execInner = execPlanMatch[1];
+    const sectorRegex = /<(?:ca:)?sector\b([^>]*)>([\s\S]*?)<\/(?:ca:)?sector>/g;
+    let sMatch;
+    while ((sMatch = sectorRegex.exec(execInner)) !== null) {
+      const sAttrs = sMatch[1];
+      const sInner = sMatch[2];
+
+      const startDistM = sAttrs.match(/start_dist_m="([^"]+)"/);
+      const endDistM = sAttrs.match(/end_dist_m="([^"]+)"/);
+      const nameM = sAttrs.match(/name="([^"]+)"/);
+      const targetPaceM = sAttrs.match(/target_pace_min="([^"]+)"/);
+
+      const stratM = sInner.match(/<(?:ca:)?strategy>([\s\S]*?)<\/(?:ca:)?strategy>/);
+      const nutM = sInner.match(/<(?:ca:)?nutrition>([\s\S]*?)<\/(?:ca:)?nutrition>/);
+
+      executionPlan.sectors.push({
+        start_dist_m: parseFloat(startDistM ? startDistM[1] : "0"),
+        end_dist_m: parseFloat(endDistM ? endDistM[1] : "0"),
+        name: nameM ? nameM[1] : "Sector",
+        target_pace_min: parseFloat(targetPaceM ? targetPaceM[1] : "10"),
+        strategy: stratM ? stratM[1].trim() : "",
+        nutrition: nutM ? nutM[1].trim() : ""
+      });
+    }
+  }
+
   const parsedRoute = {
     name: routeName,
     description: routeDesc,
@@ -634,9 +731,10 @@ export function parseGPX(gpxText, units = "imperial") {
     minElevation,
     maxElevation,
     warnings: [],
+    executionPlan
   };
 
-  calculateWarnings(parsedRoute, [], units);
+  calculateWarnings(parsedRoute, [], units, desertThresholdMiles);
   return parsedRoute;
 }
 
@@ -795,6 +893,60 @@ export function parseKML(kmlText, units = "imperial") {
   // Sort waypoints by course distance
   waypoints.sort((a, b) => a.dist_m - b.dist_m);
 
+  if (trackpoints.length > 0) {
+    if (!waypoints.some(w => w.closestTrackpointIndex === 0 || w.dist_m < 100 || w.name?.toLowerCase().includes("start") || w.sym?.toLowerCase().includes("start"))) {
+      const firstPt = trackpoints[0];
+      waypoints.unshift({
+        id: "wpt-start",
+        name: "Course Start",
+        lat: firstPt.lat,
+        lon: firstPt.lon,
+        ele: firstPt.ele,
+        sym: "icons/start.svg",
+        desc: "Starting Line",
+        closestTrackpointIndex: 0,
+        dist_m: 0,
+        extensions: {
+          station: {
+            id: "station-start",
+            type: "start",
+            subtype: "start",
+            passes: [{ num: 1, dist_m: 0, target_arrival: "00:00", label: "Start" }],
+            services: {},
+            accessibility: {}
+          }
+        }
+      });
+    }
+
+    const lastIdx = trackpoints.length - 1;
+    const lastPt = trackpoints[lastIdx];
+    if (!waypoints.some(w => w.closestTrackpointIndex === lastIdx || Math.abs(lastPt.dist_m - w.dist_m) < 100 || w.name?.toLowerCase().includes("finish") || w.sym?.toLowerCase().includes("finish"))) {
+      waypoints.push({
+        id: "wpt-finish",
+        name: "Course Finish",
+        lat: lastPt.lat,
+        lon: lastPt.lon,
+        ele: lastPt.ele,
+        sym: "icons/finish.svg",
+        desc: "Finish Line",
+        closestTrackpointIndex: lastIdx,
+        dist_m: lastPt.dist_m,
+        extensions: {
+          station: {
+            id: "station-finish",
+            type: "finish",
+            subtype: "finish",
+            passes: [{ num: 1, dist_m: lastPt.dist_m, label: "Finish" }],
+            services: {},
+            accessibility: {}
+          }
+        }
+      });
+    }
+    waypoints.sort((a, b) => a.dist_m - b.dist_m);
+  }
+
   let minElevation = Infinity;
   let maxElevation = -Infinity;
   trackpoints.forEach(pt => {
@@ -828,7 +980,7 @@ export function parseKML(kmlText, units = "imperial") {
  * Modifies the route object directly by populating `route.warnings`.
  * @param {Object} route The parsed route object
  */
-export function calculateWarnings(route, extraWarnings = [], units = "imperial") {
+export function calculateWarnings(route, extraWarnings = [], units = "imperial", desertThresholdMiles = 8.0) {
   const isImperial = units === "imperial";
   const distMultiplier = isImperial ? 1 / 1609.344 : 1 / 1000;
   const distName = isImperial ? "miles" : "km";
@@ -873,8 +1025,8 @@ export function calculateWarnings(route, extraWarnings = [], units = "imperial")
   // Sort resource passes by cumulative distance along the track
   resourcePasses.sort((a, b) => a.dist_m - b.dist_m);
 
-  // Gaps threshold: 5 miles (~8,046 meters)
-  const DESERT_THRESHOLD_M = 8046.72;
+  // Gaps threshold: Dynamic setting (default 8.0 miles)
+  const DESERT_THRESHOLD_M = (parseFloat(desertThresholdMiles) || 8.0) * 1609.344;
 
   // Check start of route to first resource pass
   if (resourcePasses.length > 0) {

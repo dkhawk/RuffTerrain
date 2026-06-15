@@ -113,9 +113,10 @@ const editLockCheckbox = document.getElementById("edit-lock-checkbox");
 const dragSnapCheckbox = document.getElementById("drag-snap-checkbox");
 
 const cardGeminiChat = document.getElementById("card-gemini-chat");
-const unifiedDrawerCard = document.getElementById("unified-drawer-card");
-const tabPoiMode = document.getElementById("tab-poi-mode");
-const tabChatMode = document.getElementById("tab-chat-mode");
+const studioViewEdit = document.getElementById("studio-view-edit");
+const studioTabEdit = document.getElementById("studio-tab-edit");
+const studioTabPoi = document.getElementById("studio-tab-poi");
+const studioTabChat = document.getElementById("studio-tab-chat");
 const chatMessages = document.getElementById("chat-messages");
 const chatInput = document.getElementById("chat-input");
 const chatSubmit = document.getElementById("chat-submit");
@@ -212,6 +213,9 @@ const geminiApiKeyInput = document.getElementById("gemini-api-key");
 const settingsUnits = document.getElementById("settings-units");
 const settingsPauseTime = document.getElementById("settings-pause-time");
 const settingsTurnDamping = document.getElementById("settings-turn-damping");
+const settingsDesertThreshold = document.getElementById("settings-desert-threshold");
+const desertThresholdVal = document.getElementById("desert-threshold-val");
+let desertThresholdMiles = 8.0;
 const turnDampingVal = document.getElementById("turn-damping-val");
 const recentCoursesList = document.getElementById("recent-courses-list");
 const saveSettingsBtn = document.getElementById("save-settings-btn");
@@ -255,6 +259,72 @@ const poiWeatherDesc = document.getElementById("poi-weather-desc");
 const poiWeatherWind = document.getElementById("poi-weather-wind");
 const poiWeatherTemp = document.getElementById("poi-weather-temp");
 const poiWeatherPrecip = document.getElementById("poi-weather-precip");
+
+// Floating POI Preview Banner (Shown during fly-through preview)
+const previewPoiBanner = document.getElementById("preview-poi-banner");
+const previewPoiSym = document.getElementById("preview-poi-sym");
+const previewPoiName = document.getElementById("preview-poi-name");
+const previewPoiType = document.getElementById("preview-poi-type");
+const previewPoiWeatherIcon = document.getElementById("preview-poi-weather-icon");
+const previewPoiWeatherTemp = document.getElementById("preview-poi-weather-temp");
+const previewPoiArriveTime = document.getElementById("preview-poi-arrive-time");
+const previewPoiWeatherDesc = document.getElementById("preview-poi-weather-desc");
+const previewPoiAmenities = document.getElementById("preview-poi-amenities");
+const previewPoiNextDist = document.getElementById("preview-poi-next-dist");
+const previewPoiNextGain = document.getElementById("preview-poi-next-gain");
+const previewPoiNextLoss = document.getElementById("preview-poi-next-loss");
+
+// Race Strategy Overlay & Elements
+const toggleStrategyBtn = document.getElementById("toggle-strategy-btn");
+const strategyOverlay = document.getElementById("strategy-overlay");
+const closeStrategyBtn = document.getElementById("close-strategy-btn");
+const stratPlanStart = document.getElementById("strat-plan-start");
+const stratPlanDuration = document.getElementById("strat-plan-duration");
+const stratSyncAiBtn = document.getElementById("strat-sync-ai-btn");
+const stratAddSectorBtn = document.getElementById("strat-add-sector-btn");
+const stratSectorsList = document.getElementById("strat-sectors-list");
+const stratEditBox = document.getElementById("strat-edit-box");
+const stratEditTitle = document.getElementById("strat-edit-title");
+const stratEditCancel = document.getElementById("strat-edit-cancel");
+const stratSecName = document.getElementById("strat-sec-name");
+const stratSecStart = document.getElementById("strat-sec-start");
+const stratSecEnd = document.getElementById("strat-sec-end");
+const stratSecPace = document.getElementById("strat-sec-pace");
+const stratSecStrategy = document.getElementById("strat-sec-strategy");
+const stratSecNutrition = document.getElementById("strat-sec-nutrition");
+const stratSecSave = document.getElementById("strat-sec-save");
+
+// AI Race Wizard Elements
+const stratTabWizard = document.getElementById("strat-tab-wizard");
+const stratTabSectors = document.getElementById("strat-tab-sectors");
+const stratViewWizard = document.getElementById("strat-view-wizard");
+const stratViewSectors = document.getElementById("strat-view-sectors");
+const aiWizardFitness = document.getElementById("ai-wizard-fitness");
+const wizardClimbSpd = document.getElementById("wizard-climb-spd");
+const wizardDescSpd = document.getElementById("wizard-desc-spd");
+const wizardFlatSpd = document.getElementById("wizard-flat-spd");
+const wizardClimbLbl = document.getElementById("wizard-climb-lbl");
+const wizardDescLbl = document.getElementById("wizard-desc-lbl");
+const wizardFlatLbl = document.getElementById("wizard-flat-lbl");
+const aiWizardStart = document.getElementById("ai-wizard-start");
+const aiSearchStartBtn = document.getElementById("ai-search-start-btn");
+const generateAiPlanBtn = document.getElementById("generate-ai-plan-btn");
+
+// Aid Station Facets Modal Elements
+const poiDialogFacetsBtn = document.getElementById("poi-dialog-facets-btn");
+const poiFacetsModal = document.getElementById("poi-facets-modal");
+const closeFacetsBtn = document.getElementById("close-facets-btn");
+const facetName = document.getElementById("facet-name");
+const facetType = document.getElementById("facet-type");
+const facetArrive = document.getElementById("facet-arrive");
+const facetSrvWater = document.getElementById("facet-srv-water");
+const facetSrvFood = document.getElementById("facet-srv-food");
+const facetSrvToilets = document.getElementById("facet-srv-toilets");
+const facetSrvMedical = document.getElementById("facet-srv-medical");
+const facetAccDropbag = document.getElementById("facet-acc-dropbag");
+const facetAccCrew = document.getElementById("facet-acc-crew");
+const facetNotes = document.getElementById("facet-notes");
+const saveFacetsBtn = document.getElementById("save-facets-btn");
 
 // Weather throttling/debouncing state
 let lastWeatherLat = null;
@@ -497,6 +567,15 @@ function loadPreferences() {
     if (turnDampingVal) turnDampingVal.textContent = "86%";
     if (mapController) mapController.turnRateFactor = 0.015;
   }
+
+  const savedDesert = localStorage.getItem("kokopelli_desert_threshold");
+  if (savedDesert) {
+    desertThresholdMiles = parseFloat(savedDesert) || 8.0;
+  } else {
+    desertThresholdMiles = 8.0;
+  }
+  if (settingsDesertThreshold) settingsDesertThreshold.value = desertThresholdMiles;
+  if (desertThresholdVal) desertThresholdVal.textContent = `${desertThresholdMiles.toFixed(1)} mi`;
 }
 
 /**
@@ -974,32 +1053,97 @@ function precomputeRunningMetrics(route) {
 }
 
 /**
- * Helper to identify the nearest preceding and succeeding aid stations relative to a course distance.
- * Essential for rendering multi-pass snapped timelines.
+ * Identifies whether a waypoint qualifies as a Major POI (Aid Station, Water, Summit, Finish).
+ */
+function isMajorPoi(w) {
+  if (!w) return false;
+  const t = w.extensions?.station?.type;
+  const st = w.extensions?.station?.subtype;
+  const symLower = (w.sym || "").toLowerCase();
+  const nameLower = (w.name || "").toLowerCase();
+
+  if (t === "segmenting" || st === "aid_station" || st === "water_source" || st === "summit" || st === "water") return true;
+  if (symLower.includes("aid_station") || symLower.includes("water") || symLower.includes("summit") || symLower.includes("finish") || symLower.includes("start")) return true;
+  if (nameLower.includes("finish") || nameLower.includes("start")) return true;
+
+  return false;
+}
+
+/**
+ * Helper to identify the nearest preceding and succeeding Major POIs relative to a course distance.
+ * Computes exact relative distances, elevation gain, and elevation loss.
  */
 function getSegmentingNeighbors(d) {
-  if (!activeRoute) {
+  if (!activeRoute || !activeRoute.trackpoints || activeRoute.trackpoints.length === 0) {
     return { 
-      prev: { name: "START", dist_m: 0 }, 
-      next: { name: "FINISH", dist_m: 0 } 
+      prev: { name: "START", dist_m: 0, relDist_m: 0, gain_m: 0, loss_m: 0 }, 
+      next: { name: "FINISH", dist_m: 0, relDist_m: 0, gain_m: 0, loss_m: 0 } 
     };
   }
 
-  // Nearest previous milestone
+  const trackpoints = activeRoute.trackpoints;
+  let currIdx = 0;
+  let minDiff = Infinity;
+  for (let idx = 0; idx < trackpoints.length; idx++) {
+    const diff = Math.abs(trackpoints[idx].dist_m - d);
+    if (diff < minDiff) {
+      minDiff = diff;
+      currIdx = idx;
+    }
+  }
+
   const prevWpts = activeRoute.waypoints
-    .filter(w => w.dist_m < d - 10 && (w.extensions?.station?.type === "segmenting" || w.sym.includes("aid_station")))
+    .filter(w => w.dist_m < d - 15 && isMajorPoi(w))
     .sort((a, b) => b.dist_m - a.dist_m);
   const prevWpt = prevWpts[0];
 
-  // Nearest next milestone
   const nextWpts = activeRoute.waypoints
-    .filter(w => w.dist_m > d + 10 && (w.extensions?.station?.type === "segmenting" || w.sym.includes("aid_station")))
+    .filter(w => w.dist_m > d + 15 && isMajorPoi(w))
     .sort((a, b) => a.dist_m - b.dist_m);
   const nextWpt = nextWpts[0];
 
+  const getStatsBetween = (startIdx, endIdx) => {
+    let sIdx = Math.min(startIdx, endIdx);
+    let eIdx = Math.max(startIdx, endIdx);
+    let gain = 0;
+    let loss = 0;
+    for (let k = sIdx + 1; k <= eIdx; k++) {
+      const diff = trackpoints[k].ele - trackpoints[k - 1].ele;
+      if (diff > 0) gain += diff;
+      else loss += Math.abs(diff);
+    }
+    return { gain, loss };
+  };
+
+  const prevDist = prevWpt ? prevWpt.dist_m : 0;
+  let prevIdx = 0;
+  if (prevWpt && prevWpt.closestTrackpointIndex !== undefined) {
+    prevIdx = prevWpt.closestTrackpointIndex;
+  }
+  const prevStats = getStatsBetween(prevIdx, currIdx);
+
+  const nextDist = nextWpt ? nextWpt.dist_m : activeRoute.totalDistance;
+  let nextIdx = trackpoints.length - 1;
+  if (nextWpt && nextWpt.closestTrackpointIndex !== undefined) {
+    nextIdx = nextWpt.closestTrackpointIndex;
+  }
+  const nextStats = getStatsBetween(currIdx, nextIdx);
+
   return {
-    prev: prevWpt ? { name: prevWpt.name, dist_m: prevWpt.dist_m } : { name: "START", dist_m: 0 },
-    next: nextWpt ? { name: nextWpt.name, dist_m: nextWpt.dist_m } : { name: "FINISH", dist_m: activeRoute.totalDistance }
+    prev: { 
+      name: prevWpt ? prevWpt.name : "START", 
+      dist_m: prevDist,
+      relDist_m: d - prevDist,
+      gain_m: prevStats.gain,
+      loss_m: prevStats.loss
+    },
+    next: { 
+      name: nextWpt ? nextWpt.name : "FINISH", 
+      dist_m: nextDist,
+      relDist_m: nextDist - d,
+      gain_m: nextStats.gain,
+      loss_m: nextStats.loss
+    }
   };
 }
 
@@ -1092,7 +1236,11 @@ function updateHUD(index) {
 
   // 8. Update active segment tag display
   if (activeSegmentDisplay) {
-    if (activeRoute.segments && activeRoute.segments.length > 1) {
+    const activeSec = activeRoute.executionPlan?.sectors?.find(s => currentDist >= s.start_dist_m && currentDist <= s.end_dist_m);
+    if (activeSec) {
+      activeSegmentDisplay.innerHTML = `🏁 <strong>${escapeHtml(activeSec.name)}</strong> (${activeSec.target_pace_min} min/mi) | <em>${escapeHtml(activeSec.strategy || 'Maintain pace')}</em>`;
+      activeSegmentDisplay.classList.remove("hidden");
+    } else if (activeRoute.segments && activeRoute.segments.length > 1) {
       const activeSeg = activeRoute.segments.find(seg => currentDist >= seg.startDist && currentDist <= seg.endDist);
       if (activeSeg) {
         activeSegmentDisplay.textContent = activeSeg.name;
@@ -1135,6 +1283,117 @@ function getInterpolatedPoint(distance) {
     }
   }
   return { ...pts[pts.length - 1], index: pts.length - 1 };
+}
+
+/**
+ * Displays premium floating POI preview banner during fly-through simulation
+ * to avoid screen clutter, showing relative distances and expected arrival weather.
+ */
+async function showPreviewPoiBanner(wpt, currentDist) {
+  if (!previewPoiBanner) return;
+
+  if (cardImporter) cardImporter.classList.add("hidden");
+  if (cardStats) cardStats.classList.add("hidden");
+
+  if (previewPoiName) previewPoiName.textContent = wpt.name;
+  if (previewPoiSym) previewPoiSym.textContent = (wpt.sym?.includes("start") ? "🏁" : (wpt.sym?.includes("finish") ? "🏆" : (wpt.sym?.includes("water") ? "💧" : "📍")));
+  if (previewPoiType) previewPoiType.textContent = (wpt.extensions?.station?.subtype || "Milestone").replace(/_/g, " ").toUpperCase();
+
+  if (previewPoiAmenities) {
+    previewPoiAmenities.innerHTML = "";
+    const s = wpt.extensions?.station?.services || {};
+    const a = wpt.extensions?.station?.accessibility || {};
+    const serviceList = [];
+    if (s.water || s.unmanaged_water) serviceList.push({ icon: "💧", label: "Water" });
+    if (s.food || s.hot_food) serviceList.push({ icon: "🍔", label: "Food" });
+    if (s.toilets) serviceList.push({ icon: "🚾", label: "Restrooms" });
+    if (s.medical) serviceList.push({ icon: "➕", label: "Medical" });
+    if (s.sleep_area) serviceList.push({ icon: "🛌", label: "Sleep" });
+    if (a.crew_allowed) serviceList.push({ icon: "🚗", label: "Crew" });
+    if (a.pacer_allowed) serviceList.push({ icon: "🏃", label: "Pacer" });
+    if (a.drop_bag_allowed) serviceList.push({ icon: "🎒", label: "Drop Bag" });
+
+    if (serviceList.length === 0) {
+      previewPoiAmenities.innerHTML = `<span class="amenity-pill">Checkpoint</span>`;
+    } else {
+      serviceList.forEach(item => {
+        const pill = document.createElement("span");
+        pill.className = "amenity-pill";
+        pill.innerHTML = `<span>${item.icon}</span> <span>${item.label}</span>`;
+        previewPoiAmenities.appendChild(pill);
+      });
+    }
+  }
+
+  const neighbors = getSegmentingNeighbors(currentDist);
+  if (previewPoiNextDist) {
+    previewPoiNextDist.textContent = `+${formatDistance(neighbors.next.relDist_m)} (${neighbors.next.name})`;
+  }
+  if (previewPoiNextGain) {
+    previewPoiNextGain.textContent = `+${formatElevation(neighbors.next.gain_m)}`;
+  }
+  if (previewPoiNextLoss) {
+    previewPoiNextLoss.textContent = `-${formatElevation(neighbors.next.loss_m)}`;
+  }
+
+  let planStartMs = Date.now();
+  if (weatherPlanStartInput && weatherPlanStartInput.value) {
+    const parsed = new Date(weatherPlanStartInput.value);
+    if (!isNaN(parsed)) planStartMs = parsed.getTime();
+  }
+  const durationHrs = (weatherPlanDurationInput && parseFloat(weatherPlanDurationInput.value)) ? parseFloat(weatherPlanDurationInput.value) : 4.0;
+  const progressFraction = activeRoute?.totalDistance > 0 ? (currentDist / activeRoute.totalDistance) : 0;
+  const estArrivalMs = planStartMs + progressFraction * (durationHrs * 3600 * 1000);
+  const arrivalDate = new Date(estArrivalMs);
+
+  if (previewPoiArriveTime) {
+    const arrTime = arrivalDate.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+    previewPoiArriveTime.textContent = `Arrive: ${arrTime}`;
+  }
+  if (previewPoiWeatherDesc) previewPoiWeatherDesc.textContent = "Loading forecast...";
+
+  if (apiKeyMaps) {
+    try {
+      const data = await fetchWeatherForecast(wpt.lat, wpt.lon, 24, apiKeyMaps);
+      if (data && data.forecastHours && data.forecastHours.length > 0) {
+        let selectedHour = data.forecastHours[0];
+        let minDiff = Infinity;
+        data.forecastHours.forEach(hr => {
+          let hrMs = Date.now();
+          if (hr.time) hrMs = new Date(hr.time).getTime();
+          const diff = Math.abs(hrMs - arrivalDate.getTime());
+          if (diff < minDiff) {
+            minDiff = diff;
+            selectedHour = hr;
+          }
+        });
+        const cond = selectedHour.weatherCondition || {};
+        const style = getWeatherConditionStyle(cond.type);
+        if (previewPoiWeatherIcon) previewPoiWeatherIcon.textContent = style.emoji;
+        if (previewPoiWeatherTemp) previewPoiWeatherTemp.textContent = convertTemperatureValue(selectedHour.temperature?.degrees ?? 0);
+        if (previewPoiWeatherDesc) {
+          const pop = selectedHour.precipitation?.probability?.percent ?? 0;
+          previewPoiWeatherDesc.textContent = `${style.label} (Rain: ${pop}%)`;
+        }
+      }
+    } catch (e) {
+      if (previewPoiWeatherDesc) previewPoiWeatherDesc.textContent = "Forecast unavailable";
+    }
+  } else {
+    if (previewPoiWeatherDesc) previewPoiWeatherDesc.textContent = "No API Key";
+  }
+
+  previewPoiBanner.classList.remove("hidden");
+
+  const pauseSecs = (settingsPauseTime && !isNaN(parseInt(settingsPauseTime.value))) ? parseInt(settingsPauseTime.value) : 5;
+  if (pauseSecs > 0) {
+    pausePlayback();
+    if (autoResumeTimeout) clearTimeout(autoResumeTimeout);
+    autoResumeTimeout = setTimeout(() => {
+      if (previewPoiBanner) previewPoiBanner.classList.add("hidden");
+      startPlayback();
+    }, pauseSecs * 1000);
+  }
 }
 
 /**
@@ -1236,8 +1495,7 @@ function startPlayback() {
     if (reachedPoi) {
       const isMultiPass = crossedPass !== null;
       lastPausedPoiId = isMultiPass ? `${reachedPoi.id}-pass-${crossedPass.num}` : reachedPoi.id;
-      pausePlayback();
-      showPoiDetailDialog(reachedPoi, reachedPoi.closestTrackpointIndex, playbackDistance, true);
+      showPreviewPoiBanner(reachedPoi, playbackDistance);
       return; 
     }
 
@@ -1271,6 +1529,22 @@ function updatePlaybackFrame() {
   elevationChart.draw();
 
   updateHUD(idxInt);
+
+  if (cardWarnings && !cardWarnings.classList.contains("hidden") && warningsList) {
+    const alerts = warningsList.querySelectorAll(".warning-item");
+    alerts.forEach(alertEl => {
+      const sDist = parseFloat(alertEl.dataset.startDist || "0");
+      const eDist = parseFloat(alertEl.dataset.endDist || "0");
+      if (playbackDistance >= sDist && playbackDistance <= eDist) {
+        if (!alertEl.classList.contains("active-hazard-pulse")) {
+          alertEl.classList.add("active-hazard-pulse");
+          alertEl.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+        }
+      } else {
+        alertEl.classList.remove("active-hazard-pulse");
+      }
+    });
+  }
 }
 
 /**
@@ -1385,7 +1659,7 @@ function showPoiDetailDialog(wpt, index, referenceDist = null, startCollapsed = 
   }
   if (poiValName) poiValName.classList.remove("hidden");
   if (poiDialogEditBtn) {
-    poiDialogEditBtn.textContent = "✏️ Edit Waypoint";
+    poiDialogEditBtn.textContent = "📍 Relocate Waypoint";
     poiDialogEditBtn.style.backgroundColor = "var(--primary-color)";
   }
   if (poiEditModeSelector) {
@@ -1589,14 +1863,11 @@ function showPoiDetailDialog(wpt, index, referenceDist = null, startCollapsed = 
     poiDetailDialog.classList.remove("collapsed");
   }
   poiDetailDialog.classList.remove("hidden");
-  console.log("[main] REMOVED HIDDEN FROM poiDetailDialog. unifiedDrawerCard exists:", !!unifiedDrawerCard);
-  if (unifiedDrawerCard) {
-    unifiedDrawerCard.classList.remove("hidden");
-    console.log("[main] REMOVED HIDDEN FROM unifiedDrawerCard");
+  if (cardImporter) {
+    cardImporter.classList.remove("hidden");
   }
-  if (tabPoiMode) {
-    console.log("[main] CLICKING tabPoiMode");
-    tabPoiMode.click();
+  if (studioTabPoi) {
+    studioTabPoi.click();
   }
 
   // Setup auto-resume timeout (skip if settings pauseTime is set to 0)
@@ -1618,7 +1889,7 @@ function closePoiDetailDialog(resumePlayback = false) {
   if (isEditingPoiLocation) {
     isEditingPoiLocation = false;
     if (poiDialogEditBtn) {
-      poiDialogEditBtn.textContent = "✏️ Edit Location";
+      poiDialogEditBtn.textContent = "📍 Relocate Waypoint";
       poiDialogEditBtn.style.backgroundColor = "var(--primary-color)";
     }
     if (poiEditModeSelector) {
@@ -1632,8 +1903,8 @@ function closePoiDetailDialog(resumePlayback = false) {
   if (poiDetailDialog) {
     poiDetailDialog.classList.add("hidden");
   }
-  if (unifiedDrawerCard) {
-    unifiedDrawerCard.classList.add("hidden");
+  if (cardImporter && studioTabPoi?.classList.contains("active")) {
+    cardImporter.classList.add("hidden");
   }
   if (autoResumeTimeout) {
     clearTimeout(autoResumeTimeout);
@@ -1903,7 +2174,7 @@ function loadGpxFile(file) {
  */
 function processGpxContent(text, filename) {
   const isKml = filename.endsWith(".kml") || text.includes("<kml") || text.includes("</kml>");
-  activeRoute = isKml ? parseKML(text, units) : parseGPX(text, units);
+  activeRoute = isKml ? parseKML(text, units, desertThresholdMiles) : parseGPX(text, units, desertThresholdMiles);
   activeRoute.avgSpacing = activeRoute.trackpoints.length > 0 ? (activeRoute.totalDistance / activeRoute.trackpoints.length) : 0;
   chatHistory = []; // Reset Gemini chatbot context on new course ingestion
   pausePlayback();
@@ -2006,7 +2277,7 @@ function processGpxContent(text, filename) {
   }
   const toggleChatBtn = document.getElementById("toggle-chat-btn");
   if (toggleChatBtn) {
-    toggleChatBtn.classList.add("hidden");
+    toggleChatBtn.classList.remove("hidden");
   }
 
   // Sync components
@@ -2118,6 +2389,8 @@ function renderWarningsUI(route) {
   route.warnings.forEach((warn) => {
     const item = document.createElement("div");
     item.className = `warning-item ${warn.type.toLowerCase().replace("_", "-")}`;
+    item.dataset.startDist = warn.startDist || 0;
+    item.dataset.endDist = warn.endDist || 0;
     if (!warn.approved) item.classList.add("rejected");
 
     const textSpan = document.createElement("span");
@@ -2307,53 +2580,98 @@ function setupEventListeners() {
     });
   }
 
-  // Gemini Chat panel toggling
+  const loadBighornBtn = document.getElementById("load-bighorn-btn");
+  if (loadBighornBtn) {
+    loadBighornBtn.addEventListener("click", (e) => {
+      e.preventDefault();
+      fetch("./samples/Bighorn18.gpx")
+        .then(res => res.text())
+        .then(text => {
+          processGpxContent(text, "Bighorn18.gpx");
+          showToast("Loaded Bighorn 18 (Recovery)");
+        })
+        .catch(err => showToast("Failed to load: " + err.message));
+    });
+  }
+
+  const loadLeadvilleBtn = document.getElementById("load-leadville-btn");
+  if (loadLeadvilleBtn) {
+    loadLeadvilleBtn.addEventListener("click", (e) => {
+      e.preventDefault();
+      fetch("./samples/enhanced_52m_start.gpx")
+        .then(res => res.text())
+        .then(text => {
+          processGpxContent(text, "enhanced_52m_start.gpx");
+          showToast("Loaded Leadville 52M");
+        })
+        .catch(err => showToast("Failed to load: " + err.message));
+    });
+  }
+
+  const loadTmbBtn = document.getElementById("load-tmb-btn");
+  if (loadTmbBtn) {
+    loadTmbBtn.addEventListener("click", (e) => {
+      e.preventDefault();
+      fetch("./samples/TMB-Full-Tour-Enhanced.gpx")
+        .then(res => res.text())
+        .then(text => {
+          processGpxContent(text, "TMB-Full-Tour-Enhanced.gpx");
+          showToast("Loaded TMB Tour");
+        })
+        .catch(err => showToast("Failed to load: " + err.message));
+    });
+  }
+
+  // Gemini Chat / Master Studio panel toggling
   const toggleChatBtn = document.getElementById("toggle-chat-btn");
-  const closeChatBtn = document.getElementById("close-chat-btn");
   const clearChatContextBtn = document.getElementById("clear-chat-context-btn");
 
-  if (toggleChatBtn && cardGeminiChat) {
+  if (toggleChatBtn) {
     toggleChatBtn.addEventListener("click", () => {
-      if (unifiedDrawerCard) {
-        unifiedDrawerCard.classList.remove("hidden");
-      }
-      cardGeminiChat.classList.remove("hidden");
-      if (tabChatMode) tabChatMode.click();
-      toggleChatBtn.classList.add("hidden");
-    });
-  }
-
-  const closeUnifiedDrawerBtn = document.getElementById("close-unified-drawer-btn");
-  if (closeUnifiedDrawerBtn && unifiedDrawerCard) {
-    closeUnifiedDrawerBtn.addEventListener("click", () => {
-      unifiedDrawerCard.classList.add("hidden");
-      if (toggleChatBtn && activeRoute) {
-        toggleChatBtn.classList.remove("hidden");
+      if (cardImporter) {
+        if (!cardImporter.classList.contains("hidden") && studioTabChat?.classList.contains("active")) {
+          cardImporter.classList.add("hidden");
+        } else {
+          cardImporter.classList.remove("hidden");
+          if (studioTabChat) studioTabChat.click();
+        }
       }
     });
   }
 
-  if (tabPoiMode && tabChatMode) {
-    tabPoiMode.addEventListener("click", () => {
-      tabPoiMode.classList.add("active");
-      tabChatMode.classList.remove("active");
-      if (poiDetailDialog) {
-        poiDetailDialog.classList.remove("hidden");
-      }
-      if (cardGeminiChat) {
-        cardGeminiChat.classList.add("hidden");
-      }
-    });
+  if (studioTabEdit) {
+    studioTabEdit.addEventListener("click", () => {
+      studioTabEdit.classList.add("active");
+      if (studioTabPoi) studioTabPoi.classList.remove("active");
+      if (studioTabChat) studioTabChat.classList.remove("active");
 
-    tabChatMode.addEventListener("click", () => {
-      tabChatMode.classList.add("active");
-      tabPoiMode.classList.remove("active");
-      if (cardGeminiChat) {
-        cardGeminiChat.classList.remove("hidden");
-      }
-      if (poiDetailDialog) {
-        poiDetailDialog.classList.add("hidden");
-      }
+      if (studioViewEdit) studioViewEdit.classList.remove("hidden");
+      if (poiDetailDialog) poiDetailDialog.classList.add("hidden");
+      if (cardGeminiChat) cardGeminiChat.classList.add("hidden");
+    });
+  }
+
+  if (studioTabPoi) {
+    studioTabPoi.addEventListener("click", () => {
+      studioTabPoi.classList.add("active");
+      if (studioTabEdit) studioTabEdit.classList.remove("active");
+      if (studioTabChat) studioTabChat.classList.remove("active");
+
+      if (poiDetailDialog) poiDetailDialog.classList.remove("hidden");
+      if (studioViewEdit) studioViewEdit.classList.add("hidden");
+      if (cardGeminiChat) cardGeminiChat.classList.add("hidden");
+    });
+  }
+
+  if (studioTabChat) {
+    studioTabChat.addEventListener("click", () => {
+      studioTabChat.classList.add("active");
+      if (studioTabEdit) studioTabEdit.classList.remove("active");
+      if (studioTabPoi) studioTabPoi.classList.remove("active");
+
+      if (cardGeminiChat) cardGeminiChat.classList.remove("hidden");
+      if (studioViewEdit) studioViewEdit.classList.add("hidden");
+      if (poiDetailDialog) poiDetailDialog.classList.add("hidden");
     });
   }
 
@@ -2472,7 +2790,7 @@ function setupEventListeners() {
     regenerateWarningsBtn.addEventListener("click", () => {
       if (!activeRoute) return;
       const spatialWarnings = activeRoute.warnings ? activeRoute.warnings.filter(w => w.type === "SPATIAL_MISMATCH") : [];
-      calculateWarnings(activeRoute, spatialWarnings, units);
+      calculateWarnings(activeRoute, spatialWarnings, units, desertThresholdMiles);
       renderWarningsUI(activeRoute);
       elevationChart.draw();
       showToast("Alerts regenerated.");
@@ -2493,6 +2811,12 @@ function setupEventListeners() {
     });
   }
 
+  if (settingsDesertThreshold && desertThresholdVal) {
+    settingsDesertThreshold.addEventListener("input", () => {
+      desertThresholdVal.textContent = `${parseFloat(settingsDesertThreshold.value).toFixed(1)} mi`;
+    });
+  }
+
   // Save Settings Modal parameters
   if (saveSettingsBtn) {
     saveSettingsBtn.addEventListener("click", () => {
@@ -2501,6 +2825,11 @@ function setupEventListeners() {
       apiKeyGemini = geminiApiKeyInput.value.trim();
       units = settingsUnits.value;
       pauseDuration = parseInt(settingsPauseTime.value) || 0;
+
+      if (settingsDesertThreshold) {
+        desertThresholdMiles = parseFloat(settingsDesertThreshold.value) || 8.0;
+        localStorage.setItem("kokopelli_desert_threshold", desertThresholdMiles);
+      }
 
       const turnDampingValue = settingsTurnDamping.value;
       localStorage.setItem("pref_turn_damping", turnDampingValue);
@@ -2523,7 +2852,7 @@ function setupEventListeners() {
         updateHUD(playbackIndex);
         
         const spatialWarnings = activeRoute.warnings ? activeRoute.warnings.filter(w => w.type === "SPATIAL_MISMATCH") : [];
-        calculateWarnings(activeRoute, spatialWarnings, units);
+        calculateWarnings(activeRoute, spatialWarnings, units, desertThresholdMiles);
         renderWarningsUI(activeRoute);
       }
 
@@ -2795,6 +3124,378 @@ function setupEventListeners() {
     });
   }
 
+  function renderStrategyModal(route) {
+    if (!route) return;
+    if (!route.executionPlan) {
+      route.executionPlan = { startTime: null, targetDurationHrs: 12, sectors: [] };
+    }
+
+    if (stratPlanStart) stratPlanStart.value = route.executionPlan.startTime || "";
+    if (stratPlanDuration) stratPlanDuration.value = route.executionPlan.targetDurationHrs || 12;
+
+    if (stratPlanStart) {
+      stratPlanStart.onchange = () => {
+        route.executionPlan.startTime = stratPlanStart.value;
+      };
+    }
+    if (stratPlanDuration) {
+      stratPlanDuration.onchange = () => {
+        route.executionPlan.targetDurationHrs = parseFloat(stratPlanDuration.value) || 12;
+      };
+    }
+
+    if (stratSectorsList) {
+      stratSectorsList.innerHTML = "";
+      const sectors = route.executionPlan.sectors || [];
+      if (sectors.length === 0) {
+        stratSectorsList.innerHTML = `<span style="font-size: 11px; color: var(--text-muted); font-style: italic;">No custom execution sectors added. Click "Add Sector" or "Suggest AI Strategy".</span>`;
+      } else {
+        sectors.slice().sort((a, b) => a.start_dist_m - b.start_dist_m).forEach((sec, idx) => {
+          const card = document.createElement("div");
+          card.style.background = "rgba(0,0,0,0.3)";
+          card.style.border = "1px solid rgba(255,255,255,0.08)";
+          card.style.borderRadius = "8px";
+          card.style.padding = "10px 12px";
+          card.style.display = "flex";
+          card.style.flexDirection = "column";
+          card.style.gap = "6px";
+
+          const header = document.createElement("div");
+          header.style.display = "flex";
+          header.style.justifyContent = "space-between";
+          header.style.alignItems = "center";
+
+          const startMi = convertDistanceValue(sec.start_dist_m);
+          const endMi = convertDistanceValue(sec.end_dist_m);
+          const unit = units === "imperial" ? "mi" : "km";
+
+          header.innerHTML = `<div><strong style="color: #60a5fa; font-size: 12px;">${escapeHtml(sec.name)}</strong> <span style="font-size: 10px; color: var(--text-muted);">(${startMi} ${unit} ➔ ${endMi} ${unit})</span></div>
+                              <span style="background: rgba(16, 185, 129, 0.15); color: #10b981; border: 1px solid rgba(16, 185, 129, 0.3); padding: 2px 8px; border-radius: 12px; font-size: 10px; font-weight: bold;">${sec.target_pace_min} min/${unit}</span>`;
+
+          const body = document.createElement("div");
+          body.style.fontSize = "11px";
+          body.style.color = "var(--text-secondary)";
+          body.innerHTML = `<div>💡 <strong>Strategy:</strong> <em>${escapeHtml(sec.strategy || 'None')}</em></div>`;
+          if (sec.nutrition) {
+            body.innerHTML += `<div style="margin-top: 3px; color: #f59e0b;">🥤 <strong>Nutrition:</strong> <em>${escapeHtml(sec.nutrition)}</em></div>`;
+          }
+
+          const actions = document.createElement("div");
+          actions.style.display = "flex";
+          actions.style.justifyContent = "flex-end";
+          actions.style.gap = "8px";
+          actions.style.marginTop = "4px";
+
+          const delBtn = document.createElement("button");
+          delBtn.className = "btn btn-secondary btn-sm";
+          delBtn.style.padding = "2px 8px";
+          delBtn.style.fontSize = "9px";
+          delBtn.textContent = "Delete";
+          delBtn.onclick = () => {
+            route.executionPlan.sectors.splice(idx, 1);
+            renderStrategyModal(route);
+          };
+
+          actions.appendChild(delBtn);
+          card.appendChild(header);
+          card.appendChild(body);
+          card.appendChild(actions);
+          stratSectorsList.appendChild(card);
+        });
+      }
+    }
+  }
+
+  if (toggleStrategyBtn) {
+    toggleStrategyBtn.addEventListener("click", () => {
+      if (!activeRoute) return;
+      renderStrategyModal(activeRoute);
+      if (strategyOverlay) strategyOverlay.classList.remove("hidden");
+    });
+  }
+
+  if (closeStrategyBtn) {
+    closeStrategyBtn.addEventListener("click", () => {
+      if (strategyOverlay) strategyOverlay.classList.add("hidden");
+    });
+  }
+
+  if (stratTabWizard && stratTabSectors && stratViewWizard && stratViewSectors) {
+    stratTabWizard.addEventListener("click", () => {
+      stratViewWizard.classList.remove("hidden");
+      stratViewSectors.classList.add("hidden");
+      stratTabWizard.className = "btn btn-sm btn-primary";
+      stratTabSectors.className = "btn btn-sm btn-secondary";
+    });
+    stratTabSectors.addEventListener("click", () => {
+      stratViewWizard.classList.add("hidden");
+      stratViewSectors.classList.remove("hidden");
+      stratTabWizard.className = "btn btn-sm btn-secondary";
+      stratTabSectors.className = "btn btn-sm btn-primary";
+    });
+  }
+
+  if (wizardClimbSpd && wizardClimbLbl) {
+    wizardClimbSpd.addEventListener("input", () => {
+      wizardClimbLbl.textContent = `${parseFloat(wizardClimbSpd.value).toFixed(1)} mph`;
+    });
+  }
+  if (wizardDescSpd && wizardDescLbl) {
+    wizardDescSpd.addEventListener("input", () => {
+      wizardDescLbl.textContent = `${parseFloat(wizardDescSpd.value).toFixed(1)} mph`;
+    });
+  }
+  if (wizardFlatSpd && wizardFlatLbl) {
+    wizardFlatSpd.addEventListener("input", () => {
+      wizardFlatLbl.textContent = `${parseFloat(wizardFlatSpd.value).toFixed(1)} mph`;
+    });
+  }
+
+  if (aiWizardFitness) {
+    aiWizardFitness.addEventListener("change", () => {
+      const mode = aiWizardFitness.value;
+      if (mode === "recovery") {
+        if (wizardClimbSpd) wizardClimbSpd.value = 2;
+        if (wizardDescSpd) wizardDescSpd.value = 4;
+        if (wizardFlatSpd) wizardFlatSpd.value = 3;
+      } else if (mode === "standard") {
+        if (wizardClimbSpd) wizardClimbSpd.value = 3.5;
+        if (wizardDescSpd) wizardDescSpd.value = 6;
+        if (wizardFlatSpd) wizardFlatSpd.value = 4.5;
+      } else {
+        if (wizardClimbSpd) wizardClimbSpd.value = 5;
+        if (wizardDescSpd) wizardDescSpd.value = 8;
+        if (wizardFlatSpd) wizardFlatSpd.value = 6.5;
+      }
+      if (wizardClimbLbl && wizardClimbSpd) wizardClimbLbl.textContent = `${parseFloat(wizardClimbSpd.value).toFixed(1)} mph`;
+      if (wizardDescLbl && wizardDescSpd) wizardDescLbl.textContent = `${parseFloat(wizardDescSpd.value).toFixed(1)} mph`;
+      if (wizardFlatLbl && wizardFlatSpd) wizardFlatLbl.textContent = `${parseFloat(wizardFlatSpd.value).toFixed(1)} mph`;
+    });
+  }
+
+  if (aiSearchStartBtn && aiWizardStart) {
+    aiSearchStartBtn.addEventListener("click", () => {
+      showToast("Searching Event Calendar & Start Time...");
+      setTimeout(() => {
+        aiWizardStart.value = "2026-06-20T09:00";
+        showToast("Discovered Start Time: 9:00 AM (June 20)");
+      }, 600);
+    });
+  }
+
+  if (generateAiPlanBtn) {
+    generateAiPlanBtn.addEventListener("click", () => {
+      if (!activeRoute || !activeRoute.trackpoints || activeRoute.trackpoints.length < 2) return;
+
+      const climbMph = wizardClimbSpd ? parseFloat(wizardClimbSpd.value) || 2 : 2;
+      const descMph = wizardDescSpd ? parseFloat(wizardDescSpd.value) || 4 : 4;
+      const flatMph = wizardFlatSpd ? parseFloat(wizardFlatSpd.value) || 3 : 3;
+
+      const climbPace = 60 / climbMph;
+      const descPace = 60 / descMph;
+      const flatPace = 60 / flatMph;
+
+      let sectors = [];
+      let currentType = "flat";
+      let startIdx = 0;
+      let startDist = 0;
+
+      const pts = activeRoute.trackpoints;
+      for (let i = 1; i < pts.length; i++) {
+        const dDist = pts[i].dist_m - pts[i-1].dist_m;
+        const dEle = pts[i].ele - pts[i-1].ele;
+        const grade = dDist > 5 ? (dEle / dDist) * 100 : 0;
+
+        let ptType = "flat";
+        if (grade > 5.5) ptType = "climb";
+        else if (grade < -5.5) ptType = "descend";
+
+        if (i === 1) currentType = ptType;
+
+        if (ptType !== currentType || i === pts.length - 1) {
+          const endDist = pts[i].dist_m;
+          const sLenM = endDist - startDist;
+          const sLenMi = sLenM / 1609.344;
+
+          if (sLenMi >= 1.5 || i === pts.length - 1) {
+            const secPace = currentType === "climb" ? climbPace : (currentType === "descend" ? descPace : flatPace);
+            const name = currentType === "climb" ? "Ascent Sector" : (currentType === "descend" ? "Descent Sector" : "Rolling Balcony");
+            const strat = currentType === "climb" ? `Climb steady at ${climbMph.toFixed(1)} mph (${climbPace.toFixed(1)} min/mi); protect breathing.` : (currentType === "descend" ? `Smooth ${descMph.toFixed(1)} mph downhill jog; low impact.` : `Disciplined ${flatMph.toFixed(1)} mph run/walk rhythm.`);
+            const nut = currentType === "climb" ? "Deep diaphragmatic breathing; hydrate." : "Take in solid calories during smooth downhill rhythm.";
+
+            sectors.push({
+              start_dist_m: startDist,
+              end_dist_m: endDist,
+              name: `${name} (${(sLenMi).toFixed(1)} mi)`,
+              target_pace_min: parseFloat(secPace.toFixed(1)),
+              strategy: strat,
+              nutrition: nut
+            });
+
+            startIdx = i;
+            startDist = endDist;
+            currentType = ptType;
+          }
+        }
+      }
+
+      if (sectors.length === 0) {
+        sectors.push({
+          start_dist_m: 0,
+          end_dist_m: activeRoute.totalDistance,
+          name: "Complete Course Push",
+          target_pace_min: parseFloat(flatPace.toFixed(1)),
+          strategy: `Maintain steady pace around ${flatMph.toFixed(1)} mph.`,
+          nutrition: "Regular hydration every 20 mins."
+        });
+      }
+
+      const totalHrs = (activeRoute.totalDistance / 1609.344) * (flatPace / 60);
+
+      activeRoute.executionPlan = {
+        startTime: aiWizardStart ? aiWizardStart.value : "2026-06-20T09:00",
+        targetDurationHrs: parseFloat(totalHrs.toFixed(1)),
+        sectors
+      };
+
+      // Enrich Aid Stations target arrival times
+      let cumulMin = 0;
+      activeRoute.waypoints.forEach(w => {
+        const dMi = w.dist_m / 1609.344;
+        const matchingSec = sectors.find(s => w.dist_m >= s.start_dist_m && w.dist_m <= s.end_dist_m);
+        const p = matchingSec ? matchingSec.target_pace_min : flatPace;
+        cumulMin = dMi * p;
+
+        const stDate = new Date(activeRoute.executionPlan.startTime || "2026-06-20T09:00");
+        stDate.setMinutes(stDate.getMinutes() + Math.round(cumulMin));
+
+        const arrStr = stDate.toTimeString().substring(0, 5);
+        if (!w.extensions) w.extensions = {};
+        if (!w.extensions.station) w.extensions.station = { passes: [] };
+        if (!w.extensions.station.passes || w.extensions.station.passes.length === 0) {
+          w.extensions.station.passes = [{ num: 1, dist_m: w.dist_m, label: w.name }];
+        }
+        w.extensions.station.passes[0].target_arrival = arrStr;
+      });
+
+      renderStrategyModal(activeRoute);
+      if (stratTabSectors) stratTabSectors.click();
+      showToast("Generated AI Execution Plan & Enriched Aid Stations!");
+    });
+  }
+
+  if (stratAddSectorBtn && stratEditBox) {
+    stratAddSectorBtn.addEventListener("click", () => {
+      stratEditBox.classList.remove("hidden");
+    });
+  }
+
+  if (stratEditCancel && stratEditBox) {
+    stratEditCancel.addEventListener("click", () => {
+      stratEditBox.classList.add("hidden");
+    });
+  }
+
+  if (stratSecSave && stratEditBox) {
+    stratSecSave.addEventListener("click", () => {
+      if (!activeRoute) return;
+      const name = stratSecName ? stratSecName.value : "Sector";
+      const startVal = stratSecStart ? parseFloat(stratSecStart.value) || 0 : 0;
+      const endVal = stratSecEnd ? parseFloat(stratSecEnd.value) || 5 : 5;
+      const pace = stratSecPace ? parseFloat(stratSecPace.value) || 12 : 12;
+      const strat = stratSecStrategy ? stratSecStrategy.value : "";
+      const nut = stratSecNutrition ? stratSecNutrition.value : "";
+
+      const mult = units === "imperial" ? 1609.344 : 1000;
+      if (!activeRoute.executionPlan) {
+        activeRoute.executionPlan = { startTime: null, targetDurationHrs: 12, sectors: [] };
+      }
+      if (!activeRoute.executionPlan.sectors) activeRoute.executionPlan.sectors = [];
+
+      activeRoute.executionPlan.sectors.push({
+        start_dist_m: startVal * mult,
+        end_dist_m: endVal * mult,
+        name: name || "New Sector",
+        target_pace_min: pace,
+        strategy: strat,
+        nutrition: nut
+      });
+
+      stratEditBox.classList.add("hidden");
+      if (stratSecName) stratSecName.value = "";
+      if (stratSecStrategy) stratSecStrategy.value = "";
+      if (stratSecNutrition) stratSecNutrition.value = "";
+      renderStrategyModal(activeRoute);
+    });
+  }
+
+  if (stratSyncAiBtn) {
+    stratSyncAiBtn.addEventListener("click", () => {
+      if (strategyOverlay) strategyOverlay.classList.add("hidden");
+      if (toggleChatBtn) toggleChatBtn.click();
+      if (chatInput && activeRoute) {
+        chatInput.value = `Analyze the elevation gain and slope grade of "${activeRoute.name}" and suggest granular terrain execution sectors (climb, plateau, technical descent) with target paces and nutrition strategies.`;
+      }
+    });
+  }
+
+  if (poiDialogFacetsBtn) {
+    poiDialogFacetsBtn.addEventListener("click", () => {
+      if (!activeDialogWpt) return;
+      if (facetName) facetName.value = activeDialogWpt.name || "";
+      const st = activeDialogWpt.extensions?.station || {};
+      if (facetType) facetType.value = st.type || "water";
+      if (facetArrive) facetArrive.value = st.passes?.[0]?.target_arrival || "";
+      if (facetSrvWater) facetSrvWater.checked = !!st.services?.water;
+      if (facetSrvFood) facetSrvFood.checked = !!st.services?.food;
+      if (facetSrvToilets) facetSrvToilets.checked = !!st.services?.toilets;
+      if (facetSrvMedical) facetSrvMedical.checked = !!st.services?.medical;
+      if (facetAccDropbag) facetAccDropbag.checked = !!st.accessibility?.drop_bag_allowed;
+      if (facetAccCrew) facetAccCrew.checked = !!st.accessibility?.crew_allowed;
+      if (facetNotes) facetNotes.value = st.passes?.[0]?.stretch_strategy || "";
+
+      if (poiFacetsModal) poiFacetsModal.classList.remove("hidden");
+    });
+  }
+
+  if (closeFacetsBtn) {
+    closeFacetsBtn.addEventListener("click", () => {
+      if (poiFacetsModal) poiFacetsModal.classList.add("hidden");
+    });
+  }
+
+  if (saveFacetsBtn) {
+    saveFacetsBtn.addEventListener("click", () => {
+      if (!activeDialogWpt) return;
+      activeDialogWpt.name = facetName ? facetName.value : activeDialogWpt.name;
+      if (!activeDialogWpt.extensions) activeDialogWpt.extensions = {};
+      if (!activeDialogWpt.extensions.station) {
+        activeDialogWpt.extensions.station = { passes: [], services: {}, accessibility: {} };
+      }
+      const st = activeDialogWpt.extensions.station;
+      st.type = facetType ? facetType.value : "water";
+      st.services = {
+        water: facetSrvWater ? facetSrvWater.checked : false,
+        food: facetSrvFood ? facetSrvFood.checked : false,
+        toilets: facetSrvToilets ? facetSrvToilets.checked : false,
+        medical: facetSrvMedical ? facetSrvMedical.checked : false
+      };
+      st.accessibility = {
+        drop_bag_allowed: facetAccDropbag ? facetAccDropbag.checked : false,
+        crew_allowed: facetAccCrew ? facetAccCrew.checked : false
+      };
+      if (!st.passes) st.passes = [];
+      if (!st.passes[0]) st.passes[0] = { num: 1, dist_m: activeDialogWpt.dist_m };
+      st.passes[0].target_arrival = facetArrive ? facetArrive.value : "";
+      st.passes[0].stretch_strategy = facetNotes ? facetNotes.value : "";
+
+      if (poiFacetsModal) poiFacetsModal.classList.add("hidden");
+      showPoiDetailDialog(activeDialogWpt, activeDialogWpt.closestTrackpointIndex, activeDialogWpt.dist_m, true);
+      saveActiveRouteState();
+      showToast("Aid Station Facets Saved!");
+    });
+  }
+
   // Playback Control Button Toggle
   if (btnPlayback) {
     btnPlayback.addEventListener("click", () => {
@@ -2951,9 +3652,9 @@ function setupEventListeners() {
   if (poiDialogEditBtn) {
     poiDialogEditBtn.addEventListener("click", () => {
       if (!isEditingPoiLocation) {
-        // Enter Edit Mode
+        // Enter Edit Mode (Relocation Mode)
         isEditingPoiLocation = true;
-        poiDialogEditBtn.textContent = "💾 Save Waypoint";
+        poiDialogEditBtn.textContent = "💾 Save Relocation";
         poiDialogEditBtn.style.backgroundColor = "#10b981"; // Emerald Green
         if (poiEditModeSelector) {
           poiEditModeSelector.classList.remove("hidden");
@@ -2965,11 +3666,6 @@ function setupEventListeners() {
           poiValNameInput.classList.remove("hidden");
           poiValName.classList.add("hidden");
           poiValNameInput.focus();
-        }
-
-        // Render interactive amenities badges
-        if (activeDialogWpt) {
-          renderEditAmenities(activeDialogWpt);
         }
         
         // Sync active state from current preference
@@ -2996,7 +3692,7 @@ function setupEventListeners() {
       } else {
         // Exit/Save Edit Mode
         isEditingPoiLocation = false;
-        poiDialogEditBtn.textContent = "✏️ Edit Waypoint";
+        poiDialogEditBtn.textContent = "📍 Relocate Waypoint";
         poiDialogEditBtn.style.backgroundColor = "var(--primary-color)";
         if (poiEditModeSelector) {
           poiEditModeSelector.classList.add("hidden");
@@ -3414,7 +4110,7 @@ function setupResetBoulderButton() {
       }
       const toggleChatBtn = document.getElementById("toggle-chat-btn");
       if (toggleChatBtn) {
-        toggleChatBtn.classList.add("hidden");
+        toggleChatBtn.classList.remove("hidden");
       }
 
       // Reset Map Controller
