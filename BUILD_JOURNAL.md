@@ -925,3 +925,15 @@ This journal records all design decisions, architecture patterns, development st
     *   Added `#live-race-plan-preview-box` and `#toggle-live-plan-btn` to `index.html`.
     *   Implemented `computeIntelligentPacingAndWeatherPlan`, refactored wizard/studio button listeners, and updated `updateHUD` live tracker loop in `src/main.js`.
     *   Rebuilt production bundle successfully via `npm run build`.
+
+---
+
+### 🚀 Session 74: Repository Continuity Standardization & Multi-Computer Agent Onboarding Protocol
+*   **Goal**: Establish top-level workspace continuity documentation (`CONTINUITY.md`) and standardize agent onboarding artifacts across Git worktrees so developer and AI agent experiences remain 100% consistent across different workstations.
+*   **Decisions & Rationale**:
+    *   **Top-Level Continuity Architecture (`CONTINUITY.md`)**: Created an authoritative continuity manual in the workspace container root and localized worktrees detailing the Build Journal four-pillar anatomy, multi-platform Git worktree isolation rules, and local secret provisioning (`local.properties` / UI dialog input).
+    *   **Worktree Context Synchronization**: Copied `CONTINUITY.md`, `PROJECTS.md`, and `AGENT_CONTEXT.md` into active feature worktrees (`feature-ai-race-planner` and `android-port`) and committed them to version control. When cloning or checking out any repository branch on a fresh machine, AI coding agents immediately encounter standardized onboarding instructions in their root directory.
+*   **Key Actions Taken**:
+    *   Created `CONTINUITY.md` in workspace container root, `feature-ai-race-planner`, and `android-port`.
+    *   Updated `AGENT_CONTEXT.md` with multi-computer continuity directives.
+    *   Synchronized and committed context files across `feature/web-dialog-fixes` and `android-port` branches.
