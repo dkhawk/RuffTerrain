@@ -473,7 +473,7 @@ body, html {
 
 /* CARD INNER PARTS */
 .card-header {
-  padding: 14px 18px;
+  padding: 14px 40px 14px 18px; /* Extra right padding prevents overlapping corner close buttons */
   border-bottom: 1px solid var(--border-glass);
   display: flex;
   align-items: center;
@@ -508,18 +508,34 @@ body, html {
   font-size: 18px;
 }
 
+/* High-visibility corner dismiss button for all floating cards and dialogs */
 .close-card-btn {
-  background: transparent;
-  border: none;
-  font-size: 20px;
-  color: var(--text-muted);
+  position: absolute;
+  top: 12px;
+  right: 12px;
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.12);
+  border: 1px solid rgba(255, 255, 255, 0.25);
+  font-size: 18px;
+  line-height: 1;
+  color: #ffffff;
   cursor: pointer;
-  margin-left: auto;
-  transition: var(--transition-smooth);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 50;
+  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.4);
 }
 
 .close-card-btn:hover {
+  background: rgba(239, 68, 68, 0.85); /* Vibrant ruby red on hover for clear dismiss action */
+  border-color: rgba(255, 255, 255, 0.6);
   color: #ffffff;
+  transform: scale(1.12) rotate(90deg);
+  box-shadow: 0 4px 14px rgba(239, 68, 68, 0.5);
 }
 
 .card-body {

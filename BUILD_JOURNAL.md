@@ -894,3 +894,34 @@ This journal records all design decisions, architecture patterns, development st
 *   **Key Actions Taken**:
     *   Updated `parseGPX` and `parseKML` in `src/gpx-parser.js`.
     *   Rebuilt production bundle successfully via `npm run build`.
+
+---
+
+### 🚀 Session 72: Dialog Dismissibility & Corner Close Button Visibility Refinements
+*   **Goal**: Enable dismissing floating aid station preview banners and waypoint dialogs (which previously lacked close buttons or trapped playback on startup), and elevate course importer close button aesthetics and corner positioning.
+*   **Decisions & Rationale**:
+    *   **Passing Aid Station Dialog Dismissal**: Added explicit close buttons (`#close-preview-poi-btn`) and Escape hotkey handling to `#preview-poi-banner`. Clicking or pressing Escape hides the banner, cancels pending pause timers (`autoResumeTimeout`), and immediately resumes fly-through simulation.
+    *   **Waypoint Details Dialog Dismissal**: Added explicit header (`#poi-dialog-close-header`) and bottom (`#poi-dialog-close-bottom`) dismiss buttons to `#poi-detail-dialog` inside the course studio, bridging existing click listeners in `src/main.js`.
+    *   **Corner Dismiss Aesthetics**: Upgraded `.close-card-btn` with `position: absolute; top: 12px; right: 12px;`, circular glassmorphic pill boundaries (`border-radius: 50%`), high-contrast white iconography, and vibrant ruby red hover states (`rgba(239, 68, 68, 0.85)`). Added right padding to `.card-header` titles to prevent text collision.
+*   **Key Actions Taken**:
+    *   Updated `#card-importer`, `#poi-detail-dialog`, and `#preview-poi-banner` markup in `index.html`.
+    *   Added event listeners and Escape key checks in `src/main.js`.
+    *   Refined `.close-card-btn` and `.card-header` in `src/style.css`.
+    *   Rebuilt production bundle successfully via `npm run build`.
+
+---
+
+### 🚀 Session 73: Intelligent Diurnal Race Planning Engine, Granular Terrain Subsegments & Live Pacing Box
+*   **Goal**: Replace simplistic hardcoded pacing math with a physiological and environmental race planning engine that models climbs/descents piecewise gradient energy scaling, continuous arrival windows, diurnal mountain weather predictions across time ranges, thermal throttling penalties ($>70^\circ\text{F}$), goal time conflict resolution, and real-time flight simulation tracking.
+*   **Decisions & Rationale**:
+    *   **Unified Intelligent Engine (`computeIntelligentPacingAndWeatherPlan`)**: Designed a master pacing computation helper in `src/main.js` utilized by both `#generate-race-plan-btn` (Course Studio) and `#wiz-generate-plan-btn` (Wizard Modal).
+    *   **Physiological & Terrain Physics**: Replaced crude flat grade thresholds with piecewise gradient scaling (Minetti curves), steep mountain power-hiking penalties ($>12\%$ grade), swift gravity descent boosts, technical muscular braking on steep drops ($<-12\%$), and altitude hypoxia slowdowns ($>7,500\text{ ft}$).
+    *   **Diurnal Weather & Continuous Windows**: Modeled arrival prediction as a continuous time range (e.g. `06:00 - 08:45`). Integrated a diurnal mountain temperature sine curve ($58^\circ\text{F}-84^\circ\text{F}+$) alongside wind vectors, sky condition tags, and convective afternoon thunderstorm probabilities.
+    *   **Thermal Runner Throttling**: Applied physiological heat degradation directly tied to average window temp ($>70^\circ\text{F}$ adds $+8\%$ slowdown, $>78^\circ\text{F}$ adds $+16\%$, $>85^\circ\text{F}$ extreme thermal throttling adds $+25\%$).
+    *   **Goal Time vs Pace Conflict Resolution**: Added proactive conflict detection banners. If calculated environmental finishing time exceeds user goal cutoff limits, a prominent ruby alert highlights the pace deficit and advises speed adjustments.
+    *   **Granular Terrain Subsegments**: Scanned intermediate trackpoints between major aid stations to extract continuous steep climbs and drops, rendering them as nested subsegment breakdowns inside each sector card.
+    *   **Dedicated Live Race Plan Preview Box**: Created `#live-race-plan-preview-box` floating cleanly at the top center of the 3D viewport, equipped with a `#toggle-live-plan-btn` in the HUD actions bar. As the camera flies along the trail in simulation, this quest-tracker box dynamically updates current sector progress, active subsegment hazards, simulated arrival windows, and real-time pace strategy.
+*   **Key Actions Taken**:
+    *   Added `#live-race-plan-preview-box` and `#toggle-live-plan-btn` to `index.html`.
+    *   Implemented `computeIntelligentPacingAndWeatherPlan`, refactored wizard/studio button listeners, and updated `updateHUD` live tracker loop in `src/main.js`.
+    *   Rebuilt production bundle successfully via `npm run build`.
