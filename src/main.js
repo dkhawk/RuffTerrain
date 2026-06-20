@@ -754,6 +754,21 @@ function formatElevation(meters) {
 }
 
 /**
+ * Helper to format elapsed or split duration in hours into clean text (e.g. 2h 45m or 45m).
+ * @param {number} hrs Duration in hours
+ * @returns {string} Formatted split string
+ */
+function formatSplitTime(hrs) {
+  if (hrs === null || hrs === undefined || isNaN(hrs)) return "--";
+  const h = Math.floor(hrs);
+  const m = Math.round((hrs - h) * 60);
+  if (h > 0) {
+    return `${h}h ${m}m`;
+  }
+  return `${m}m`;
+}
+
+/**
  * Returns a unit-converted numerical temperature value representation from celsius.
  */
 function convertTemperatureValue(celsius) {
