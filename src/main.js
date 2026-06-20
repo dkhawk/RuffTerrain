@@ -212,6 +212,7 @@ const poiDialogPlaybackContinue = document.getElementById("poi-dialog-playback-c
 const poiDialogToggleExpand = document.getElementById("poi-dialog-toggle-expand");
 const poiDialogCloseHeader = document.getElementById("poi-dialog-close-header");
 const poiDialogCloseBottom = document.getElementById("poi-dialog-close-bottom");
+const closePreviewPoiBtn = document.getElementById("close-preview-poi-btn");
 
 const poiTimelinePassesList = document.getElementById("poi-timeline-passes-list");
 const poiServicesIconsRow = document.getElementById("poi-services-icons-row");
@@ -1580,6 +1581,36 @@ function updateHUD(index) {
     hudPlanBox.classList.remove("hidden");
   } else if (hudPlanBox) {
     hudPlanBox.classList.add("hidden");
+  }
+
+  // 8b. Update floating Live Race Plan & Subsegments Tracker HUD Box
+  const liveBox = document.getElementById("live-race-plan-preview-box");
+  if (liveBox && !liveBox.classList.contains("hidden")) {
+    const sName = document.getElementById("live-plan-sector-name");
+    const sSub = document.getElementById("live-plan-subsegment");
+    const sArr = document.getElementById("live-plan-arrival");
+    const sPace = document.getElementById("live-plan-pace");
+    const sWth = document.getElementById("live-plan-weather-tag");
+    if (activeSec) {
+      if (sName) sName.textContent = activeSec.name;
+      if (sArr) sArr.textContent = activeSec.time_window || "--:--";
+      if (sPace) {
+        const pFloor = Math.floor(activeSec.target_pace_min);
+        const pSec = Math.round((activeSec.target_pace_min % 1) * 60).toString().padStart(2, "0");
+        sPace.textContent = `${pFloor}:${pSec} min/mi`;
+      }
+      if (sWth) sWth.textContent = activeSec.weather_summary || "☀️ Daylight";
+      if (sSub) {
+        let matchedSub = "📍 Steady Rolling Traverse";
+        if (activeClimb) matchedSub = `⛰️ Steep Climb Hazard (+${Math.round(activeClimb.gain_m*3.28084)} ft)`;
+        else if (activeSec.subsegments && activeSec.subsegments.length > 0) {
+          matchedSub = activeSec.subsegments[0].label;
+        }
+        sSub.textContent = matchedSub;
+      }
+    } else {
+      if (sName) sName.textContent = "Milestone Traverse";
+    }
   }
 
   if (activeSegmentDisplay) {
@@ -3198,6 +3229,21 @@ function setupEventListeners() {
     });
   }
 
+  const toggleLivePlanBtn = document.getElementById("toggle-live-plan-btn");
+  const liveRacePlanPreviewBox = document.getElementById("live-race-plan-preview-box");
+  const closeLivePlanBoxBtn = document.getElementById("close-live-plan-box-btn");
+
+  if (toggleLivePlanBtn && liveRacePlanPreviewBox) {
+    toggleLivePlanBtn.addEventListener("click", () => {
+      liveRacePlanPreviewBox.classList.toggle("hidden");
+    });
+  }
+  if (closeLivePlanBoxBtn && liveRacePlanPreviewBox) {
+    closeLivePlanBoxBtn.addEventListener("click", () => {
+      liveRacePlanPreviewBox.classList.add("hidden");
+    });
+  }
+
   if (studioTabEdit) {
     studioTabEdit.addEventListener("click", () => {
       studioTabEdit.classList.add("active");
@@ -3778,6 +3824,352 @@ function setupEventListeners() {
     });
   }
 
+/**
+ * Advanced Ultra-Marathon Race Pacing & Diurnal Weather Prediction Engine.
+ * Resolves climbs/descents physics (piecewise gradient energy), continuous arrival windows, 
+ * comprehensive environmental predictions (temp ranges, wind, sky condition, precip), 
+ * thermal throttling slowdowns (>70°F), altitude hypoxia, and goal time conflict resolution.
+ */
+function computeIntelligentPacingAndWeatherPlan(route, opts) {
+  const {
+    cSpd = 2.0,
+    fSpd = 4.5,
+    dSpd = 4.0,
+    steepMode = "cautious",
+    degFactor = 0.15,
+    startTimeStr = "06:00",
+    sunriseStr = "05:45",
+    sunsetStr = "20:30",
+    goalLimitHrs = null,
+    outputListEl = null,
+    totalTimeEl = null,
+    avgPaceEl = null,
+    onSuccessCallback = null
+  } = opts;
+
+  if (!route || !route.trackpoints || route.trackpoints.length === 0) {
+    showToast("Please load a GPX/KML course first!");
+    return;
+  }
+
+  const parseHrs = (timeStr) => {
+    const parts = (timeStr || "06:00").split(":");
+    return parseFloat(parts[0]) + parseFloat(parts[1] || "0") / 60;
+  };
+
+  const formatClock = (hrs) => {
+    const h24 = Math.floor((hrs + 24) % 24);
+    const m = Math.floor((hrs % 1) * 60);
+    const hh = h24 < 10 ? "0" + h24 : h24;
+    const mm = m < 10 ? "0" + m : m;
+    return `${hh}:${mm}`;
+  };
+
+  const startHrs = parseHrs(startTimeStr);
+  const sunriseHrs = parseHrs(sunriseStr);
+  const sunsetHrs = parseHrs(sunsetStr);
+
+  let wpts = [...(route.waypoints || [])].sort((a, b) => a.dist_m - b.dist_m);
+  if (wpts.length < 2) {
+    wpts = [];
+    const totM = route.totalDistance;
+    for (let m = 0; m <= totM; m += 4828) {
+      wpts.push({ name: `Mile ${(m / 1609.34).toFixed(1)}`, dist_m: m });
+    }
+    if (wpts[wpts.length - 1].dist_m < totM) wpts.push({ name: "Finish", dist_m: totM });
+  }
+
+  if (outputListEl) outputListEl.innerHTML = "";
+  const generatedSectors = [];
+  let elapsedHrs = 0;
+
+  for (let i = 0; i < wpts.length - 1; i++) {
+    const wStart = wpts[i];
+    const wEnd = wpts[i + 1];
+    const segDistM = wEnd.dist_m - wStart.dist_m;
+    if (segDistM <= 10) continue;
+
+    const segDistMi = segDistM / 1609.34;
+
+    // Extract slice trackpoints for rigorous grade, gain, and altitude analysis
+    let pStart = route.trackpoints.find(p => p.dist_m >= wStart.dist_m) || route.trackpoints[0];
+    let pEnd = route.trackpoints.find(p => p.dist_m >= wEnd.dist_m) || route.trackpoints[route.trackpoints.length - 1];
+    
+    let eleDiff = 0;
+    let climbGain = 0;
+    let eleSum = 0;
+    let ptCount = 0;
+    if (pStart && pEnd && pStart.index !== undefined && pEnd.index !== undefined) {
+      eleDiff = pEnd.ele - pStart.ele;
+      for (let k = Math.floor(pStart.index); k <= Math.ceil(pEnd.index); k++) {
+        const pt = route.trackpoints[k];
+        if (pt) {
+          eleSum += pt.ele;
+          ptCount++;
+          const nextPt = route.trackpoints[k + 1];
+          if (nextPt && nextPt.ele > pt.ele) climbGain += (nextPt.ele - pt.ele);
+        }
+      }
+    } else if (pStart && pEnd) {
+      eleDiff = pEnd.ele - pStart.ele;
+      climbGain = Math.max(0, eleDiff);
+      eleSum = (pStart.ele + pEnd.ele);
+      ptCount = 2;
+    }
+
+    const avgAltM = ptCount > 0 ? (eleSum / ptCount) : (pStart?.ele || 1500);
+    const avgAltFt = avgAltM * 3.28084;
+    const gradePct = (eleDiff / segDistM) * 100;
+    const climbGainGrade = (climbGain / segDistM) * 100;
+
+    // Piecewise gradient energy scaling
+    let terrainLabel = "Flat / Rolling ➔";
+    let terrainCol = "#38bdf8";
+    let terrainBg = "rgba(56,189,248,0.2)";
+    let baseSpeed = fSpd;
+
+    if (gradePct > 12 || climbGainGrade >= 6.5) {
+      terrainLabel = "Steep Ascent ↗↗";
+      terrainCol = "#f43f5e";
+      terrainBg = "rgba(244,63,94,0.25)";
+      baseSpeed = cSpd * 0.75; // power hiking
+    } else if (gradePct > 4.5 || climbGainGrade >= 3.0) {
+      terrainLabel = "Ascent ↗";
+      terrainCol = "#fb7185";
+      terrainBg = "rgba(251,113,133,0.2)";
+      baseSpeed = cSpd;
+    } else if (climbGainGrade >= 1.5) {
+      terrainLabel = "Moderate Climb ↗";
+      terrainCol = "#fb923c";
+      terrainBg = "rgba(251,146,60,0.2)";
+      baseSpeed = (fSpd + cSpd) / 2;
+    } else if (gradePct < -15) {
+      terrainLabel = "Steep Descent ↘↘";
+      terrainCol = "#f59e0b";
+      terrainBg = "rgba(245,158,11,0.25)";
+      baseSpeed = steepMode === "cautious" ? dSpd * 0.75 : (steepMode === "aggressive" ? dSpd * 1.25 : dSpd);
+    } else if (gradePct < -4.5) {
+      terrainLabel = "Descent ↘";
+      terrainCol = "#34d399";
+      terrainBg = "rgba(52,211,153,0.2)";
+      baseSpeed = dSpd * 1.1; // gravity boost
+    }
+
+    // Altitude Hypoxia Slowdown (>7,500 ft)
+    if (avgAltFt > 7500) {
+      const altPenalty = ((avgAltFt - 7500) / 1000) * 0.025; // 2.5% per 1,000ft above 7.5k
+      baseSpeed *= Math.max(0.75, 1 - altPenalty);
+    }
+
+    // Time window for this sector
+    const prelimSectorHrs = segDistMi / Math.max(baseSpeed, 0.5);
+    const startSectorClockHrs = (startHrs + elapsedHrs) % 24;
+    const endSectorClockHrs = (startHrs + elapsedHrs + prelimSectorHrs) % 24;
+    const midSectorClockHrs = (startHrs + elapsedHrs + prelimSectorHrs / 2) % 24;
+    
+    const startClockStr = formatClock(startHrs + elapsedHrs);
+    const endClockStr = formatClock(startHrs + elapsedHrs + prelimSectorHrs);
+    const timeRangeStr = `${startClockStr} - ${endClockStr}`;
+
+    // Environmental Weather Prediction (Diurnal Mountain Model)
+    const isNight = midSectorClockHrs < sunriseHrs || midSectorClockHrs > sunsetHrs;
+    
+    // Mountain diurnal temp curve (°F)
+    const tempAt = (h) => Math.round(52 + Math.sin(((h - 6.5) / 24) * Math.PI * 2) * 32);
+    const tMin = Math.min(tempAt(startSectorClockHrs), tempAt(endSectorClockHrs));
+    const tMax = Math.max(tempAt(startSectorClockHrs), tempAt(endSectorClockHrs));
+    const tempRangeStr = tMin === tMax ? `${tMin}°F` : `${tMin}°F - ${tMax}°F`;
+
+    const avgTempF = (tMin + tMax) / 2;
+    let windMph = Math.round(5 + (avgAltFt > 9000 ? 14 : 4) + Math.sin(midSectorClockHrs)*4);
+    let windStr = `💨 Wind ${windMph} mph ${avgAltFt > 9500 ? "(High Pass Gusts)" : "(Valley SW)"}`;
+    
+    let skyStr = "☀️ Sunny & Exposed";
+    let precipStr = "💧 5% Precip";
+    if (isNight) {
+      skyStr = "🌙 Clear Starry Night";
+      precipStr = "💧 0% Rain";
+    } else if (midSectorClockHrs >= 12.5 && midSectorClockHrs <= 17.5 && avgAltFt > 8500) {
+      skyStr = "⛅ Afternoon Convection Clouds";
+      precipStr = "⚡ 30% Chance Mountain T-Storm";
+    } else if (midSectorClockHrs < 9) {
+      skyStr = "🌤️ Crisp Morning Sun";
+    }
+
+    // Thermal Throttling Physics (>70°F)
+    let thermalSlowdownPct = 0;
+    let thermalTag = "🟢 Cool & Optimal";
+    let thermalCol = "#34d399";
+
+    if (avgTempF >= 86) {
+      thermalSlowdownPct = 25;
+      thermalTag = `🔴 Extreme Heat (${avgTempF}°F! +25% Throttling Slowdown)`;
+      thermalCol = "#ef4444";
+    } else if (avgTempF >= 78) {
+      thermalSlowdownPct = 16;
+      thermalTag = `🟠 Very Hot (${avgTempF}°F +16% Pace Slowdown)`;
+      thermalCol = "#f97316";
+    } else if (avgTempF >= 70) {
+      thermalSlowdownPct = 8;
+      thermalTag = `🟡 Hot (${avgTempF}°F +8% Thermal Slowdown)`;
+      thermalCol = "#eab308";
+    } else if (isNight) {
+      thermalSlowdownPct = Math.round(degFactor * 100);
+      thermalTag = `🌙 Headlamp Darkness (+${thermalSlowdownPct}% Pace Penalty)`;
+      thermalCol = "#a855f7";
+    }
+
+    const actualSpeedMph = Math.max(0.4, baseSpeed * (1 - thermalSlowdownPct / 100));
+    const actualSectorHrs = segDistMi / actualSpeedMph;
+    elapsedHrs += actualSectorHrs;
+
+    const actualEndClockStr = formatClock(startHrs + elapsedHrs);
+    const finalTimeRangeStr = `${startClockStr} - ${actualEndClockStr}`;
+    const paceMinMi = 60 / actualSpeedMph;
+
+    // Generate granular terrain subsegments (e.g. steep climbs & descents)
+    const subsegments = [];
+    if (pStart && pEnd && pStart.index !== undefined && pEnd.index !== undefined) {
+      const startIdx = Math.floor(pStart.index);
+      const endIdx = Math.ceil(pEnd.index);
+      const stepIdx = Math.max(5, Math.floor((endIdx - startIdx) / 4));
+      for (let s = startIdx; s < endIdx; s += stepIdx) {
+        const sNext = Math.min(endIdx, s + stepIdx);
+        const ptA = route.trackpoints[s];
+        const ptB = route.trackpoints[sNext];
+        if (ptA && ptB) {
+          const dMi = (ptB.dist_m - ptA.dist_m) / 1609.34;
+          if (dMi > 0.05) {
+            const eDiffFt = (ptB.ele - ptA.ele) * 3.28084;
+            const gPct = (eDiffFt / (dMi * 5280)) * 100;
+            let lbl = "📍 Rolling Traverse";
+            let c = "#94a3b8";
+            if (gPct > 8) { lbl = `⛰️ Steep Ascent Hazard (+${gPct.toFixed(1)}%)`; c = "#f43f5e"; }
+            else if (gPct > 3) { lbl = `↗ Climb (+${gPct.toFixed(1)}%)`; c = "#fb7185"; }
+            else if (gPct < -12) { lbl = `↘ Technical Quad Drop (${gPct.toFixed(1)}%)`; c = "#f59e0b"; }
+            else if (gPct < -3) { lbl = `↘ Swift Descent (${gPct.toFixed(1)}%)`; c = "#34d399"; }
+            subsegments.push({ label: lbl, dist: dMi.toFixed(1), col: c });
+          }
+        }
+      }
+    }
+
+    const card = document.createElement("div");
+    card.style.background = "rgba(15, 23, 42, 0.65)";
+    card.style.border = "1px solid rgba(255, 255, 255, 0.12)";
+    card.style.padding = "10px 14px";
+    card.style.borderRadius = "10px";
+    card.style.display = "flex";
+    card.style.flexDirection = "column";
+    card.style.gap = "8px";
+    card.style.boxShadow = "0 4px 12px rgba(0, 0, 0, 0.3)";
+
+    card.innerHTML = `
+      <div style="display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid rgba(255,255,255,0.08); padding-bottom: 6px;">
+        <span style="font-size: 13px; font-weight: 800; color: #60a5fa;">${wStart.name} ➔ ${wEnd.name}</span>
+        <span style="font-size: 10px; padding: 2px 8px; border-radius: 12px; background: ${terrainBg}; color: ${terrainCol}; font-weight: 700;">${terrainLabel}</span>
+      </div>
+      
+      <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 6px; font-size: 11px; color: var(--text-secondary);">
+        <div>📏 Dist: <strong style="color:#fff;">${segDistMi.toFixed(1)} mi</strong> (${gradePct > 0 ? "+"+gradePct.toFixed(1) : gradePct.toFixed(1)}% grade)</div>
+        <div>⛰️ Avg Elevation: <strong style="color:#fff;">${Math.round(avgAltFt).toLocaleString()} ft</strong></div>
+      </div>
+
+      <div style="background: rgba(0,0,0,0.35); padding: 6px 10px; border-radius: 6px; border: 1px solid rgba(255,255,255,0.05); display: flex; flex-direction: column; gap: 4px; font-size: 11px;">
+        <div style="display: flex; justify-content: space-between; align-items: center;">
+          <span style="color: #f8fafc; font-weight: 700;">⏰ Time Window: ${finalTimeRangeStr}</span>
+          <span style="font-size: 10px; font-weight: 700; color: ${thermalCol};">${thermalTag}</span>
+        </div>
+        <div style="display: flex; flex-wrap: wrap; gap: 10px; color: #94a3b8; font-size: 10px;">
+          <span>🌡️ ${tempRangeStr}</span>
+          <span>${windStr}</span>
+          <span>${skyStr}</span>
+          <span>${precipStr}</span>
+        </div>
+      </div>
+
+      ${subsegments.length > 0 ? `
+        <div style="background: rgba(255,255,255,0.02); padding: 6px 8px; border-radius: 6px; border: 1px solid rgba(255,255,255,0.04); display: flex; flex-direction: column; gap: 3px;">
+          <span style="font-size: 9px; font-weight: 700; color: #64748b; text-transform: uppercase;">⛰️ Granular Subsegments</span>
+          <div style="display: flex; flex-direction: column; gap: 2px;">
+            ${subsegments.map(sub => `
+              <div style="display: flex; justify-content: space-between; font-size: 10px;">
+                <span style="color: ${sub.col}; font-weight: 600;">${sub.label}</span>
+                <span style="color: #cbd5e1;">${sub.dist} mi</span>
+              </div>
+            `).join("")}
+          </div>
+        </div>
+      ` : ""}
+
+      <div style="display: flex; justify-content: space-between; align-items: center; font-size: 11px; padding-top: 2px;">
+        <span>Arrive: <strong style="color:#fff;">${actualEndClockStr}</strong> (+${elapsedHrs.toFixed(2)}h total)</span>
+        <span>Simulated Pace: <strong style="color:#34d399; font-size: 12px;">${Math.floor(paceMinMi)}:${Math.floor((paceMinMi%1)*60).toString().padStart(2,"0")} /mi</strong> (${actualSpeedMph.toFixed(1)} mph)</span>
+      </div>
+    `;
+
+    if (outputListEl) outputListEl.appendChild(card);
+
+    generatedSectors.push({
+      start_dist_m: wStart.dist_m,
+      end_dist_m: wEnd.dist_m,
+      name: `${wStart.name} to ${wEnd.name}`,
+      time_window: finalTimeRangeStr,
+      weather_summary: `${tempRangeStr} | ${windStr} | ${skyStr}`,
+      target_pace_min: paceMinMi,
+      subsegments: subsegments,
+      strategy: `Hold ${actualSpeedMph.toFixed(1)} mph (${thermalTag})`
+    });
+  }
+
+  // Conflict Resolution Banner: Goal Time vs Predicted Time
+  if (outputListEl && goalLimitHrs !== null && !isNaN(goalLimitHrs) && goalLimitHrs > 0) {
+    const diffHrs = elapsedHrs - goalLimitHrs;
+    const banner = document.createElement("div");
+    banner.style.padding = "10px 14px";
+    banner.style.borderRadius = "8px";
+    banner.style.marginBottom = "6px";
+    banner.style.fontSize = "11px";
+    banner.style.lineHeight = "1.4";
+    banner.style.display = "flex";
+    banner.style.flexDirection = "column";
+    banner.style.gap = "4px";
+
+    if (diffHrs <= 0) {
+      banner.style.background = "rgba(16, 185, 129, 0.2)";
+      banner.style.border = "1px solid rgba(16, 185, 129, 0.5)";
+      banner.style.color = "#a7f3d0";
+      banner.innerHTML = `
+        <div style="font-weight: 800; font-size: 12px; color: #34d399;">✔️ GOAL TIME CONFLICT RESOLVED: ON TRACK</div>
+        <div>Your simulated environmental finishing time (<strong>${elapsedHrs.toFixed(2)} hrs</strong>) safely satisfies your finishing cutoff limit of <strong>${goalLimitHrs.toFixed(2)} hrs</strong> (${Math.abs(diffHrs*60).toFixed(0)} mins buffer).</div>
+      `;
+    } else {
+      banner.style.background = "rgba(239, 68, 68, 0.22)";
+      banner.style.border = "1px solid rgba(239, 68, 68, 0.6)";
+      banner.style.color = "#fecaca";
+      banner.innerHTML = `
+        <div style="font-weight: 800; font-size: 12px; color: #f87171;">⚠️ GOAL TIME CONFLICT DETECTED: PACE DEFICIT</div>
+        <div>Your target pace profile combined with thermal heat throttling (&gt;70°F) and mountain climbs predicts a finishing time of <strong>${elapsedHrs.toFixed(2)} hrs</strong>, which exceeds your goal finishing limit of <strong>${goalLimitHrs.toFixed(2)} hrs</strong> by <strong>+${(diffHrs*60).toFixed(0)} mins</strong>! You must increase your flat/climb speeds or minimize stopped aid station duration to resolve this conflict.</div>
+      `;
+    }
+    outputListEl.insertBefore(banner, outputListEl.firstChild);
+  }
+
+  if (totalTimeEl) totalTimeEl.textContent = `${elapsedHrs.toFixed(2)} Hrs`;
+  if (avgPaceEl) {
+    const avgPace = (elapsedHrs * 60) / (route.totalDistance / 1609.34);
+    avgPaceEl.textContent = `${Math.floor(avgPace)}:${Math.floor((avgPace%1)*60).toString().padStart(2,"0")} min/mi`;
+  }
+
+  route.executionPlan = {
+    startTime: startTimeStr,
+    targetDurationHrs: elapsedHrs,
+    sectors: generatedSectors
+  };
+
+  if (onSuccessCallback) onSuccessCallback();
+}
+
   if (wizGeneratePlanBtn) {
     wizGeneratePlanBtn.addEventListener("click", () => {
       if (!activeRoute) {
@@ -3790,166 +4182,25 @@ function setupEventListeners() {
       const dSpd = parseFloat(document.getElementById("wiz-desc-spd")?.value || "4.0");
       const steepMode = document.getElementById("wiz-steep-handling")?.value || "cautious";
       const degFactor = parseFloat(wizPenaltySlider?.value || "15") / 100;
-      
-      const parseHrs = (timeStr) => {
-        const parts = (timeStr || "06:00").split(":");
-        return parseFloat(parts[0]) + parseFloat(parts[1] || "0") / 60;
-      };
-      const formatClock = (hrs) => {
-        const h24 = Math.floor((hrs + 24) % 24);
-        const m = Math.floor((hrs % 1) * 60);
-        const hh = h24 < 10 ? "0" + h24 : h24;
-        const mm = m < 10 ? "0" + m : m;
-        return `${hh}:${mm}`;
-      };
+      const startTimeStr = document.getElementById("wiz-start-time")?.value || "06:00";
+      const sunriseStr = document.getElementById("wiz-sunrise-time")?.value || "05:45";
+      const sunsetStr = document.getElementById("wiz-sunset-time")?.value || "20:30";
+      const goalLimitHrs = parseFloat(document.getElementById("wiz-goal-hrs")?.value || "12.0");
+      const outputListEl = document.getElementById("wiz-segments-output-list");
+      const totalTimeEl = document.getElementById("wiz-tot-time-disp");
+      const avgPaceEl = document.getElementById("wiz-avg-pace-disp");
 
-      const startHrs = parseHrs(document.getElementById("wiz-start-time")?.value || "06:00");
-      const sunriseHrs = parseHrs(document.getElementById("wiz-sunrise-time")?.value || "05:45");
-      const sunsetHrs = parseHrs(document.getElementById("wiz-sunset-time")?.value || "20:30");
-
-      let elapsedHrs = 0;
-      let wpts = [...(activeRoute.waypoints || [])].sort((a,b) => a.dist_m - b.dist_m);
-      if (wpts.length < 2) {
-        wpts = [];
-        const totM = activeRoute.totalDistance;
-        for (let m = 0; m <= totM; m += 4828) {
-          wpts.push({ name: `Mile ${(m / 1609.34).toFixed(1)}`, dist_m: m });
+      computeIntelligentPacingAndWeatherPlan(activeRoute, {
+        cSpd, fSpd, dSpd, steepMode, degFactor,
+        startTimeStr, sunriseStr, sunsetStr, goalLimitHrs,
+        outputListEl, totalTimeEl, avgPaceEl,
+        onSuccessCallback: () => {
+          wizardStep3?.classList.add("hidden");
+          wizardStep4?.classList.remove("hidden");
+          if (wizardStepIndicator) wizardStepIndicator.textContent = "Step 4 of 4: Generated Pacing Plan";
+          showToast("Intelligent Diurnal Race Plan Generated!");
         }
-        if (wpts[wpts.length - 1].dist_m < totM) wpts.push({ name: "Finish", dist_m: totM });
-      }
-
-      const outputList = document.getElementById("wiz-segments-output-list");
-      if (outputList) outputList.innerHTML = "";
-      const generatedSectors = [];
-
-      for (let i = 0; i < wpts.length - 1; i++) {
-        const wStart = wpts[i];
-        const wEnd = wpts[i + 1];
-        const segDistM = wEnd.dist_m - wStart.dist_m;
-        if (segDistM <= 10) continue;
-
-        const segDistMi = segDistM / 1609.34;
-        let pStart = activeRoute.trackpoints.find(p => p.dist_m >= wStart.dist_m) || activeRoute.trackpoints[0];
-        let pEnd = activeRoute.trackpoints.find(p => p.dist_m >= wEnd.dist_m) || activeRoute.trackpoints[activeRoute.trackpoints.length - 1];
-        
-        let eleDiff = 0;
-        let climbGain = 0;
-        if (pStart && pEnd) {
-          eleDiff = pEnd.ele - pStart.ele;
-          if (pStart.index !== undefined && pEnd.index !== undefined) {
-            for (let k = pStart.index; k < pEnd.index; k++) {
-              const nextPt = activeRoute.trackpoints[k + 1];
-              const curPt = activeRoute.trackpoints[k];
-              if (nextPt && curPt) {
-                const diff = nextPt.ele - curPt.ele;
-                if (diff > 0) climbGain += diff;
-              }
-            }
-          }
-        }
-
-        const gradePct = (eleDiff / segDistM) * 100;
-        const climbGainGrade = (climbGain / segDistM) * 100;
-
-        let terrainLabel = "Flat ➔";
-        let terrainCol = "#60a5fa";
-        let terrainBg = "rgba(59,130,246,0.2)";
-        let baseSpeed = fSpd;
-
-        if (gradePct > 5.5 || climbGainGrade >= 3.5) {
-          terrainLabel = "Ascent ↗";
-          terrainCol = "#f43f5e";
-          terrainBg = "rgba(244,63,94,0.2)";
-          baseSpeed = cSpd;
-        } else if (climbGainGrade >= 1.5) {
-          terrainLabel = "Moderate Climb ↗";
-          terrainCol = "#f43f5e";
-          terrainBg = "rgba(244,63,94,0.15)";
-          baseSpeed = (fSpd + cSpd) / 2;
-        } else if (gradePct < -15) {
-          terrainLabel = "Steep Descent ↘";
-          terrainCol = "#f59e0b";
-          terrainBg = "rgba(245,158,11,0.2)";
-          baseSpeed = steepMode === "cautious" ? dSpd * 0.75 : (steepMode === "aggressive" ? dSpd * 1.15 : dSpd);
-        } else if (gradePct < -5.5) {
-          terrainLabel = "Descent ↘";
-          terrainCol = "#10b981";
-          terrainBg = "rgba(16,185,129,0.2)";
-          baseSpeed = dSpd;
-        }
-
-        const curClock = (startHrs + elapsedHrs) % 24;
-        let isHeat = curClock >= 12 && curClock <= 16;
-        let isNight = curClock > sunsetHrs || curClock < sunriseHrs;
-
-        let finalSpeed = Math.max(baseSpeed, 0.5);
-        let sunTag = "☀️ Daylight";
-        if (isHeat) {
-          sunTag = "🔥 Midday Heat (-" + (degFactor*100).toFixed(0) + "% Pace)";
-          finalSpeed = finalSpeed * (1 - degFactor);
-        } else if (isNight) {
-          sunTag = "🌙 Darkness / Night (-" + (degFactor*100).toFixed(0) + "% Pace)";
-          finalSpeed = finalSpeed * (1 - degFactor);
-        }
-
-        const segHrs = segDistMi / finalSpeed;
-        elapsedHrs += segHrs;
-        const paceMinMi = 60 / finalSpeed;
-
-        const card = document.createElement("div");
-        card.style.background = "rgba(0,0,0,0.4)";
-        card.style.border = "1px solid rgba(255,255,255,0.1)";
-        card.style.padding = "10px 12px";
-        card.style.borderRadius = "8px";
-        card.style.display = "flex";
-        card.style.flexDirection = "column";
-        card.style.gap = "6px";
-        card.innerHTML = `
-          <div style="display: flex; justify-content: space-between; align-items: center;">
-            <strong style="font-size: 12px; color: #60a5fa;">${wStart.name} ➔ ${wEnd.name}</strong>
-            <span style="font-size: 10px; padding: 2px 8px; border-radius: 12px; background: ${terrainBg}; color: ${terrainCol}; font-weight: bold;">${terrainLabel}</span>
-          </div>
-          <div style="display: flex; justify-content: space-between; align-items: center; font-size: 11px; color: var(--text-secondary);">
-            <span>Dist: <strong>${segDistMi.toFixed(1)} mi</strong> (${gradePct > 0 ? "+"+gradePct.toFixed(1) : gradePct.toFixed(1)}% grade)</span>
-            <span style="color: #f59e0b;">${sunTag}</span>
-          </div>
-          <div style="display: flex; justify-content: space-between; align-items: center; font-size: 11px; border-top: 1px dashed rgba(255,255,255,0.1); padding-top: 6px;">
-            <span>Arrive: <strong style="color:#fff;">${formatClock(startHrs + elapsedHrs)}</strong> (+${elapsedHrs.toFixed(1)}h)</span>
-            <span>Target Pace: <strong style="color:#34d399;">${Math.floor(paceMinMi)}:${Math.floor((paceMinMi%1)*60).toString().padStart(2,"0")} min/mi</strong> (${finalSpeed.toFixed(1)} mph)</span>
-          </div>
-        `;
-        if (outputList) outputList.appendChild(card);
-        generatedSectors.push({
-          start_dist_m: wStart.dist_m,
-          end_dist_m: wEnd.dist_m,
-          name: `${wStart.name} to ${wEnd.name}`,
-          target_pace_min: paceMinMi,
-          strategy: `Hold ${finalSpeed.toFixed(1)} mph in ${sunTag}`
-        });
-      }
-
-      const totDisp = document.getElementById("wiz-tot-time-disp");
-      const avgDisp = document.getElementById("wiz-avg-pace-disp");
-      if (totDisp) totDisp.textContent = `${elapsedHrs.toFixed(2)} Hrs`;
-      if (avgDisp) {
-        const avgPace = (elapsedHrs * 60) / (activeRoute.totalDistance / 1609.34);
-        avgDisp.textContent = `${Math.floor(avgPace)}:${Math.floor((avgPace%1)*60).toString().padStart(2,"0")} min/mi`;
-      }
-
-      const startDateVal = document.getElementById("wiz-start-date")?.value || "2026-06-20";
-      const startTimeVal = document.getElementById("wiz-start-time")?.value || "06:00";
-      const combinedStartStr = `${startDateVal}T${startTimeVal}`;
-
-      tempExecutionPlan = {
-        startTime: combinedStartStr,
-        targetDurationHrs: elapsedHrs,
-        sectors: generatedSectors
-      };
-
-      wizardStep3?.classList.add("hidden");
-      wizardStep4?.classList.remove("hidden");
-      if (wizardStepIndicator) wizardStepIndicator.textContent = "Step 4 of 4: Generated Pacing Plan";
-      showToast("Race Plan Generated!");
+      });
     });
   }
 
@@ -4193,155 +4444,29 @@ function setupEventListeners() {
         return;
       }
 
-      const parseHrs = (timeStr) => {
-        const parts = (timeStr || "06:00").split(":");
-        return parseFloat(parts[0]) + parseFloat(parts[1] || "0") / 60;
-      };
-
-      const formatClock = (hrs) => {
-        const h24 = Math.floor((hrs + 24) % 24);
-        const m = Math.floor((hrs % 1) * 60);
-        const hh = h24 < 10 ? "0" + h24 : h24;
-        const mm = m < 10 ? "0" + m : m;
-        return `${hh}:${mm}`;
-      };
-
-      const cSpeed = parseFloat(planPaceClimb?.value || "2.0");
-      const fSpeed = parseFloat(planPaceFlat?.value || "4.5");
-      const dSpeed = parseFloat(planPaceDesc?.value || "4.0");
+      const cSpd = parseFloat(planPaceClimb?.value || "2.0");
+      const fSpd = parseFloat(planPaceFlat?.value || "4.5");
+      const dSpd = parseFloat(planPaceDesc?.value || "4.0");
       const steepMode = planSteepDescent?.value || "cautious";
       const degFactor = parseFloat(planDegradationSlider?.value || "15") / 100;
-      
-      const startHrs = parseHrs(planStartTime?.value || "06:00");
-      const sunriseHrs = parseHrs(planSunriseTime?.value || "05:45");
-      const sunsetHrs = parseHrs(planSunsetTime?.value || "20:30");
+      const startTimeStr = planStartTime?.value || "06:00";
+      const sunriseStr = planSunriseTime?.value || "05:45";
+      const sunsetStr = planSunsetTime?.value || "20:30";
+      const goalLimitHrs = parseFloat(document.getElementById("plan-goal-hrs")?.value || "12.0");
+      const outputListEl = planSegmentsList;
+      const totalTimeEl = planTotalTimeDisp;
+      const avgPaceEl = planAvgPaceDisp;
 
-      let elapsedHrs = 0;
-      let wpts = [...(activeRoute.waypoints || [])];
-      wpts.sort((a, b) => a.dist_m - b.dist_m);
-
-      if (wpts.length < 2) {
-        // Fallback milestone chunks if no aid stations loaded
-        wpts = [];
-        const totM = activeRoute.totalDistance;
-        for (let m = 0; m <= totM; m += 4828) {
-          wpts.push({ name: `Mile ${(m / 1609.34).toFixed(1)}`, dist_m: m });
+      computeIntelligentPacingAndWeatherPlan(activeRoute, {
+        cSpd, fSpd, dSpd, steepMode, degFactor,
+        startTimeStr, sunriseStr, sunsetStr, goalLimitHrs,
+        outputListEl, totalTimeEl, avgPaceEl,
+        onSuccessCallback: () => {
+          if (plannerOutputContainer) plannerOutputContainer.classList.remove("hidden");
+          showToast("Generated Intelligent Pacing & Weather Plan!");
+          onExecutionPlanChanged();
         }
-        if (wpts[wpts.length - 1].dist_m < totM) {
-          wpts.push({ name: "Finish", dist_m: totM });
-        }
-      }
-
-      if (planSegmentsList) planSegmentsList.innerHTML = "";
-      const generatedSectors = [];
-
-      for (let i = 0; i < wpts.length - 1; i++) {
-        const wStart = wpts[i];
-        const wEnd = wpts[i + 1];
-        const segDistM = wEnd.dist_m - wStart.dist_m;
-        if (segDistM <= 10) continue;
-
-        const segDistMi = segDistM / 1609.34;
-
-        // Determine grade from trackpoints in slice
-        let eleDiff = 0;
-        let pStart = activeRoute.trackpoints.find(p => p.dist_m >= wStart.dist_m) || activeRoute.trackpoints[0];
-        let pEnd = activeRoute.trackpoints.find(p => p.dist_m >= wEnd.dist_m) || activeRoute.trackpoints[activeRoute.trackpoints.length - 1];
-        if (pStart && pEnd) {
-          eleDiff = pEnd.ele - pStart.ele;
-        }
-        const gradePct = (eleDiff / segDistM) * 100;
-
-        let terrainLabel = "Flat ➔";
-        let terrainCol = "#60a5fa";
-        let terrainBg = "rgba(59,130,246,0.2)";
-        let baseSpeed = fSpeed;
-
-        if (gradePct > 5.5) {
-          terrainLabel = "Ascent ↗";
-          terrainCol = "#f43f5e";
-          terrainBg = "rgba(244,63,94,0.2)";
-          baseSpeed = cSpeed;
-        } else if (gradePct < -15) {
-          terrainLabel = "Steep Descent ↘";
-          terrainCol = "#f59e0b";
-          terrainBg = "rgba(245,158,11,0.2)";
-          baseSpeed = steepMode === "cautious" ? dSpeed * 0.75 : (steepMode === "aggressive" ? dSpeed * 1.15 : dSpeed);
-        } else if (gradePct < -5.5) {
-          terrainLabel = "Descent ↘";
-          terrainCol = "#10b981";
-          terrainBg = "rgba(16,185,129,0.2)";
-          baseSpeed = dSpeed;
-        }
-
-        const curClock = (startHrs + elapsedHrs) % 24;
-        let isHeat = curClock >= 12 && curClock <= 16;
-        let isNight = curClock > sunsetHrs || curClock < sunriseHrs;
-
-        let finalSpeed = Math.max(baseSpeed, 0.5);
-        let sunTag = "☀️ Daylight";
-        if (isHeat) {
-          sunTag = "🔥 Midday Heat (-" + (degFactor*100).toFixed(0) + "% Pace)";
-          finalSpeed = finalSpeed * (1 - degFactor);
-        } else if (isNight) {
-          sunTag = "🌙 Darkness / Night (-" + (degFactor*100).toFixed(0) + "% Pace)";
-          finalSpeed = finalSpeed * (1 - degFactor);
-        }
-
-        const segHrs = segDistMi / finalSpeed;
-        elapsedHrs += segHrs;
-
-        const paceMinMi = 60 / finalSpeed;
-        const arriveClock = formatClock(startHrs + elapsedHrs);
-
-        const card = document.createElement("div");
-        card.style.background = "rgba(255,255,255,0.03)";
-        card.style.border = "1px solid rgba(255,255,255,0.08)";
-        card.style.padding = "8px 10px";
-        card.style.borderRadius = "8px";
-        card.style.display = "flex";
-        card.style.flexDirection = "column";
-        card.style.gap = "4px";
-
-        card.innerHTML = `
-          <div style="display: flex; justify-content: space-between; align-items: center;">
-            <span style="font-size: 11px; font-weight: bold; color: #60a5fa;">${wStart.name} ➔ ${wEnd.name}</span>
-            <span style="font-size: 9px; padding: 2px 6px; border-radius: 4px; background: ${terrainBg}; color: ${terrainCol}; font-weight: bold;">${terrainLabel}</span>
-          </div>
-          <div style="display: flex; justify-content: space-between; align-items: center; font-size: 10px; color: var(--text-secondary);">
-            <span>Dist: <strong>${segDistMi.toFixed(1)} mi</strong> (${gradePct > 0 ? "+"+gradePct.toFixed(1) : gradePct.toFixed(1)}% grade)</span>
-            <span style="color: #f59e0b;">${sunTag}</span>
-          </div>
-          <div style="display: flex; justify-content: space-between; align-items: center; font-size: 10px; border-top: 1px dashed rgba(255,255,255,0.08); padding-top: 4px;">
-            <span>Arrive: <strong>${arriveClock}</strong> (+${elapsedHrs.toFixed(1)}h)</span>
-            <span>Target: <strong>${Math.floor(paceMinMi)}:${Math.floor((paceMinMi%1)*60).toString().padStart(2,"0")} min/mi</strong> (${finalSpeed.toFixed(1)} mph)</span>
-          </div>
-        `;
-
-        if (planSegmentsList) planSegmentsList.appendChild(card);
-
-        generatedSectors.push({
-          start_dist_m: wStart.dist_m,
-          end_dist_m: wEnd.dist_m,
-          name: `${wStart.name} to ${wEnd.name}`,
-          target_pace_min: paceMinMi,
-          strategy: `Hold ${finalSpeed.toFixed(1)} mph in ${sunTag}`
-        });
-      }
-
-      if (planTotalTimeDisp) planTotalTimeDisp.textContent = `${elapsedHrs.toFixed(2)} Hrs`;
-      const avgPace = (elapsedHrs * 60) / (activeRoute.totalDistance / 1609.34);
-      if (planAvgPaceDisp) planAvgPaceDisp.textContent = `${Math.floor(avgPace)}:${Math.floor((avgPace%1)*60).toString().padStart(2,"0")} min/mi`;
-
-      activeRoute.executionPlan = {
-        startTime: planStartTime?.value || "06:00",
-        targetDurationHrs: elapsedHrs,
-        sectors: generatedSectors
-      };
-
-      if (plannerOutputContainer) plannerOutputContainer.classList.remove("hidden");
-      showToast("Generated Segmented Race Plan!");
-      onExecutionPlanChanged();
+      });
     });
   }
 
@@ -5365,6 +5490,19 @@ function setupEventListeners() {
     });
   }
 
+  if (closePreviewPoiBtn) {
+    closePreviewPoiBtn.addEventListener("click", () => {
+      if (previewPoiBanner) previewPoiBanner.classList.add("hidden");
+      if (autoResumeTimeout) {
+        clearTimeout(autoResumeTimeout);
+        autoResumeTimeout = null;
+      }
+      if (pauseDuration > 0 && !isPlaying) {
+        startPlayback();
+      }
+    });
+  }
+
   // Edit Waypoint Button Handler
   if (poiDialogEditBtn) {
     poiDialogEditBtn.addEventListener("click", () => {
@@ -6058,6 +6196,16 @@ function setupKeyboardShortcuts() {
 
       case "Escape":
         // Close overlays and dialogs
+        if (previewPoiBanner && !previewPoiBanner.classList.contains("hidden")) {
+          previewPoiBanner.classList.add("hidden");
+          if (autoResumeTimeout) {
+            clearTimeout(autoResumeTimeout);
+            autoResumeTimeout = null;
+          }
+          if (pauseDuration > 0 && !isPlaying) {
+            startPlayback();
+          }
+        }
         if (shortcutsOverlay && !shortcutsOverlay.classList.contains("hidden")) {
           shortcutsOverlay.classList.add("hidden");
         }

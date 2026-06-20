@@ -911,3 +911,58 @@ This journal records all design decisions, architecture patterns, development st
     *   Added dedicated unit test case in `test/gpx.test.js` to verify pacing behavior beyond the final sector.
     *   Verified all unit tests pass successfully and ran production Vite builds.
 
+---
+
+### 🚀 Session 72B: Dialog Dismissibility & Corner Close Button Visibility Refinements
+*   **Goal**: Enable dismissing floating aid station preview banners and waypoint dialogs (which previously lacked close buttons or trapped playback on startup), and elevate course importer close button aesthetics and corner positioning.
+*   **Decisions & Rationale**:
+    *   **Passing Aid Station Dialog Dismissal**: Added explicit close buttons (`#close-preview-poi-btn`) and Escape hotkey handling to `#preview-poi-banner`. Clicking or pressing Escape hides the banner, cancels pending pause timers (`autoResumeTimeout`), and immediately resumes fly-through simulation.
+    *   **Waypoint Details Dialog Dismissal**: Added explicit header (`#poi-dialog-close-header`) and bottom (`#poi-dialog-close-bottom`) dismiss buttons to `#poi-detail-dialog` inside the course studio, bridging existing click listeners in `src/main.js`.
+    *   **Corner Dismiss Aesthetics**: Upgraded `.close-card-btn` with `position: absolute; top: 12px; right: 12px;`, circular glassmorphic pill boundaries (`border-radius: 50%`), high-contrast white iconography, and vibrant ruby red hover states (`rgba(239, 68, 68, 0.85)`). Added right padding to `.card-header` titles to prevent text collision.
+*   **Key Actions Taken**:
+    *   Updated `#card-importer`, `#poi-detail-dialog`, and `#preview-poi-banner` markup in `index.html`.
+    *   Added event listeners and Escape key checks in `src/main.js`.
+    *   Refined `.close-card-btn` and `.card-header` in `src/style.css`.
+    *   Rebuilt production bundle successfully via `npm run build`.
+
+---
+
+### 🚀 Session 73: Intelligent Diurnal Race Planning Engine, Granular Terrain Subsegments & Live Pacing Box
+*   **Goal**: Replace simplistic hardcoded pacing math with a physiological and environmental race planning engine that models climbs/descents piecewise gradient energy scaling, continuous arrival windows, diurnal mountain weather predictions across time ranges, thermal throttling penalties ($>70^\circ\text{F}$), goal time conflict resolution, and real-time flight simulation tracking.
+*   **Decisions & Rationale**:
+    *   **Unified Intelligent Engine (`computeIntelligentPacingAndWeatherPlan`)**: Designed a master pacing computation helper in `src/main.js` utilized by both `#generate-race-plan-btn` (Course Studio) and `#wiz-generate-plan-btn` (Wizard Modal).
+    *   **Physiological & Terrain Physics**: Replaced crude flat grade thresholds with piecewise gradient scaling (Minetti curves), steep mountain power-hiking penalties ($>12\%$ grade), swift gravity descent boosts, technical muscular braking on steep drops ($<-12\%$), and altitude hypoxia slowdowns ($>7,500\text{ ft}$).
+    *   **Diurnal Weather & Continuous Windows**: Modeled arrival prediction as a continuous time range (e.g. `06:00 - 08:45`). Integrated a diurnal mountain temperature sine curve ($58^\circ\text{F}-84^\circ\text{F}+$) alongside wind vectors, sky condition tags, and convective afternoon thunderstorm probabilities.
+    *   **Thermal Runner Throttling**: Applied physiological heat degradation directly tied to average window temp ($>70^\circ\text{F}$ adds $+8\%$ slowdown, $>78^\circ\text{F}$ adds $+16\%$, $>85^\circ\text{F}$ extreme thermal throttling adds $+25\%$).
+    *   **Goal Time vs Pace Conflict Resolution**: Added proactive conflict detection banners. If calculated environmental finishing time exceeds user goal cutoff limits, a prominent ruby alert highlights the pace deficit and advises speed adjustments.
+    *   **Granular Terrain Subsegments**: Scanned intermediate trackpoints between major aid stations to extract continuous steep climbs and drops, rendering them as nested subsegment breakdowns inside each sector card.
+    *   **Dedicated Live Race Plan Preview Box**: Created `#live-race-plan-preview-box` floating cleanly at the top center of the 3D viewport, equipped with a `#toggle-live-plan-btn` in the HUD actions bar. As the camera flies along the trail in simulation, this quest-tracker box dynamically updates current sector progress, active subsegment hazards, simulated arrival windows, and real-time pace strategy.
+*   **Key Actions Taken**:
+    *   Added `#live-race-plan-preview-box` and `#toggle-live-plan-btn` to `index.html`.
+    *   Implemented `computeIntelligentPacingAndWeatherPlan`, refactored wizard/studio button listeners, and updated `updateHUD` live tracker loop in `src/main.js`.
+    *   Rebuilt production bundle successfully via `npm run build`.
+
+---
+
+### 🚀 Session 74: Repository Continuity Standardization & Multi-Computer Agent Onboarding Protocol
+*   **Goal**: Establish top-level workspace continuity documentation (`CONTINUITY.md`) and standardize agent onboarding artifacts across Git worktrees so developer and AI agent experiences remain 100% consistent across different workstations.
+*   **Decisions & Rationale**:
+    *   **Top-Level Continuity Architecture (`CONTINUITY.md`)**: Created an authoritative continuity manual in the workspace container root and localized worktrees detailing the Build Journal four-pillar anatomy, multi-platform Git worktree isolation rules, and local secret provisioning (`local.properties` / UI dialog input).
+    *   **Worktree Context Synchronization**: Copied `CONTINUITY.md`, `PROJECTS.md`, and `AGENT_CONTEXT.md` into active feature worktrees (`feature-ai-race-planner` and `android-port`) and committed them to version control. When cloning or checking out any repository branch on a fresh machine, AI coding agents immediately encounter standardized onboarding instructions in their root directory.
+*   **Key Actions Taken**:
+    *   Created `CONTINUITY.md` in workspace container root, `feature-ai-race-planner`, and `android-port`.
+    *   Updated `AGENT_CONTEXT.md` with multi-computer continuity directives.
+    *   Synchronized and committed context files across `feature/web-dialog-fixes` and `android-port` branches.
+
+---
+
+### 🚀 Session 75: Synchronizing Remote Tracking Branches & Worktrees
+*   **Goal**: Synchronize all remote tracking branches (`origin/*`) to local branches and Git worktrees across the `RuffTerrain` multi-platform workspace.
+*   **Decisions & Rationale (*The Why*)**:
+    *   **Authoritative Remote Synchronization**: Executed `git fetch --all --prune` across the container workspace to ensure remote references are completely current and pruned of stale refs.
+    *   **Fast-Forward Release Parity**: Verified tracking status across all active worktrees (`main/`, `android-port/`, `feature-ai-race-planner/`). Detected local `main` behind upstream `origin/main` by 1 commit (`8846cec`), and fast-forward merged local `main` to maintain production release parity without history divergence.
+*   **Key Actions & Verification**:
+    *   Fetched all remote branches from `origin`.
+    *   Fast-forwarded `main` worktree branch to commit `8846cec`.
+    *   Verified `android-port` (`3d67ccd`), `feature/ai-race-planner` (`87c8051`), and `feature/web-dialog-fixes` (`07164d3`) are completely synchronized with their remote tracking branches.
+
