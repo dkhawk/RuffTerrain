@@ -1016,6 +1016,18 @@ This journal records all design decisions, architecture patterns, development st
     *   **Reference Distance Stabilization**: Clicking waypoint markers on the map dispatched `showPoiDetailDialog(wpt, playbackIndex, playbackDistance)`. When playback was inactive, `playbackDistance` passed `0`, causing `currentDist` to evaluate to `0` and rendering `0m` elapsed hours for any clicked aid station. Updated dispatch listeners to pass `wpt.dist_m` so clicking markers renders accurate race pacing.
     *   **Stale Worktree Warning**: User editor session was still pointing to decommissioned `/Users/dkhawk/Projects/RuffTerrain/feature-ai-race-planner/`, causing local dev preview mismatches against authoritative `main/`. Gently guided user to switch IDE workspace to `main/`.
 *   **Key Actions & Verification**:
-    *   Updated `showPoiDetailDialog` and map click listeners in `src/main.js`.
     *   Verified all 12 unit tests passing (`npm test`) and production build verified (`npm run build`).
+
+---
+
+### 🚀 Session 80: Authoritative ETA Enforcement Across HUD, Waypoint List, and Printed Race Plan
+*   **Goal**: Ensure precise aid station arrival estimates (ETA) are prominently displayed across the waypoint dialog, printed race sheet, fly-through HUD, and sidebar navigation list.
+*   **Decisions & Rationale (*The Why*)**:
+    *   **Printed Race Plan ETA Schedule**: Previously, clicking `🖨️ Print Sheet` (`#wiz-print-plan-btn`) generated a standalone HTML document containing only the custom terrain execution sectors. For crews and pacers supporting an ultra runner, knowing exact clock arrival estimates at aid stations is mission critical. Enriched print sheet generation in `src/main.js` to create an authoritative `📍 Aid Station Arrival Schedule (ETA)` table directly above the terrain sectors, listing every waypoint with precise clock target ETA, ETA tolerance bounds, elapsed duration, cut-off limit, and strategy notes.
+    *   **Fly-Through HUD ETA Display**: In `src/gpx-parser.js`, attached `absolute_dist_m` to the `nextAid` metric object. In `src/main.js` `updateHUD()`, formatted predicted clock ETA (`Fri 02:15 PM`) into `#hud-val-next-as`, allowing runners to monitor real-time arrival estimates at upcoming aid stations during fly-through playback or GPS tracking.
+    *   **Sidebar Course Waypoints List**: Enriched `renderEditWaypointList()` in `src/main.js` to format exact target clock ETAs directly into each waypoint list item label (`Twin Lakes (12.5 mi, ETA: Fri 02:15 PM)`).
+*   **Key Actions & Verification**:
+    *   Updated `src/gpx-parser.js` and `src/main.js`.
+    *   Added automated unit test `Authoritative ETA calculation for HUD, Waypoint List, and Printed Plan` in `test/gpx.test.js`.
+    *   Verified all 13 unit tests passing (`npm test`) and production bundle verified (`npm run build`).
 
