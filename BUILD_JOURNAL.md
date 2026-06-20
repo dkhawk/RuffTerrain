@@ -1007,3 +1007,15 @@ This journal records all design decisions, architecture patterns, development st
     *   Patched `.bare/hooks/pre-commit` subshell grep commands with defensive fallbacks.
     *   Verified all 12 unit tests passing cleanly (`npm test`) and production web build verified (`npm run build`).
 
+---
+
+### 🚀 Session 79: Non-Blocking POI Dialog Rendering & Reference Distance Stabilization
+*   **Goal**: Ensure instant, unconditional display of arrival times and pacing metrics when opening waypoint dialogs.
+*   **Decisions & Rationale (*The Why*)**:
+    *   **Non-Blocking UI Rendering**: Previously, `showPoiDetailDialog` executed `await fetchWeatherForecast(...)` right at the start of the function. If network calls to Google Weather API lagged or throttled, execution paused before populating header metrics (`EST. ARRIVAL`, `ELAPSED`, `DIST`) and table rows, leaving the modal blank and triggering frustration (*"The times are not visible in the waypoint details dialog"*). Re-architected `showPoiDetailDialog` to render 100% of the UI synchronously with zero network blocking, triggering the forecast fetch asynchronously in the background and populating table cells via `data-pass-weather-dist` attributes upon completion.
+    *   **Reference Distance Stabilization**: Clicking waypoint markers on the map dispatched `showPoiDetailDialog(wpt, playbackIndex, playbackDistance)`. When playback was inactive, `playbackDistance` passed `0`, causing `currentDist` to evaluate to `0` and rendering `0m` elapsed hours for any clicked aid station. Updated dispatch listeners to pass `wpt.dist_m` so clicking markers renders accurate race pacing.
+    *   **Stale Worktree Warning**: User editor session was still pointing to decommissioned `/Users/dkhawk/Projects/RuffTerrain/feature-ai-race-planner/`, causing local dev preview mismatches against authoritative `main/`. Gently guided user to switch IDE workspace to `main/`.
+*   **Key Actions & Verification**:
+    *   Updated `showPoiDetailDialog` and map click listeners in `src/main.js`.
+    *   Verified all 12 unit tests passing (`npm test`) and production build verified (`npm run build`).
+
