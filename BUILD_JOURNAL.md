@@ -994,3 +994,16 @@ This journal records all design decisions, architecture patterns, development st
     *   Updated `gpx-writer.js` and `gpx-parser.js` schema handling and added unit test in `test/gpx.test.js`.
     *   Verified all 12 unit tests passing (`npm test`) and production bundle verified (`npm run build`).
 
+---
+
+### 🚀 Session 78: POI Dialog Target Time Restoration & Git Hook Pipeline Stabilization
+*   **Goal**: Restore center target arrival time details to the POI quick metrics header and resolve pre-commit hook script aborts.
+*   **Decisions & Rationale (*The Why*)**:
+    *   **POI Dialog Target Time Restoration**: In Session 76, the dialog quick metric badge was converted from displaying arrival distance to displaying `EST. ARRIVAL RANGE` (e.g., `01:50 PM - 02:40 PM`). This inadvertently omitted the exact predicted target clock arrival time (`02:15 PM`), causing user feedback: *"We've lost the time details."* Restored a dedicated `EST. ARRIVAL` quick metric badge directly adjacent to `EST. ARRIVAL RANGE` across `index.html` and `public/404.html`, providing runners with both precise clock targets and pacing tolerance windows at a single glance.
+    *   **Pre-Commit Hook Shell Script Fix**: Investigating commit failures identified that `/Users/dkhawk/Projects/RuffTerrain/.bare/hooks/pre-commit` executed under `set -e` without fallback handling (`|| true`) on subshell command `grep -i -E "key|secret..."`. Whenever staged changes contained zero secret candidates, grep exited with code 1, causing the pre-commit hook script to crash and block valid git commits. Added defensive `|| true` fallbacks to stabilize repository commit pipelines.
+*   **Key Actions & Verification**:
+    *   Added `EST. ARRIVAL` quick metric group in `index.html` and `public/404.html`.
+    *   Updated `showPoiDetailDialog` in `src/main.js` to compute and render center target arrival timestamps.
+    *   Patched `.bare/hooks/pre-commit` subshell grep commands with defensive fallbacks.
+    *   Verified all 12 unit tests passing cleanly (`npm test`) and production web build verified (`npm run build`).
+
