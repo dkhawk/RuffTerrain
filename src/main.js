@@ -4328,8 +4328,9 @@ function computeIntelligentPacingAndWeatherPlan(route, opts) {
         const sRound = Math.round((sec.target_pace_min % 1) * 60).toString().padStart(2, "0");
         const paceStr = `${mFloor}:${sRound}`;
         
-        const isAsc = sec.strategy.includes("Ascent");
-        const isDesc = sec.strategy.includes("Descent");
+        const secText = `${sec.name || ""} ${sec.strategy || ""} ${sec.terrain || ""}`.toLowerCase();
+        const isAsc = sec.terrain === "climb" || secText.includes("ascent") || secText.includes("climb") || secText.includes("uphill") || secText.includes("hike");
+        const isDesc = !isAsc && (sec.terrain === "descend" || secText.includes("descent") || secText.includes("descend") || secText.includes("downhill"));
         const badgeClass = isAsc ? "badge-ascent" : (isDesc ? "badge-descent" : "badge-flat");
         const badgeText = isAsc ? "CLIMB" : (isDesc ? "DESCENT" : "FLAT");
 
@@ -5156,7 +5157,14 @@ function computeIntelligentPacingAndWeatherPlan(route, opts) {
           const endMi = convertDistanceValue(sec.end_dist_m);
           const unit = units === "imperial" ? "mi" : "km";
 
-          header.innerHTML = `<div><strong style="color: #60a5fa; font-size: 12px;">${escapeHtml(sec.name)}</strong> <span style="font-size: 10px; color: var(--text-muted);">(${startMi} ${unit} ➔ ${endMi} ${unit})</span></div>
+          const sTxt = `${sec.name || ""} ${sec.strategy || ""} ${sec.terrain || ""}`.toLowerCase();
+          const isClimb = sec.terrain === "climb" || sTxt.includes("ascent") || sTxt.includes("climb") || sTxt.includes("uphill") || sTxt.includes("hike");
+          const isDesc = !isClimb && (sec.terrain === "descend" || sTxt.includes("descent") || sTxt.includes("descend") || sTxt.includes("downhill"));
+          const bColor = isClimb ? "#ef4444" : (isDesc ? "#10b981" : "#3b82f6");
+          const bBg = isClimb ? "rgba(239, 68, 68, 0.15)" : (isDesc ? "rgba(16, 185, 129, 0.15)" : "rgba(59, 130, 246, 0.15)");
+          const bLbl = isClimb ? "CLIMB" : (isDesc ? "DESCENT" : "FLAT");
+
+          header.innerHTML = `<div><span style="background: ${bBg}; color: ${bColor}; border: 1px solid ${bColor}; padding: 1px 6px; border-radius: 4px; font-size: 9px; font-weight: bold; margin-right: 6px;">${bLbl}</span><strong style="color: #60a5fa; font-size: 12px;">${escapeHtml(sec.name)}</strong> <span style="font-size: 10px; color: var(--text-muted);">(${startMi} ${unit} ➔ ${endMi} ${unit})</span></div>
                               <span style="background: rgba(16, 185, 129, 0.15); color: #10b981; border: 1px solid rgba(16, 185, 129, 0.3); padding: 2px 8px; border-radius: 12px; font-size: 10px; font-weight: bold;">${sec.target_pace_min} min/${unit}</span>`;
 
           const body = document.createElement("div");
@@ -5314,6 +5322,7 @@ function computeIntelligentPacingAndWeatherPlan(route, opts) {
               start_dist_m: startDist,
               end_dist_m: endDist,
               name: `${name} (${(sLenMi).toFixed(1)} mi)`,
+              terrain: currentType,
               target_pace_min: parseFloat(secPace.toFixed(1)),
               strategy: strat,
               nutrition: nut
@@ -5331,6 +5340,7 @@ function computeIntelligentPacingAndWeatherPlan(route, opts) {
           start_dist_m: 0,
           end_dist_m: activeRoute.totalDistance,
           name: "Complete Course Push",
+          terrain: "flat",
           target_pace_min: parseFloat(flatPace.toFixed(1)),
           strategy: `Maintain steady pace around ${flatMph.toFixed(1)} mph.`,
           nutrition: "Regular hydration every 20 mins."
@@ -5400,10 +5410,19 @@ function computeIntelligentPacingAndWeatherPlan(route, opts) {
       }
       if (!activeRoute.executionPlan.sectors) activeRoute.executionPlan.sectors = [];
 
+      const txtSearch = `${name || ""} ${strat || ""}`.toLowerCase();
+      let inferredTerrain = "flat";
+      if (txtSearch.includes("climb") || txtSearch.includes("ascent") || txtSearch.includes("uphill") || txtSearch.includes("hike")) {
+        inferredTerrain = "climb";
+      } else if (txtSearch.includes("descent") || txtSearch.includes("descend") || txtSearch.includes("downhill")) {
+        inferredTerrain = "descend";
+      }
+
       activeRoute.executionPlan.sectors.push({
         start_dist_m: startVal * mult,
         end_dist_m: endVal * mult,
         name: name || "New Sector",
+        terrain: inferredTerrain,
         target_pace_min: pace,
         strategy: strat,
         nutrition: nut

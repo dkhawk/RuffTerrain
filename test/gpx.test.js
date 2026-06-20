@@ -445,5 +445,36 @@ describe("GPX Parser & Writer Tests", () => {
     assert.ok(elHrs >= 0);
   });
 
+  test("Sector terrain serialization and heuristic inference", () => {
+    const mockRoute = {
+      waypoints: [],
+      trackpoints: [{ lat: 40.0, lon: -105.0, ele: 1500 }],
+      executionPlan: {
+        targetDurationHrs: 12,
+        sectors: [{
+          start_dist_m: 0,
+          end_dist_m: 5000,
+          name: "Sugar Loaf Climb",
+          terrain: "climb",
+          target_pace_min: 15,
+          strategy: "Power hike steep climb"
+        }, {
+          start_dist_m: 5000,
+          end_dist_m: 10000,
+          name: "Downhill Rush",
+          target_pace_min: 8,
+          strategy: "Smooth downhill jog"
+        }]
+      }
+    };
+
+    const xml = writeGPX(mockRoute);
+    assert.ok(xml.includes('terrain="climb"'));
+
+    const restored = parseGPX(xml, "imperial");
+    assert.strictEqual(restored.executionPlan.sectors[0].terrain, "climb");
+    assert.strictEqual(restored.executionPlan.sectors[1].terrain, "descend");
+  });
+
 });
 

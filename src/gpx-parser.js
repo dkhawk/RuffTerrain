@@ -714,14 +714,23 @@ export function parseGPX(gpxText, units = "imperial", desertThresholdMiles = 8.0
       const endDistM = sAttrs.match(/end_dist_m="([^"]+)"/);
       const nameM = sAttrs.match(/name="([^"]+)"/);
       const targetPaceM = sAttrs.match(/target_pace_min="([^"]+)"/);
+      const terrainM = sAttrs.match(/terrain="([^"]+)"/);
 
       const stratM = sInner.match(/<(?:ca:)?strategy>([\s\S]*?)<\/(?:ca:)?strategy>/);
       const nutM = sInner.match(/<(?:ca:)?nutrition>([\s\S]*?)<\/(?:ca:)?nutrition>/);
+
+      let terrainVal = terrainM ? terrainM[1] : "flat";
+      if (!terrainM) {
+        const txt = `${nameM?.[1] || ""} ${stratM?.[1] || ""}`.toLowerCase();
+        if (txt.includes("climb") || txt.includes("ascent") || txt.includes("uphill") || txt.includes("hike")) terrainVal = "climb";
+        else if (txt.includes("descent") || txt.includes("descend") || txt.includes("downhill")) terrainVal = "descend";
+      }
 
       executionPlan.sectors.push({
         start_dist_m: parseFloat(startDistM ? startDistM[1] : "0"),
         end_dist_m: parseFloat(endDistM ? endDistM[1] : "0"),
         name: nameM ? nameM[1] : "Sector",
+        terrain: terrainVal,
         target_pace_min: parseFloat(targetPaceM ? targetPaceM[1] : "10"),
         strategy: stratM ? stratM[1].trim() : "",
         nutrition: nutM ? nutM[1].trim() : ""
