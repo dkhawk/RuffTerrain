@@ -205,6 +205,7 @@ const poiValPassTag = document.getElementById("poi-val-pass-tag");
 const poiValCutoffTag = document.getElementById("poi-val-cutoff-tag");
 const poiValDist = document.getElementById("poi-val-dist");
 const poiValElapsed = document.getElementById("poi-val-elapsed");
+const poiValEta = document.getElementById("poi-val-eta");
 const poiValEtaRange = document.getElementById("poi-val-eta-range");
 const poiValPrev = document.getElementById("poi-val-prev");
 const poiValNext = document.getElementById("poi-val-next");
@@ -2250,6 +2251,16 @@ async function showPoiDetailDialog(wpt, index, referenceDist = null, startCollap
   const planDuration = getPlanDurationHrs();
   const elapsedHrs = getElapsedHoursAtDistance(activeRoute, currentDist, planDuration);
   if (poiValElapsed) poiValElapsed.textContent = formatSplitTime(elapsedHrs);
+
+  // EST. ARRIVAL
+  if (poiValEta) {
+    const planStartMs = getPlanStartMs();
+    const targetMs = planStartMs + elapsedHrs * 3600 * 1000;
+    const targetDate = new Date(targetMs);
+    const targetDayStr = targetDate.toLocaleDateString([], { weekday: 'short' });
+    const targetTimeStr = targetDate.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+    poiValEta.textContent = `${targetDayStr} ${targetTimeStr}`;
+  }
 
   // EST. ARRIVAL RANGE
   if (poiValEtaRange) {
