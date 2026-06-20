@@ -203,7 +203,10 @@ const poiValName = document.getElementById("poi-val-name");
 const poiValNameInput = document.getElementById("poi-val-name-input");
 const poiValPassTag = document.getElementById("poi-val-pass-tag");
 const poiValCutoffTag = document.getElementById("poi-val-cutoff-tag");
-const poiValArrive = document.getElementById("poi-val-arrive");
+const poiValDist = document.getElementById("poi-val-dist");
+const poiValElapsed = document.getElementById("poi-val-elapsed");
+const poiValEta = document.getElementById("poi-val-eta");
+const poiValEtaRange = document.getElementById("poi-val-eta-range");
 const poiValPrev = document.getElementById("poi-val-prev");
 const poiValNext = document.getElementById("poi-val-next");
 
@@ -748,6 +751,21 @@ function formatElevation(meters) {
   const elevVal = convertElevationValue(meters);
   const elevUnit = units === "imperial" ? "ft" : "m";
   return `${elevVal} ${elevUnit}`;
+}
+
+/**
+ * Helper to format elapsed or split duration in hours into clean text (e.g. 2h 45m or 45m).
+ * @param {number} hrs Duration in hours
+ * @returns {string} Formatted split string
+ */
+function formatSplitTime(hrs) {
+  if (hrs === null || hrs === undefined || isNaN(hrs)) return "--";
+  const h = Math.floor(hrs);
+  const m = Math.round((hrs - h) * 60);
+  if (h > 0) {
+    return `${h}h ${m}m`;
+  }
+  return `${m}m`;
 }
 
 /**
@@ -1533,7 +1551,15 @@ function updateHUD(index) {
     const lossStr = convertElevationValue(nextAid.loss_m);
     const eleUnit = units === "imperial" ? "ft" : "m";
 
-    hudValNextAs.textContent = `${nextAid.name} (+${distStr} ${distUnit}, +${gainStr} / -${lossStr} ${eleUnit})`;
+    const planDuration = getPlanDurationHrs();
+    const elapsedHrs = getElapsedHoursAtDistance(activeRoute, nextAid.absolute_dist_m || (currentPt.dist_m + nextAid.dist_m), planDuration);
+    const planStartMs = getPlanStartMs();
+    const targetMs = planStartMs + elapsedHrs * 3600 * 1000;
+    const targetDate = new Date(targetMs);
+    const etaDay = targetDate.toLocaleDateString([], { weekday: 'short' });
+    const etaTime = targetDate.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+
+    hudValNextAs.textContent = `${nextAid.name} (ETA: ${etaDay} ${etaTime}, +${distStr} ${distUnit}, +${gainStr} / -${lossStr} ${eleUnit})`;
   } else {
     const goalHrs = activeRoute.executionPlan?.targetDurationHrs;
     const goalStr = goalHrs ? `${goalHrs.toFixed(2)} hrs` : "Complete";
@@ -2092,8 +2118,12 @@ function renderEstTimeCell(td, dist_m) {
   // Fast/Slow ranges
   const fastMs = planStartMs + (pElapsedHrs * 0.85) * 3600 * 1000;
   const slowMs = planStartMs + (pElapsedHrs * 1.15) * 3600 * 1000;
-  const fastStr = new Date(fastMs).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-  const slowStr = new Date(slowMs).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+  const fastDate = new Date(fastMs);
+  const slowDate = new Date(slowMs);
+  const fastStr = fastDate.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+  const slowStr = slowDate.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+  const fastDayStr = fastDate.toLocaleDateString([], { weekday: 'short' });
+  const slowDayStr = slowDate.toLocaleDateString([], { weekday: 'short' });
 
   const timeContainer = document.createElement("div");
   timeContainer.style.display = "flex";
@@ -2146,7 +2176,11 @@ function renderEstTimeCell(td, dist_m) {
   const rangeLbl = document.createElement("span");
   rangeLbl.style.fontSize = "9px";
   rangeLbl.style.color = "var(--text-muted)";
-  rangeLbl.textContent = `Range: ${fastStr} - ${slowStr}`;
+  let tableRangeText = `Range: ${fastStr} - ${slowStr}`;
+  if (fastDayStr !== slowDayStr) {
+    tableRangeText = `Range: ${fastDayStr} ${fastStr} - ${slowDayStr} ${slowStr}`;
+  }
+  rangeLbl.textContent = tableRangeText;
 
   timeContainer.appendChild(adjustRow);
   timeContainer.appendChild(rangeLbl);
@@ -2166,15 +2200,12 @@ async function showPoiDetailDialog(wpt, index, referenceDist = null, startCollap
   // Fetch and show weather for the POI using the current active pass distance
   updatePoiWeatherUI(wpt, currentDist);
 
-  // Fetch the full forecast to populate the weather column in the passes table
+  // Trigger table forecast fetch asynchronously in background without blocking dialog render
   let weatherData = null;
-  if (apiKeyMaps) {
-    try {
-      weatherData = await fetchWeatherForecast(wpt.lat, wpt.lon, 96, apiKeyMaps);
-    } catch (e) {
-      console.error("Failed to load forecast for table:", e);
-    }
-  }
+  const forecastPromise = apiKeyMaps ? fetchWeatherForecast(wpt.lat, wpt.lon, 96, apiKeyMaps).catch(e => {
+    console.error("Failed to load forecast for table:", e);
+    return null;
+  }) : Promise.resolve(null);
 
   activeDialogWpt = wpt;
   isEditingPoiLocation = false;
@@ -2234,17 +2265,55 @@ async function showPoiDetailDialog(wpt, index, referenceDist = null, startCollap
     poiValCutoffTag.classList.add("hidden");
   }
 
-  // ARRIVE distance
-  poiValArrive.textContent = formatDistance(currentDist);
+  // DIST distance
+  if (poiValDist) poiValDist.textContent = formatDistance(currentDist);
 
-  // PREV AS distance metrics
+  const planDuration = getPlanDurationHrs();
+  const elapsedHrs = getElapsedHoursAtDistance(activeRoute, currentDist, planDuration);
+  if (poiValElapsed) poiValElapsed.textContent = formatSplitTime(elapsedHrs);
+
+  // EST. ARRIVAL
+  if (poiValEta) {
+    const planStartMs = getPlanStartMs();
+    const targetMs = planStartMs + elapsedHrs * 3600 * 1000;
+    const targetDate = new Date(targetMs);
+    const targetDayStr = targetDate.toLocaleDateString([], { weekday: 'short' });
+    const targetTimeStr = targetDate.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+    poiValEta.textContent = `${targetDayStr} ${targetTimeStr}`;
+  }
+
+  // EST. ARRIVAL RANGE
+  if (poiValEtaRange) {
+    const planStartMs = getPlanStartMs();
+    const fastMs = planStartMs + (elapsedHrs * 0.85) * 3600 * 1000;
+    const slowMs = planStartMs + (elapsedHrs * 1.15) * 3600 * 1000;
+
+    const fastDate = new Date(fastMs);
+    const slowDate = new Date(slowMs);
+    const fastDayStr = fastDate.toLocaleDateString([], { weekday: 'short' });
+    const slowDayStr = slowDate.toLocaleDateString([], { weekday: 'short' });
+    const fastTimeStr = fastDate.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+    const slowTimeStr = slowDate.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+
+    let rangeStr = `${fastDayStr} ${fastTimeStr} - ${slowTimeStr}`;
+    if (fastDayStr !== slowDayStr) {
+      rangeStr = `${fastDayStr} ${fastTimeStr} - ${slowDayStr} ${slowTimeStr}`;
+    }
+    poiValEtaRange.textContent = rangeStr;
+  }
+
+  // PREV AS distance & travel time metrics
   const neighbors = getSegmentingNeighbors(currentDist);
   const prevDiff = currentDist - neighbors.prev.dist_m;
-  poiValPrev.textContent = `+${formatDistance(prevDiff)} (${neighbors.prev.name})`;
+  const prevElapsed = getElapsedHoursAtDistance(activeRoute, neighbors.prev.dist_m, planDuration);
+  const prevTravel = Math.max(0, elapsedHrs - prevElapsed);
+  if (poiValPrev) poiValPrev.textContent = `+${formatDistance(prevDiff)} (${formatSplitTime(prevTravel)}, ${neighbors.prev.name})`;
 
-  // NEXT AS distance metrics
+  // NEXT AS distance & travel time metrics
   const nextDiff = neighbors.next.dist_m - currentDist;
-  poiValNext.textContent = `${formatDistance(nextDiff)} (${neighbors.next.name})`;
+  const nextElapsed = getElapsedHoursAtDistance(activeRoute, neighbors.next.dist_m, planDuration);
+  const nextTravel = Math.max(0, nextElapsed - elapsedHrs);
+  if (poiValNext) poiValNext.textContent = `${formatDistance(nextDiff)} (${formatSplitTime(nextTravel)}, ${neighbors.next.name})`;
 
   // Detailed passes lists
   poiTimelinePassesList.innerHTML = "";
@@ -2325,6 +2394,10 @@ async function showPoiDetailDialog(wpt, index, referenceDist = null, startCollap
       const tdArrive = document.createElement("td");
       tdArrive.textContent = formatDistance(p.dist_m);
 
+      const pElapsedHrs = getElapsedHoursAtDistance(activeRoute, p.dist_m, planDuration);
+      const tdElapsed = document.createElement("td");
+      tdElapsed.textContent = formatSplitTime(pElapsedHrs);
+
       // Calculate Expected Arrival Time
       const tdEstTime = document.createElement("td");
       renderEstTimeCell(tdEstTime, p.dist_m);
@@ -2332,38 +2405,32 @@ async function showPoiDetailDialog(wpt, index, referenceDist = null, startCollap
       const pNeighbors = getSegmentingNeighbors(p.dist_m);
       
       const pPrevDiff = p.dist_m - pNeighbors.prev.dist_m;
+      const pPrevElapsed = getElapsedHoursAtDistance(activeRoute, pNeighbors.prev.dist_m, planDuration);
+      const pPrevTravel = Math.max(0, pElapsedHrs - pPrevElapsed);
       const tdPrev = document.createElement("td");
-      tdPrev.textContent = `+${formatDistance(pPrevDiff)} (${pNeighbors.prev.name})`;
+      tdPrev.textContent = `+${formatDistance(pPrevDiff)} (${formatSplitTime(pPrevTravel)}, ${pNeighbors.prev.name})`;
 
       const pNextDiff = pNeighbors.next.dist_m - p.dist_m;
+      const pNextElapsed = getElapsedHoursAtDistance(activeRoute, pNeighbors.next.dist_m, planDuration);
+      const pNextTravel = Math.max(0, pNextElapsed - pElapsedHrs);
       const tdNext = document.createElement("td");
-      tdNext.textContent = `${formatDistance(pNextDiff)} (${pNeighbors.next.name})`;
+      tdNext.textContent = `${formatDistance(pNextDiff)} (${formatSplitTime(pNextTravel)}, ${pNeighbors.next.name})`;
 
       // Weather forecast for this pass's arrival time
       const tdWeather = document.createElement("td");
       tdWeather.style.whiteSpace = "nowrap";
-      if (weatherData && weatherData.forecastHours && weatherData.forecastHours.length > 0) {
-        const details = getWeatherWindowDetails(activeRoute, p.dist_m, weatherData, pArrivalMs);
-        if (details) {
-          const cond = details.selectedHour.weatherCondition || {};
-          const style = getWeatherConditionStyle(cond.type);
-          const hrTemp = details.selectedHour.temperature?.degrees ?? 0;
-          const mainTemp = convertTemperatureValue(hrTemp);
-          const minTemp = convertTemperatureValue(details.minTemp);
-          const maxTemp = convertTemperatureValue(details.maxTemp);
-          tdWeather.innerHTML = `<span style="font-size:14px; margin-right: 2px;">${style.emoji}</span> <span>${mainTemp} (${minTemp}-${maxTemp})</span>`;
-        } else {
-          tdWeather.textContent = "--";
-        }
-      } else {
-        tdWeather.textContent = "--";
-      }
+      tdWeather.textContent = "--";
+      const planStartMs = getPlanStartMs();
+      const pArrivalMs = planStartMs + pElapsedHrs * 3600 * 1000;
+      tdWeather.setAttribute("data-pass-weather-dist", p.dist_m);
+      tdWeather.setAttribute("data-pass-weather-ms", pArrivalMs);
 
       const tdCutoff = document.createElement("td");
       tdCutoff.textContent = p.cutoff_clock || p.cutoff_elapsed || "--";
 
       tr.appendChild(tdNum);
       tr.appendChild(tdArrive);
+      tr.appendChild(tdElapsed);
       tr.appendChild(tdEstTime);
       tr.appendChild(tdPrev);
       tr.appendChild(tdNext);
@@ -2388,41 +2455,34 @@ async function showPoiDetailDialog(wpt, index, referenceDist = null, startCollap
     const tdArrive = document.createElement("td");
     tdArrive.textContent = formatDistance(currentDist);
 
+    const tdElapsed = document.createElement("td");
+    tdElapsed.textContent = formatSplitTime(elapsedHrs);
+
     // Calculate Expected Arrival Time
     const tdEstTime = document.createElement("td");
     renderEstTimeCell(tdEstTime, currentDist);
 
     const tdPrev = document.createElement("td");
-    tdPrev.textContent = `+${formatDistance(prevDiff)} (${neighbors.prev.name})`;
+    tdPrev.textContent = `+${formatDistance(prevDiff)} (${formatSplitTime(prevTravel)}, ${neighbors.prev.name})`;
 
     const tdNext = document.createElement("td");
-    tdNext.textContent = `${formatDistance(nextDiff)} (${neighbors.next.name})`;
+    tdNext.textContent = `${formatDistance(nextDiff)} (${formatSplitTime(nextTravel)}, ${neighbors.next.name})`;
 
     // Weather forecast for single pass
     const tdWeather = document.createElement("td");
     tdWeather.style.whiteSpace = "nowrap";
-    if (weatherData && weatherData.forecastHours && weatherData.forecastHours.length > 0) {
-      const details = getWeatherWindowDetails(activeRoute, currentDist, weatherData, pArrivalMs);
-      if (details) {
-        const cond = details.selectedHour.weatherCondition || {};
-        const style = getWeatherConditionStyle(cond.type);
-        const hrTemp = details.selectedHour.temperature?.degrees ?? 0;
-        const mainTemp = convertTemperatureValue(hrTemp);
-        const minTemp = convertTemperatureValue(details.minTemp);
-        const maxTemp = convertTemperatureValue(details.maxTemp);
-        tdWeather.innerHTML = `<span style="font-size:14px; margin-right: 2px;">${style.emoji}</span> <span>${mainTemp} (${minTemp}-${maxTemp})</span>`;
-      } else {
-        tdWeather.textContent = "--";
-      }
-    } else {
-      tdWeather.textContent = "--";
-    }
+    tdWeather.textContent = "--";
+    const planStartMs = getPlanStartMs();
+    const pArrivalMs = planStartMs + elapsedHrs * 3600 * 1000;
+    tdWeather.setAttribute("data-pass-weather-dist", currentDist);
+    tdWeather.setAttribute("data-pass-weather-ms", pArrivalMs);
 
     const tdCutoff = document.createElement("td");
     tdCutoff.textContent = "--";
 
     tr.appendChild(tdNum);
     tr.appendChild(tdArrive);
+    tr.appendChild(tdElapsed);
     tr.appendChild(tdEstTime);
     tr.appendChild(tdPrev);
     tr.appendChild(tdNext);
@@ -2445,6 +2505,26 @@ async function showPoiDetailDialog(wpt, index, referenceDist = null, startCollap
   if (studioTabPoi) {
     studioTabPoi.click();
   }
+
+  // Populate table weather cells asynchronously without blocking UI render
+  forecastPromise.then(wData => {
+    if (!wData || !wData.forecastHours || wData.forecastHours.length === 0) return;
+    const weatherCells = poiDetailDialog.querySelectorAll("[data-pass-weather-dist]");
+    weatherCells.forEach(td => {
+      const d = parseFloat(td.getAttribute("data-pass-weather-dist"));
+      const ms = parseFloat(td.getAttribute("data-pass-weather-ms"));
+      const details = getWeatherWindowDetails(activeRoute, d, wData, ms);
+      if (details) {
+        const cond = details.selectedHour.weatherCondition || {};
+        const style = getWeatherConditionStyle(cond.type);
+        const hrTemp = details.selectedHour.temperature?.degrees ?? 0;
+        const mainTemp = convertTemperatureValue(hrTemp);
+        const minTemp = convertTemperatureValue(details.minTemp);
+        const maxTemp = convertTemperatureValue(details.maxTemp);
+        td.innerHTML = `<span style="font-size:14px; margin-right: 2px;">${style.emoji}</span> <span>${mainTemp} (${minTemp}-${maxTemp})</span>`;
+      }
+    });
+  }).catch(e => console.error("Async forecast population error:", e));
 
   // Setup auto-resume timeout (skip if settings pauseTime is set to 0)
   if (pauseDuration > 0) {
@@ -2630,7 +2710,14 @@ function renderEditWaypointList() {
     const distVal = units === "miles" 
       ? `${(wpt.dist_m / 1609.34).toFixed(1)} mi` 
       : `${(wpt.dist_m / 1000).toFixed(1)} km`;
-    nameSpan.textContent = `${wpt.name} (${distVal})`;
+    const planDuration = getPlanDurationHrs();
+    const elapsedHrs = getElapsedHoursAtDistance(activeRoute, wpt.dist_m, planDuration);
+    const planStartMs = getPlanStartMs();
+    const targetMs = planStartMs + elapsedHrs * 3600 * 1000;
+    const targetDate = new Date(targetMs);
+    const etaDayStr = targetDate.toLocaleDateString([], { weekday: 'short' });
+    const etaTimeStr = targetDate.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+    nameSpan.textContent = `${wpt.name} (${distVal}, ETA: ${etaDayStr} ${etaTimeStr})`;
     nameSpan.style.cursor = "pointer";
     nameSpan.style.color = "var(--text-color)";
     nameSpan.style.fontWeight = "500";
@@ -4248,13 +4335,52 @@ function computeIntelligentPacingAndWeatherPlan(route, opts) {
 
         rowsHtml += `
           <tr>
-            <td><strong>${sec.name}</strong></td>
+            <td><strong>${escapeHtml(sec.name)}</strong></td>
             <td><span class="badge ${badgeClass}">${badgeText}</span></td>
             <td><strong>${paceStr}</strong> min/mi</td>
-            <td>${sec.strategy}</td>
+            <td>${escapeHtml(sec.strategy)}</td>
           </tr>
         `;
       });
+
+      let aidRowsHtml = "";
+      if (activeRoute.waypoints && activeRoute.waypoints.length > 0) {
+        const planStartMs = getPlanStartMs();
+        const planDuration = getPlanDurationHrs();
+        activeRoute.waypoints.slice().sort((a, b) => a.dist_m - b.dist_m).forEach(wpt => {
+          const dMi = wpt.dist_m / 1609.34;
+          const elHrs = getElapsedHoursAtDistance(activeRoute, wpt.dist_m, planDuration);
+          const elStr = formatSplitTime(elHrs);
+          
+          const targetMs = planStartMs + elHrs * 3600 * 1000;
+          const fastMs = planStartMs + (elHrs * 0.85) * 3600 * 1000;
+          const slowMs = planStartMs + (elHrs * 1.15) * 3600 * 1000;
+          
+          const tDate = new Date(targetMs);
+          const fDate = new Date(fastMs);
+          const sDate = new Date(slowMs);
+          
+          const tStr = `${tDate.toLocaleDateString([], {weekday:'short'})} ${tDate.toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'})}`;
+          const rStr = `${fDate.toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'})} - ${sDate.toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'})}`;
+          
+          const cutoff = wpt.extensions?.station?.passes?.[0]?.cutoff_clock || wpt.extensions?.station?.passes?.[0]?.cutoff_elapsed || "--";
+          const notes = wpt.extensions?.station?.passes?.[0]?.stretch_strategy || wpt.desc || "";
+
+          aidRowsHtml += `
+            <tr>
+              <td><strong>${escapeHtml(wpt.name)}</strong></td>
+              <td>${dMi.toFixed(1)} mi</td>
+              <td><strong style="color: #1e40af;">${tStr}</strong></td>
+              <td>${rStr}</td>
+              <td>${elStr}</td>
+              <td>${cutoff}</td>
+              <td>${escapeHtml(notes)}</td>
+            </tr>
+          `;
+        });
+      } else {
+        aidRowsHtml = `<tr><td colspan="7" style="text-align:center; font-style:italic; color:#6b7280;">No course waypoints loaded.</td></tr>`;
+      }
 
       const htmlContent = `
 <!DOCTYPE html>
@@ -4278,6 +4404,7 @@ function computeIntelligentPacingAndWeatherPlan(route, opts) {
       margin-bottom: 24px;
     }
     h1 { margin: 0; font-size: 28px; font-weight: 800; text-transform: uppercase; letter-spacing: -0.5px; }
+    h2 { font-size: 18px; font-weight: 800; text-transform: uppercase; margin-top: 32px; margin-bottom: 12px; color: #111827; }
     .subtitle { font-size: 14px; color: #4b5563; margin-top: 4px; }
     .meta-grid {
       display: grid;
@@ -4354,13 +4481,32 @@ function computeIntelligentPacingAndWeatherPlan(route, opts) {
     </div>
   </div>
 
+  <h2>📍 Aid Station Arrival Schedule (ETA)</h2>
   <table>
     <thead>
       <tr>
-        <th>Sector / Aid Station Split</th>
+        <th>Aid Station / Landmark</th>
+        <th>Distance</th>
+        <th>Estimated Arrival (ETA)</th>
+        <th>ETA Tolerance Range</th>
+        <th>Elapsed Time</th>
+        <th>Cut-Off Time</th>
+        <th>Strategy &amp; Notes</th>
+      </tr>
+    </thead>
+    <tbody>
+      ${aidRowsHtml}
+    </tbody>
+  </table>
+
+  <h2>🗺️ Terrain Execution Sectors</h2>
+  <table>
+    <thead>
+      <tr>
+        <th>Sector Split</th>
         <th>Terrain</th>
         <th>Target Pace</th>
-        <th>Strategy &amp; Lighting</th>
+        <th>Strategy &amp; Notes</th>
       </tr>
     </thead>
     <tbody>
@@ -5638,7 +5784,7 @@ function computeIntelligentPacingAndWeatherPlan(route, opts) {
     
     updateHUD(playbackIndex);
     console.log("[main] CALLING showPoiDetailDialog FOR WAYPOINT:", wpt?.name);
-    showPoiDetailDialog(wpt, playbackIndex, playbackDistance);
+    showPoiDetailDialog(wpt, playbackIndex, wpt.dist_m);
   });
 
   // ==========================================

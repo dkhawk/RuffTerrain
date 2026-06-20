@@ -96,6 +96,18 @@ export function writeGPX(route) {
           if (pass.stretch_strategy) {
             passTag += ` stretch_strategy="${escapeXml(pass.stretch_strategy)}"`;
           }
+          if (pass.eta_earliest) {
+            passTag += ` eta_earliest="${escapeXml(pass.eta_earliest)}"`;
+          }
+          if (pass.eta_latest) {
+            passTag += ` eta_latest="${escapeXml(pass.eta_latest)}"`;
+          }
+          if (pass.weather_cond) {
+            passTag += ` weather_cond="${escapeXml(pass.weather_cond)}"`;
+          }
+          if (pass.weather_temp_c !== undefined && pass.weather_temp_c !== null) {
+            passTag += ` weather_temp_c="${pass.weather_temp_c}"`;
+          }
           passTag += ' />\n';
           xml += passTag;
         });
