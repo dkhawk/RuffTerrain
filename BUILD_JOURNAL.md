@@ -1031,3 +1031,13 @@ This journal records all design decisions, architecture patterns, development st
     *   Added automated unit test `Authoritative ETA calculation for HUD, Waypoint List, and Printed Plan` in `test/gpx.test.js`.
     *   Verified all 13 unit tests passing (`npm test`) and production bundle verified (`npm run build`).
 
+---
+
+### 🚀 Session 81: POI Details Dialog ReferenceError Crash Resolution
+*   **Goal**: Resolve missing time fields and empty pass tables in the Studio Waypoint Details dialog (`#poi-detail-dialog`).
+*   **Decisions & Rationale (*The Why*)**:
+    *   **Fatal ReferenceError Crash**: While the preview dialog and other cards rendered successfully, clicking waypoints inside the Studio tab left header time fields (`ELAPSED`, `EST. ARRIVAL`, `PREV`, `NEXT`) at `-` placeholders and rendered zero rows in the timeline table. Code auditing revealed that line 2258 executed `if (poiValElapsed) poiValElapsed.textContent = formatSplitTime(elapsedHrs)`. Although `formatSplitTime` was invoked in 10 distinct UI locations across `src/main.js`, its definition had been inadvertently omitted from the bundle. When line 2258 executed, JavaScript threw `ReferenceError: formatSplitTime is not defined`, crashing `showPoiDetailDialog` instantly before subsequent time headers or table row generation could execute. Defined `formatSplitTime(hrs)` helper in `src/main.js` to ensure robust formatting of split durations (`2h 45m`).
+*   **Key Actions & Verification**:
+    *   Added `formatSplitTime` helper function in `src/main.js`.
+    *   Verified all 13 unit tests passing (`npm test`) and production bundle verified (`npm run build`).
+
