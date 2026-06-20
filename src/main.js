@@ -2177,15 +2177,12 @@ async function showPoiDetailDialog(wpt, index, referenceDist = null, startCollap
   // Fetch and show weather for the POI using the current active pass distance
   updatePoiWeatherUI(wpt, currentDist);
 
-  // Fetch the full forecast to populate the weather column in the passes table
+  // Trigger table forecast fetch asynchronously in background without blocking dialog render
   let weatherData = null;
-  if (apiKeyMaps) {
-    try {
-      weatherData = await fetchWeatherForecast(wpt.lat, wpt.lon, 96, apiKeyMaps);
-    } catch (e) {
-      console.error("Failed to load forecast for table:", e);
-    }
-  }
+  const forecastPromise = apiKeyMaps ? fetchWeatherForecast(wpt.lat, wpt.lon, 96, apiKeyMaps).catch(e => {
+    console.error("Failed to load forecast for table:", e);
+    return null;
+  }) : Promise.resolve(null);
 
   activeDialogWpt = wpt;
   isEditingPoiLocation = false;
@@ -2399,22 +2396,11 @@ async function showPoiDetailDialog(wpt, index, referenceDist = null, startCollap
       // Weather forecast for this pass's arrival time
       const tdWeather = document.createElement("td");
       tdWeather.style.whiteSpace = "nowrap";
-      if (weatherData && weatherData.forecastHours && weatherData.forecastHours.length > 0) {
-        const details = getWeatherWindowDetails(activeRoute, p.dist_m, weatherData, pArrivalMs);
-        if (details) {
-          const cond = details.selectedHour.weatherCondition || {};
-          const style = getWeatherConditionStyle(cond.type);
-          const hrTemp = details.selectedHour.temperature?.degrees ?? 0;
-          const mainTemp = convertTemperatureValue(hrTemp);
-          const minTemp = convertTemperatureValue(details.minTemp);
-          const maxTemp = convertTemperatureValue(details.maxTemp);
-          tdWeather.innerHTML = `<span style="font-size:14px; margin-right: 2px;">${style.emoji}</span> <span>${mainTemp} (${minTemp}-${maxTemp})</span>`;
-        } else {
-          tdWeather.textContent = "--";
-        }
-      } else {
-        tdWeather.textContent = "--";
-      }
+      tdWeather.textContent = "--";
+      const planStartMs = getPlanStartMs();
+      const pArrivalMs = planStartMs + pElapsedHrs * 3600 * 1000;
+      tdWeather.setAttribute("data-pass-weather-dist", p.dist_m);
+      tdWeather.setAttribute("data-pass-weather-ms", pArrivalMs);
 
       const tdCutoff = document.createElement("td");
       tdCutoff.textContent = p.cutoff_clock || p.cutoff_elapsed || "--";
@@ -2462,22 +2448,11 @@ async function showPoiDetailDialog(wpt, index, referenceDist = null, startCollap
     // Weather forecast for single pass
     const tdWeather = document.createElement("td");
     tdWeather.style.whiteSpace = "nowrap";
-    if (weatherData && weatherData.forecastHours && weatherData.forecastHours.length > 0) {
-      const details = getWeatherWindowDetails(activeRoute, currentDist, weatherData, pArrivalMs);
-      if (details) {
-        const cond = details.selectedHour.weatherCondition || {};
-        const style = getWeatherConditionStyle(cond.type);
-        const hrTemp = details.selectedHour.temperature?.degrees ?? 0;
-        const mainTemp = convertTemperatureValue(hrTemp);
-        const minTemp = convertTemperatureValue(details.minTemp);
-        const maxTemp = convertTemperatureValue(details.maxTemp);
-        tdWeather.innerHTML = `<span style="font-size:14px; margin-right: 2px;">${style.emoji}</span> <span>${mainTemp} (${minTemp}-${maxTemp})</span>`;
-      } else {
-        tdWeather.textContent = "--";
-      }
-    } else {
-      tdWeather.textContent = "--";
-    }
+    tdWeather.textContent = "--";
+    const planStartMs = getPlanStartMs();
+    const pArrivalMs = planStartMs + elapsedHrs * 3600 * 1000;
+    tdWeather.setAttribute("data-pass-weather-dist", currentDist);
+    tdWeather.setAttribute("data-pass-weather-ms", pArrivalMs);
 
     const tdCutoff = document.createElement("td");
     tdCutoff.textContent = "--";
@@ -2507,6 +2482,26 @@ async function showPoiDetailDialog(wpt, index, referenceDist = null, startCollap
   if (studioTabPoi) {
     studioTabPoi.click();
   }
+
+  // Populate table weather cells asynchronously without blocking UI render
+  forecastPromise.then(wData => {
+    if (!wData || !wData.forecastHours || wData.forecastHours.length === 0) return;
+    const weatherCells = poiDetailDialog.querySelectorAll("[data-pass-weather-dist]");
+    weatherCells.forEach(td => {
+      const d = parseFloat(td.getAttribute("data-pass-weather-dist"));
+      const ms = parseFloat(td.getAttribute("data-pass-weather-ms"));
+      const details = getWeatherWindowDetails(activeRoute, d, wData, ms);
+      if (details) {
+        const cond = details.selectedHour.weatherCondition || {};
+        const style = getWeatherConditionStyle(cond.type);
+        const hrTemp = details.selectedHour.temperature?.degrees ?? 0;
+        const mainTemp = convertTemperatureValue(hrTemp);
+        const minTemp = convertTemperatureValue(details.minTemp);
+        const maxTemp = convertTemperatureValue(details.maxTemp);
+        td.innerHTML = `<span style="font-size:14px; margin-right: 2px;">${style.emoji}</span> <span>${mainTemp} (${minTemp}-${maxTemp})</span>`;
+      }
+    });
+  }).catch(e => console.error("Async forecast population error:", e));
 
   // Setup auto-resume timeout (skip if settings pauseTime is set to 0)
   if (pauseDuration > 0) {
@@ -5700,7 +5695,7 @@ function computeIntelligentPacingAndWeatherPlan(route, opts) {
     
     updateHUD(playbackIndex);
     console.log("[main] CALLING showPoiDetailDialog FOR WAYPOINT:", wpt?.name);
-    showPoiDetailDialog(wpt, playbackIndex, playbackDistance);
+    showPoiDetailDialog(wpt, playbackIndex, wpt.dist_m);
   });
 
   // ==========================================
