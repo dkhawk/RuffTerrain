@@ -30,7 +30,7 @@ import { correctRouteElevations } from "./fetch-elevation.js";
 import { sendToGemini, fetchAvailableModels, generateWaypointFromDescription } from "./gemini-client.js";
 import { loadGoogleMaps, Map3DController, calculateBearing } from "./map-3d.js";
 import { ElevationChart } from "./elevation-chart.js";
-import { fetchWeatherForecast, getWeatherConditionStyle } from "./fetch-weather.js";
+import { fetchWeatherForecast, getWeatherConditionStyle, getElapsedHoursAtDistance, getWeatherWindowDetails } from "./fetch-weather.js";
 
 // ==========================================
 // STATE MANAGEMENT & CONFIGURATIONS
@@ -271,6 +271,8 @@ const weatherLoader = document.getElementById("weather-loader");
 const weatherError = document.getElementById("weather-error");
 const weatherContent = document.getElementById("weather-content");
 const weatherLocationSubtitle = document.getElementById("weather-location-subtitle");
+const fetchWeatherBtn = document.getElementById("fetch-weather-btn");
+const weatherPendingState = document.getElementById("weather-pending-state");
 
 const weatherCurrentTemp = document.getElementById("weather-current-temp");
 const weatherCurrentFeels = document.getElementById("weather-current-feels");
@@ -287,11 +289,18 @@ const weatherProjectedTimeLbl = document.getElementById("weather-projected-time"
 
 // POI Weather Section
 const poiWeatherSection = document.getElementById("poi-weather-section");
+const poiWeatherOfflineMsg = document.getElementById("poi-weather-offline-msg");
+const poiWeatherCardContainer = document.getElementById("poi-weather-card-container");
+const poiFetchWeatherBtn = document.getElementById("poi-fetch-weather-btn");
 const poiWeatherEmoji = document.getElementById("poi-weather-emoji");
 const poiWeatherDesc = document.getElementById("poi-weather-desc");
 const poiWeatherWind = document.getElementById("poi-weather-wind");
 const poiWeatherTemp = document.getElementById("poi-weather-temp");
 const poiWeatherPrecip = document.getElementById("poi-weather-precip");
+
+// Global weather fetch status
+let hasFetchedWeather = false;
+let tempExecutionPlan = null;
 
 // Floating POI Preview Banner (Shown during fly-through preview)
 const previewPoiBanner = document.getElementById("preview-poi-banner");
@@ -772,9 +781,77 @@ function formatDisplayHour(displayDateTime) {
 }
 
 /**
+ * Resolves the plan start time in milliseconds since epoch.
+ */
+function getPlanStartMs() {
+  let planStartMs = Date.now();
+  if (weatherPlanStartInput && weatherPlanStartInput.value) {
+    const parsed = new Date(weatherPlanStartInput.value);
+    if (!isNaN(parsed)) {
+      planStartMs = parsed.getTime();
+    }
+  }
+  return planStartMs;
+}
+
+/**
+ * Resolves the plan duration in hours.
+ */
+function getPlanDurationHrs() {
+  return (weatherPlanDurationInput && parseFloat(weatherPlanDurationInput.value)) ? parseFloat(weatherPlanDurationInput.value) : 4.0;
+}
+
+
+
+/**
+ * Triggered whenever the execution plan (athlete pacing / start time) changes.
+ * Refreshes the weather forecasts in all panels to align with new arrival times.
+ */
+function onExecutionPlanChanged() {
+  if (activeRoute && activeRoute.executionPlan) {
+    if (activeRoute.executionPlan.startTime && weatherPlanStartInput) {
+      let val = activeRoute.executionPlan.startTime;
+      if (/^\d{2}:\d{2}(:\d{2})?$/.test(val)) {
+        const hhmm = val.substring(0, 5);
+        const tomorrow = new Date();
+        tomorrow.setDate(tomorrow.getDate() + 1);
+        const yyyy = tomorrow.getFullYear();
+        const mm = String(tomorrow.getMonth() + 1).padStart(2, '0');
+        const dd = String(tomorrow.getDate()).padStart(2, '0');
+        val = `${yyyy}-${mm}-${dd}T${hhmm}`;
+      }
+      weatherPlanStartInput.value = val;
+    }
+    if (activeRoute.executionPlan.targetDurationHrs && weatherPlanDurationInput) {
+      weatherPlanDurationInput.value = activeRoute.executionPlan.targetDurationHrs;
+    }
+  }
+  if (lastWeatherLat !== null && lastWeatherLon !== null) {
+    triggerWeatherWeather(lastWeatherLat, lastWeatherLon, true);
+  }
+  // Refresh Waypoint details if open
+  if (poiDetailDialog && !poiDetailDialog.classList.contains("hidden") && activeDialogWpt) {
+    showPoiDetailDialog(activeDialogWpt, activeDialogWpt.closestTrackpointIndex, activeDialogWpt.dist_m);
+  }
+}
+
+/**
  * Updates the Weather Panel layout with details.
  */
 async function updateWeatherUI(lat, lon) {
+  if (!hasFetchedWeather) {
+    if (weatherPendingState) weatherPendingState.classList.remove("hidden");
+    if (weatherLoader) weatherLoader.classList.add("hidden");
+    if (weatherError) weatherError.classList.add("hidden");
+    if (weatherContent) weatherContent.classList.add("hidden");
+    
+    const hudValWeather = document.getElementById("hud-val-weather");
+    if (hudValWeather) hudValWeather.textContent = "--";
+    return;
+  } else {
+    if (weatherPendingState) weatherPendingState.classList.add("hidden");
+  }
+
   if (!apiKeyMaps) {
     if (weatherError) {
       weatherError.textContent = "Google Maps API Key is required for weather forecast.";
@@ -798,7 +875,7 @@ async function updateWeatherUI(lat, lon) {
   }
 
   try {
-    const data = await fetchWeatherForecast(lat, lon, 48, apiKeyMaps);
+    const data = await fetchWeatherForecast(lat, lon, 96, apiKeyMaps);
     if (!data || !data.forecastHours || data.forecastHours.length === 0) {
       throw new Error("No forecast data returned.");
     }
@@ -819,9 +896,11 @@ async function updateWeatherUI(lat, lon) {
     }
 
     let progressFraction = 0;
+    let snappedDist = 0;
     if (activeRoute && activeRoute.trackpoints && activeRoute.trackpoints.length > 0 && activeRoute.totalDistance > 0) {
       const snapped = snapToRouteSegments(activeRoute, { lat, lng: lon });
       if (snapped && snapped.dist_m !== undefined) {
+        snappedDist = snapped.dist_m;
         progressFraction = Math.max(0, Math.min(1, snapped.dist_m / activeRoute.totalDistance));
       }
     }
@@ -834,8 +913,9 @@ async function updateWeatherUI(lat, lon) {
       }
     }
 
-    const durationHrs = (weatherPlanDurationInput && parseFloat(weatherPlanDurationInput.value)) ? parseFloat(weatherPlanDurationInput.value) : 4.0;
-    const estArrivalMs = planStartMs + progressFraction * (durationHrs * 3600 * 1000);
+    const durationHrs = getPlanDurationHrs();
+    const elapsedHrs = getElapsedHoursAtDistance(activeRoute, snappedDist, durationHrs);
+    const estArrivalMs = planStartMs + elapsedHrs * 3600 * 1000;
     const arrivalDate = new Date(estArrivalMs);
 
     if (weatherProjectedTimeLbl) {
@@ -932,6 +1012,126 @@ async function updateWeatherUI(lat, lon) {
       });
     }
 
+    // Populate all aid stations comparative forecasts
+    const weatherAllStationsSection = document.getElementById("weather-all-stations-section");
+    const weatherAllStationsList = document.getElementById("weather-all-stations-list");
+
+    if (!activeRoute || !activeRoute.waypoints || activeRoute.waypoints.length === 0) {
+      if (weatherAllStationsSection) weatherAllStationsSection.classList.add("hidden");
+    } else {
+      if (weatherAllStationsSection) weatherAllStationsSection.classList.remove("hidden");
+      if (weatherAllStationsList) {
+        weatherAllStationsList.innerHTML = "";
+        
+        // Flatten waypoints into individual passes
+        const passesToRender = [];
+        activeRoute.waypoints.forEach(wpt => {
+          const passes = wpt.extensions?.station?.passes || [];
+          if (passes.length > 0) {
+            passes.forEach(p => {
+              passesToRender.push({
+                wpt: wpt,
+                passNum: p.num,
+                dist_m: p.dist_m,
+                name: wpt.name + (passes.length > 1 ? ` (Pass ${p.num})` : ""),
+                ele: wpt.ele
+              });
+            });
+          } else {
+            passesToRender.push({
+              wpt: wpt,
+              passNum: 1,
+              dist_m: wpt.dist_m,
+              name: wpt.name,
+              ele: wpt.ele
+            });
+          }
+        });
+
+        // Sort by distance
+        passesToRender.sort((a, b) => a.dist_m - b.dist_m);
+
+        // Fetch forecasts sequentially (highly cached)
+        for (const item of passesToRender) {
+          let cardWeatherEmoji = "🌡️";
+          let cardWeatherTemp = "--";
+          let cardWeatherDesc = "Loading...";
+
+          const itemElapsedHrs = getElapsedHoursAtDistance(activeRoute, item.dist_m, durationHrs);
+          const itemArrivalMs = planStartMs + itemElapsedHrs * 3600 * 1000;
+          const itemArrivalDate = new Date(itemArrivalMs);
+
+          let stationForecast = null;
+          try {
+            stationForecast = await fetchWeatherForecast(item.wpt.lat, item.wpt.lon, 96, apiKeyMaps);
+          } catch (e) {
+            console.error(`Failed to load forecast for comparative station ${item.name}:`, e);
+          }
+
+          if (stationForecast && stationForecast.forecastHours && stationForecast.forecastHours.length > 0) {
+            const details = getWeatherWindowDetails(activeRoute, item.dist_m, stationForecast, itemArrivalMs);
+            if (details) {
+              const cond = details.selectedHour.weatherCondition || {};
+              const style = getWeatherConditionStyle(cond.type);
+              const hrTemp = details.selectedHour.temperature?.degrees ?? 0;
+              cardWeatherEmoji = style.emoji;
+              cardWeatherTemp = `${convertTemperatureValue(hrTemp)} (${convertTemperatureValue(details.minTemp)}-${convertTemperatureValue(details.maxTemp)})`;
+              cardWeatherDesc = cond.description?.text || style.label;
+            }
+          }
+
+          const timeStr = itemArrivalDate.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+          const dayStr = itemArrivalDate.toLocaleDateString([], { weekday: 'short' });
+          const arrivalLabel = `${dayStr} ${timeStr}`;
+
+          const card = document.createElement("div");
+          card.className = "weather-station-card";
+          card.style.display = "flex";
+          card.style.justifyContent = "space-between";
+          card.style.alignItems = "center";
+          card.style.background = "rgba(255, 255, 255, 0.03)";
+          card.style.border = "1px solid rgba(255, 255, 255, 0.05)";
+          card.style.borderRadius = "6px";
+          card.style.padding = "6px 10px";
+          card.style.cursor = "pointer";
+          card.style.transition = "background 0.2s ease, border-color 0.2s ease";
+
+          card.addEventListener("click", () => {
+            if (item.wpt.closestTrackpointIndex !== undefined) {
+              playbackIndex = item.wpt.closestTrackpointIndex;
+              if (mapController) {
+                mapController.syncToTrackpoint(playbackIndex, true);
+              }
+              if (elevationChart) {
+                elevationChart.progressIndex = playbackIndex;
+                elevationChart.draw();
+              }
+              updateHUD(playbackIndex);
+              showPoiDetailDialog(item.wpt, playbackIndex, item.dist_m);
+            }
+          });
+
+          const elevStr = formatElevation(item.ele);
+          const distStr = formatDistance(item.dist_m);
+
+          card.innerHTML = `
+            <div style="display: flex; flex-direction: column; text-align: left;">
+              <span class="station-name" style="font-size: 11px; font-weight: bold; color: #60a5fa; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 140px;">${item.name}</span>
+              <span class="station-meta" style="font-size: 9px; color: var(--text-muted);">Elev: ${elevStr} | Dist: ${distStr}</span>
+            </div>
+            <div style="display: flex; flex-direction: column; align-items: flex-end; text-align: right;">
+              <span class="station-weather" style="font-size: 11px; font-weight: 500; display: flex; align-items: center; gap: 4px;">
+                <span style="font-size: 14px; margin-right: 2px;">${cardWeatherEmoji}</span>
+                <span class="station-temp" style="font-size: 11.5px; font-weight: bold;">${cardWeatherTemp}</span>
+              </span>
+              <span style="font-size: 8px; color: #10b981; font-weight: 600;">${arrivalLabel}</span>
+            </div>
+          `;
+          weatherAllStationsList.appendChild(card);
+        }
+      }
+    }
+
     if (isPanelVisible) {
       if (weatherLoader) weatherLoader.classList.add("hidden");
       if (weatherContent) weatherContent.classList.remove("hidden");
@@ -953,49 +1153,119 @@ async function updateWeatherUI(lat, lon) {
 /**
  * Updates POI weather sub-view.
  */
-async function updatePoiWeatherUI(wpt) {
+async function updatePoiWeatherUI(wpt, currentDist = null) {
   if (!apiKeyMaps) {
     if (poiWeatherSection) poiWeatherSection.classList.add("hidden");
     return;
   }
 
+  const poiWeatherTimeline = document.getElementById("poi-weather-timeline");
+
   if (poiWeatherSection) poiWeatherSection.classList.remove("hidden");
+
+  if (!hasFetchedWeather) {
+    if (poiWeatherOfflineMsg) poiWeatherOfflineMsg.classList.remove("hidden");
+    if (poiWeatherCardContainer) poiWeatherCardContainer.classList.add("hidden");
+    return;
+  } else {
+    if (poiWeatherOfflineMsg) poiWeatherOfflineMsg.classList.add("hidden");
+    if (poiWeatherCardContainer) poiWeatherCardContainer.classList.remove("hidden");
+  }
+
   if (poiWeatherEmoji) poiWeatherEmoji.textContent = "🌡️";
   if (poiWeatherDesc) poiWeatherDesc.textContent = "Loading...";
   if (poiWeatherWind) poiWeatherWind.textContent = "Wind: --";
   if (poiWeatherTemp) poiWeatherTemp.textContent = "--";
   if (poiWeatherPrecip) poiWeatherPrecip.textContent = "Rain: --%";
+  if (poiWeatherTimeline) poiWeatherTimeline.innerHTML = "";
 
   try {
-    const data = await fetchWeatherForecast(wpt.lat, wpt.lon, 1, apiKeyMaps);
+    const data = await fetchWeatherForecast(wpt.lat, wpt.lon, 96, apiKeyMaps);
     if (!data || !data.forecastHours || data.forecastHours.length === 0) {
       throw new Error("No forecast data");
     }
 
-    const current = data.forecastHours[0];
-    const condition = current.weatherCondition || {};
+    const dist = currentDist !== null ? currentDist : wpt.dist_m;
+    const elapsedHrs = getElapsedHoursAtDistance(activeRoute, dist, getPlanDurationHrs());
+    const planStartMs = getPlanStartMs();
+    const arrivalMs = planStartMs + elapsedHrs * 3600 * 1000;
+    const arrivalDate = new Date(arrivalMs);
+
+    const details = getWeatherWindowDetails(activeRoute, dist, data, arrivalMs);
+    if (!details) {
+      throw new Error("No forecast details found");
+    }
+
+    const selectedHour = details.selectedHour;
+    const condition = selectedHour.weatherCondition || {};
     const condStyle = getWeatherConditionStyle(condition.type);
 
     if (poiWeatherEmoji) poiWeatherEmoji.textContent = condStyle.emoji;
-    if (poiWeatherDesc) poiWeatherDesc.textContent = condition.description?.text || condStyle.label;
-    
-    const tempCelsius = current.temperature?.degrees ?? 0;
-    if (poiWeatherTemp) poiWeatherTemp.textContent = convertTemperatureValue(tempCelsius);
 
-    const windSpeed = current.wind?.speed?.value ?? 0;
-    const windDir = current.wind?.direction?.cardinal || "N/A";
+    const timeString = arrivalDate.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+    const dayString = arrivalDate.toLocaleDateString([], { weekday: 'short' });
+    const arrivalLabel = `${dayString} ${timeString}`;
+
+    if (poiWeatherDesc) {
+      poiWeatherDesc.textContent = `${condition.description?.text || condStyle.label} (Expected ${arrivalLabel})`;
+    }
+    
+    const tempCelsius = selectedHour.temperature?.degrees ?? 0;
+    if (poiWeatherTemp) {
+      const mainTemp = convertTemperatureValue(tempCelsius);
+      const minTemp = convertTemperatureValue(details.minTemp);
+      const maxTemp = convertTemperatureValue(details.maxTemp);
+      poiWeatherTemp.textContent = `${mainTemp} (${minTemp}-${maxTemp})`;
+    }
+
+    const windSpeed = selectedHour.wind?.speed?.value ?? 0;
+    const windDir = selectedHour.wind?.direction?.cardinal || "N/A";
     if (poiWeatherWind) {
       poiWeatherWind.textContent = `Wind: ${convertWindSpeedValue(windSpeed)} ${windDir}`;
     }
 
     if (poiWeatherPrecip) {
-      poiWeatherPrecip.textContent = `Rain: ${current.precipitation?.probability?.percent ?? 0}%`;
+      poiWeatherPrecip.textContent = `Rain: ${selectedHour.precipitation?.probability?.percent ?? 0}%`;
+    }
+
+    // Render scaled W-hour window forecast timeline
+    if (poiWeatherTimeline) {
+      poiWeatherTimeline.innerHTML = "";
+      details.displayHours.forEach(hr => {
+        const hrCond = hr.weatherCondition || {};
+        const hrStyle = getWeatherConditionStyle(hrCond.type);
+        const hrTemp = hr.temperature?.degrees ?? 0;
+        const hrTimeStr = formatHourOnly(hr);
+        const isActive = (hr === selectedHour);
+
+        const box = document.createElement("div");
+        box.className = `poi-weather-hour-box ${isActive ? 'active' : ''}`;
+        box.innerHTML = `
+          <span class="time">${hrTimeStr}</span>
+          <span class="emoji" title="${hrCond.description?.text || hrStyle.label}">${hrStyle.emoji}</span>
+          <span class="temp">${convertTemperatureValue(hrTemp)}</span>
+        `;
+        poiWeatherTimeline.appendChild(box);
+      });
     }
   } catch (error) {
     console.error("Failed to load POI weather:", error);
     if (poiWeatherDesc) poiWeatherDesc.textContent = "Forecast unavailable";
     if (poiWeatherTemp) poiWeatherTemp.textContent = "--";
   }
+}
+
+// Helper to format hour labels
+function formatHourOnly(hourData) {
+  if (hourData.displayDateTime) {
+    const hours = hourData.displayDateTime.hours;
+    const ampm = hours >= 12 ? "PM" : "AM";
+    const displayHour = hours % 12 || 12;
+    return `${displayHour} ${ampm}`;
+  } else if (hourData.time) {
+    return new Date(hourData.time).toLocaleTimeString([], { hour: 'numeric' });
+  }
+  return "--";
 }
 
 /**
@@ -1420,46 +1690,48 @@ async function showPreviewPoiBanner(wpt, currentDist) {
     const parsed = new Date(weatherPlanStartInput.value);
     if (!isNaN(parsed)) planStartMs = parsed.getTime();
   }
-  const durationHrs = (weatherPlanDurationInput && parseFloat(weatherPlanDurationInput.value)) ? parseFloat(weatherPlanDurationInput.value) : 4.0;
-  const progressFraction = activeRoute?.totalDistance > 0 ? (currentDist / activeRoute.totalDistance) : 0;
-  const estArrivalMs = planStartMs + progressFraction * (durationHrs * 3600 * 1000);
+  const durationHrs = getPlanDurationHrs();
+  const elapsedHrs = getElapsedHoursAtDistance(activeRoute, currentDist, durationHrs);
+  const estArrivalMs = planStartMs + elapsedHrs * 3600 * 1000;
   const arrivalDate = new Date(estArrivalMs);
 
   if (previewPoiArriveTime) {
     const arrTime = arrivalDate.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
     previewPoiArriveTime.textContent = `Arrive: ${arrTime}`;
   }
-  if (previewPoiWeatherDesc) previewPoiWeatherDesc.textContent = "Loading forecast...";
+  if (previewPoiWeatherDesc) previewPoiWeatherDesc.textContent = hasFetchedWeather ? "Loading forecast..." : "Forecast not fetched";
 
-  if (apiKeyMaps) {
+  if (hasFetchedWeather && apiKeyMaps) {
     try {
-      const data = await fetchWeatherForecast(wpt.lat, wpt.lon, 24, apiKeyMaps);
+      const data = await fetchWeatherForecast(wpt.lat, wpt.lon, 96, apiKeyMaps);
       if (data && data.forecastHours && data.forecastHours.length > 0) {
-        let selectedHour = data.forecastHours[0];
-        let minDiff = Infinity;
-        data.forecastHours.forEach(hr => {
-          let hrMs = Date.now();
-          if (hr.time) hrMs = new Date(hr.time).getTime();
-          const diff = Math.abs(hrMs - arrivalDate.getTime());
-          if (diff < minDiff) {
-            minDiff = diff;
-            selectedHour = hr;
+        const details = getWeatherWindowDetails(activeRoute, currentDist, data, estArrivalMs);
+        if (details) {
+          const selectedHour = details.selectedHour;
+          const cond = selectedHour.weatherCondition || {};
+          const style = getWeatherConditionStyle(cond.type);
+          if (previewPoiWeatherIcon) previewPoiWeatherIcon.textContent = style.emoji;
+          if (previewPoiWeatherTemp) {
+            const mainTemp = convertTemperatureValue(selectedHour.temperature?.degrees ?? 0);
+            const minTemp = convertTemperatureValue(details.minTemp);
+            const maxTemp = convertTemperatureValue(details.maxTemp);
+            previewPoiWeatherTemp.textContent = `${mainTemp} (${minTemp}-${maxTemp})`;
           }
-        });
-        const cond = selectedHour.weatherCondition || {};
-        const style = getWeatherConditionStyle(cond.type);
-        if (previewPoiWeatherIcon) previewPoiWeatherIcon.textContent = style.emoji;
-        if (previewPoiWeatherTemp) previewPoiWeatherTemp.textContent = convertTemperatureValue(selectedHour.temperature?.degrees ?? 0);
-        if (previewPoiWeatherDesc) {
-          const pop = selectedHour.precipitation?.probability?.percent ?? 0;
-          previewPoiWeatherDesc.textContent = `${style.label} (Rain: ${pop}%)`;
+          if (previewPoiWeatherDesc) {
+            const pop = selectedHour.precipitation?.probability?.percent ?? 0;
+            previewPoiWeatherDesc.textContent = `${style.label} (Rain: ${pop}%)`;
+          }
         }
       }
     } catch (e) {
       if (previewPoiWeatherDesc) previewPoiWeatherDesc.textContent = "Forecast unavailable";
     }
   } else {
-    if (previewPoiWeatherDesc) previewPoiWeatherDesc.textContent = "No API Key";
+    if (previewPoiWeatherIcon) previewPoiWeatherIcon.textContent = "🌡️";
+    if (previewPoiWeatherTemp) previewPoiWeatherTemp.textContent = "--";
+    if (previewPoiWeatherDesc) {
+      previewPoiWeatherDesc.textContent = apiKeyMaps ? "Forecast not fetched" : "No API Key";
+    }
   }
 
   previewPoiBanner.classList.remove("hidden");
@@ -1720,15 +1992,158 @@ function renderEditAmenities(wpt) {
 }
 
 /**
+ * Bumps the expected arrival time at a specific waypoint distance by an offset in minutes.
+ * Scales the preceding sectors' pacing proportionally.
+ */
+function bumpArrivalTime(dist_m, offsetMinutes) {
+  if (!activeRoute) return;
+  const originalDuration = getPlanDurationHrs();
+  
+  if (activeRoute.executionPlan && activeRoute.executionPlan.sectors && activeRoute.executionPlan.sectors.length > 0) {
+    const originalElapsedHrs = getElapsedHoursAtDistance(activeRoute, dist_m, originalDuration);
+    if (originalElapsedHrs <= 0.05) {
+      showToast("Cannot adjust start boundary time directly!");
+      return;
+    }
+    const newElapsedHrs = originalElapsedHrs + offsetMinutes / 60;
+    if (newElapsedHrs <= 0.1) return;
+    const scale = newElapsedHrs / originalElapsedHrs;
+    
+    // Scale preceding sectors
+    activeRoute.executionPlan.sectors.forEach(sec => {
+      if (sec.start_dist_m < dist_m) {
+        sec.target_pace_min = sec.target_pace_min * scale;
+        const spd = 60 / sec.target_pace_min;
+        sec.strategy = sec.strategy.replace(/Hold \d+(\.\d+)? mph/, `Hold ${spd.toFixed(1)} mph`);
+      }
+    });
+    
+    // Recalculate total duration
+    let newTotalHrs = 0;
+    activeRoute.executionPlan.sectors.forEach(sec => {
+      const distMi = (sec.end_dist_m - sec.start_dist_m) / 1609.344;
+      newTotalHrs += distMi * (sec.target_pace_min / 60);
+    });
+    activeRoute.executionPlan.targetDurationHrs = newTotalHrs;
+    if (weatherPlanDurationInput) {
+      weatherPlanDurationInput.value = newTotalHrs.toFixed(2);
+    }
+  } else {
+    // Fallback: Scale overall plan duration
+    const progressFraction = activeRoute.totalDistance > 0 ? dist_m / activeRoute.totalDistance : 0;
+    if (progressFraction <= 0.05) return;
+    const originalElapsedHrs = progressFraction * originalDuration;
+    const newElapsedHrs = originalElapsedHrs + offsetMinutes / 60;
+    if (newElapsedHrs <= 0.1) return;
+    const newDuration = newElapsedHrs / progressFraction;
+    if (weatherPlanDurationInput) {
+      weatherPlanDurationInput.value = newDuration.toFixed(2);
+    }
+  }
+  
+  onExecutionPlanChanged();
+  saveSessionState();
+  showToast(`Arrival time adjusted by ${offsetMinutes > 0 ? "+" : ""}${offsetMinutes} mins.`);
+}
+
+/**
+ * Helper to render the estimated arrival time cell with range and bump buttons.
+ */
+function renderEstTimeCell(td, dist_m) {
+  td.style.textAlign = "center";
+  const pElapsedHrs = getElapsedHoursAtDistance(activeRoute, dist_m, getPlanDurationHrs());
+  const planStartMs = getPlanStartMs();
+  const pArrivalMs = planStartMs + pElapsedHrs * 3600 * 1000;
+  const pArrivalDate = new Date(pArrivalMs);
+  const pArrivalStr = pArrivalDate.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+  const pDayStr = pArrivalDate.toLocaleDateString([], { weekday: 'short' });
+
+  // Fast/Slow ranges
+  const fastMs = planStartMs + (pElapsedHrs * 0.85) * 3600 * 1000;
+  const slowMs = planStartMs + (pElapsedHrs * 1.15) * 3600 * 1000;
+  const fastStr = new Date(fastMs).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+  const slowStr = new Date(slowMs).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+
+  const timeContainer = document.createElement("div");
+  timeContainer.style.display = "flex";
+  timeContainer.style.flexDirection = "column";
+  timeContainer.style.alignItems = "center";
+  timeContainer.style.gap = "2px";
+
+  const adjustRow = document.createElement("div");
+  adjustRow.style.display = "flex";
+  adjustRow.style.alignItems = "center";
+  adjustRow.style.gap = "6px";
+
+  const btnMinus = document.createElement("button");
+  btnMinus.textContent = "-";
+  btnMinus.title = "Arrive 10m earlier";
+  btnMinus.style.padding = "1px 6px";
+  btnMinus.style.fontSize = "10px";
+  btnMinus.style.cursor = "pointer";
+  btnMinus.style.background = "rgba(255,255,255,0.1)";
+  btnMinus.style.border = "1px solid rgba(255,255,255,0.2)";
+  btnMinus.style.color = "#fff";
+  btnMinus.style.borderRadius = "3px";
+  btnMinus.addEventListener("click", (e) => {
+    e.stopPropagation();
+    bumpArrivalTime(dist_m, -10);
+  });
+
+  const btnPlus = document.createElement("button");
+  btnPlus.textContent = "+";
+  btnPlus.title = "Arrive 10m later";
+  btnPlus.style.padding = "1px 6px";
+  btnPlus.style.fontSize = "10px";
+  btnPlus.style.cursor = "pointer";
+  btnPlus.style.background = "rgba(255,255,255,0.1)";
+  btnPlus.style.border = "1px solid rgba(255,255,255,0.2)";
+  btnPlus.style.color = "#fff";
+  btnPlus.style.borderRadius = "3px";
+  btnPlus.addEventListener("click", (e) => {
+    e.stopPropagation();
+    bumpArrivalTime(dist_m, 10);
+  });
+
+  const timeLbl = document.createElement("strong");
+  timeLbl.textContent = `${pDayStr} ${pArrivalStr}`;
+
+  adjustRow.appendChild(btnMinus);
+  adjustRow.appendChild(timeLbl);
+  adjustRow.appendChild(btnPlus);
+
+  const rangeLbl = document.createElement("span");
+  rangeLbl.style.fontSize = "9px";
+  rangeLbl.style.color = "var(--text-muted)";
+  rangeLbl.textContent = `Range: ${fastStr} - ${slowStr}`;
+
+  timeContainer.appendChild(adjustRow);
+  timeContainer.appendChild(rangeLbl);
+  td.appendChild(timeContainer);
+}
+
+/**
  * Displays POI detail dialog window populated with services and multi-pass timeline metrics.
  * @param {Object} wpt Waypoint details parsed from GPX schema
  * @param {number} index Trackpoint index snapping point
  */
-function showPoiDetailDialog(wpt, index, referenceDist = null, startCollapsed = false) {
+async function showPoiDetailDialog(wpt, index, referenceDist = null, startCollapsed = false) {
   if (!poiDetailDialog) return;
 
-  // Fetch and show weather for the POI
-  updatePoiWeatherUI(wpt);
+  const currentDist = referenceDist !== null ? referenceDist : wpt.dist_m;
+
+  // Fetch and show weather for the POI using the current active pass distance
+  updatePoiWeatherUI(wpt, currentDist);
+
+  // Fetch the full forecast to populate the weather column in the passes table
+  let weatherData = null;
+  if (apiKeyMaps) {
+    try {
+      weatherData = await fetchWeatherForecast(wpt.lat, wpt.lon, 96, apiKeyMaps);
+    } catch (e) {
+      console.error("Failed to load forecast for table:", e);
+    }
+  }
 
   activeDialogWpt = wpt;
   isEditingPoiLocation = false;
@@ -1757,7 +2172,6 @@ function showPoiDetailDialog(wpt, index, referenceDist = null, startCollapsed = 
   // Title headers
   poiValName.textContent = wpt.name;
 
-  const currentDist = referenceDist !== null ? referenceDist : wpt.dist_m;
   const passes = wpt.extensions?.station?.passes || [];
 
   // Identify active pass index relative to current course location
@@ -1880,6 +2294,10 @@ function showPoiDetailDialog(wpt, index, referenceDist = null, startCollapsed = 
       const tdArrive = document.createElement("td");
       tdArrive.textContent = formatDistance(p.dist_m);
 
+      // Calculate Expected Arrival Time
+      const tdEstTime = document.createElement("td");
+      renderEstTimeCell(tdEstTime, p.dist_m);
+
       const pNeighbors = getSegmentingNeighbors(p.dist_m);
       
       const pPrevDiff = p.dist_m - pNeighbors.prev.dist_m;
@@ -1890,13 +2308,35 @@ function showPoiDetailDialog(wpt, index, referenceDist = null, startCollapsed = 
       const tdNext = document.createElement("td");
       tdNext.textContent = `${formatDistance(pNextDiff)} (${pNeighbors.next.name})`;
 
+      // Weather forecast for this pass's arrival time
+      const tdWeather = document.createElement("td");
+      tdWeather.style.whiteSpace = "nowrap";
+      if (weatherData && weatherData.forecastHours && weatherData.forecastHours.length > 0) {
+        const details = getWeatherWindowDetails(activeRoute, p.dist_m, weatherData, pArrivalMs);
+        if (details) {
+          const cond = details.selectedHour.weatherCondition || {};
+          const style = getWeatherConditionStyle(cond.type);
+          const hrTemp = details.selectedHour.temperature?.degrees ?? 0;
+          const mainTemp = convertTemperatureValue(hrTemp);
+          const minTemp = convertTemperatureValue(details.minTemp);
+          const maxTemp = convertTemperatureValue(details.maxTemp);
+          tdWeather.innerHTML = `<span style="font-size:14px; margin-right: 2px;">${style.emoji}</span> <span>${mainTemp} (${minTemp}-${maxTemp})</span>`;
+        } else {
+          tdWeather.textContent = "--";
+        }
+      } else {
+        tdWeather.textContent = "--";
+      }
+
       const tdCutoff = document.createElement("td");
       tdCutoff.textContent = p.cutoff_clock || p.cutoff_elapsed || "--";
 
       tr.appendChild(tdNum);
       tr.appendChild(tdArrive);
+      tr.appendChild(tdEstTime);
       tr.appendChild(tdPrev);
       tr.appendChild(tdNext);
+      tr.appendChild(tdWeather);
       tr.appendChild(tdCutoff);
 
       // Highlight active pass row
@@ -1917,19 +2357,45 @@ function showPoiDetailDialog(wpt, index, referenceDist = null, startCollapsed = 
     const tdArrive = document.createElement("td");
     tdArrive.textContent = formatDistance(currentDist);
 
+    // Calculate Expected Arrival Time
+    const tdEstTime = document.createElement("td");
+    renderEstTimeCell(tdEstTime, currentDist);
+
     const tdPrev = document.createElement("td");
     tdPrev.textContent = `+${formatDistance(prevDiff)} (${neighbors.prev.name})`;
 
     const tdNext = document.createElement("td");
     tdNext.textContent = `${formatDistance(nextDiff)} (${neighbors.next.name})`;
 
+    // Weather forecast for single pass
+    const tdWeather = document.createElement("td");
+    tdWeather.style.whiteSpace = "nowrap";
+    if (weatherData && weatherData.forecastHours && weatherData.forecastHours.length > 0) {
+      const details = getWeatherWindowDetails(activeRoute, currentDist, weatherData, pArrivalMs);
+      if (details) {
+        const cond = details.selectedHour.weatherCondition || {};
+        const style = getWeatherConditionStyle(cond.type);
+        const hrTemp = details.selectedHour.temperature?.degrees ?? 0;
+        const mainTemp = convertTemperatureValue(hrTemp);
+        const minTemp = convertTemperatureValue(details.minTemp);
+        const maxTemp = convertTemperatureValue(details.maxTemp);
+        tdWeather.innerHTML = `<span style="font-size:14px; margin-right: 2px;">${style.emoji}</span> <span>${mainTemp} (${minTemp}-${maxTemp})</span>`;
+      } else {
+        tdWeather.textContent = "--";
+      }
+    } else {
+      tdWeather.textContent = "--";
+    }
+
     const tdCutoff = document.createElement("td");
     tdCutoff.textContent = "--";
 
     tr.appendChild(tdNum);
     tr.appendChild(tdArrive);
+    tr.appendChild(tdEstTime);
     tr.appendChild(tdPrev);
     tr.appendChild(tdNext);
+    tr.appendChild(tdWeather);
     tr.appendChild(tdCutoff);
 
     poiTableRows.appendChild(tr);
@@ -2256,6 +2722,7 @@ function processGpxContent(text, filename) {
   activeRoute = isKml ? parseKML(text, units, desertThresholdMiles) : parseGPX(text, units, desertThresholdMiles);
   activeRoute.avgSpacing = activeRoute.trackpoints.length > 0 ? (activeRoute.totalDistance / activeRoute.trackpoints.length) : 0;
   chatHistory = []; // Reset Gemini chatbot context on new course ingestion
+  hasFetchedWeather = false;
   pausePlayback();
   playbackDistance = 0;
   playbackIndex = 0;
@@ -2937,6 +3404,7 @@ function setupEventListeners() {
     if (racePlannerWizardModal) {
       racePlannerWizardModal.classList.remove("hidden");
       if (activeRoute?.executionPlan?.sectors?.length > 0) {
+        tempExecutionPlan = activeRoute.executionPlan;
         renderLoadedExecutionPlan(activeRoute);
         wizardStep1?.classList.add("hidden");
         wizardStep2?.classList.add("hidden");
@@ -2998,24 +3466,202 @@ function setupEventListeners() {
     wizDescSpd.addEventListener("input", () => updatePaceLabel(wizDescSpd, wizDescPaceLbl));
   }
 
+  // Athlete Profile Engine
+  const wizProfileSelect = document.getElementById("wiz-profile-select");
+  const wizNewProfileName = document.getElementById("wiz-new-profile-name");
+  const wizSaveProfileBtn = document.getElementById("wiz-save-profile-btn");
+  const wizDeleteProfileBtn = document.getElementById("wiz-delete-profile-btn");
+
+  const defaultProfiles = [
+    {
+      name: "My Profile (Recovering)",
+      fitness: "recovery",
+      goalHrs: 14.5,
+      recentRace: "Recovering from medical issues",
+      climbSpd: 2.0,
+      flatSpd: 4.5,
+      descSpd: 4.0,
+      steepHandling: "cautious",
+      penalty: 15
+    },
+    {
+      name: "My Friend (Fast Downhills)",
+      fitness: "elite",
+      goalHrs: 11.0,
+      recentRace: "Fast downhill runner",
+      climbSpd: 4.5,
+      flatSpd: 7.5,
+      descSpd: 8.0,
+      steepHandling: "aggressive",
+      penalty: 15
+    }
+  ];
+
+  const loadProfiles = () => {
+    const stored = localStorage.getItem("ruff_terrain_athlete_profiles");
+    if (stored) {
+      try {
+        return JSON.parse(stored);
+      } catch (e) {
+        console.error("Failed to parse stored profiles", e);
+      }
+    }
+    localStorage.setItem("ruff_terrain_athlete_profiles", JSON.stringify(defaultProfiles));
+    return defaultProfiles.slice();
+  };
+
+  const populateProfileDropdown = () => {
+    if (!wizProfileSelect) return;
+    const profiles = loadProfiles();
+    wizProfileSelect.innerHTML = '<option value="">-- Load Profile --</option>';
+    profiles.forEach(p => {
+      const opt = document.createElement("option");
+      opt.value = p.name;
+      opt.textContent = p.name;
+      wizProfileSelect.appendChild(opt);
+    });
+  };
+
+  if (wizProfileSelect) {
+    wizProfileSelect.addEventListener("change", () => {
+      const selectedName = wizProfileSelect.value;
+      if (!selectedName) return;
+      const profiles = loadProfiles();
+      const profile = profiles.find(p => p.name === selectedName);
+      if (!profile) return;
+
+      const radio = document.querySelector(`input[name="wiz_fitness"][value="${profile.fitness}"]`);
+      if (radio) radio.checked = true;
+      
+      const goalEl = document.getElementById("wiz-goal-hrs");
+      if (goalEl) goalEl.value = profile.goalHrs;
+      const recentEl = document.getElementById("wiz-recent-race");
+      if (recentEl) recentEl.value = profile.recentRace;
+
+      const climbEl = document.getElementById("wiz-climb-spd");
+      if (climbEl) climbEl.value = profile.climbSpd;
+      const flatEl = document.getElementById("wiz-flat-spd");
+      if (flatEl) flatEl.value = profile.flatSpd;
+      const descEl = document.getElementById("wiz-desc-spd");
+      if (descEl) descEl.value = profile.descSpd;
+      const steepEl = document.getElementById("wiz-steep-handling");
+      if (steepEl) steepEl.value = profile.steepHandling;
+
+      if (wizPenaltySlider) wizPenaltySlider.value = profile.penalty;
+
+      const paceClimb = document.getElementById("wiz-climb-pace-lbl");
+      const paceFlat = document.getElementById("wiz-flat-pace-lbl");
+      const paceDesc = document.getElementById("wiz-desc-pace-lbl");
+      updatePaceLabel(climbEl, paceClimb);
+      updatePaceLabel(flatEl, paceFlat);
+      updatePaceLabel(descEl, paceDesc);
+      if (wizPenaltySlider && wizPenaltyLbl) {
+        wizPenaltyLbl.textContent = `-${wizPenaltySlider.value}% pace`;
+      }
+
+      showToast(`Profile "${selectedName}" loaded.`);
+    });
+  }
+
+  if (wizSaveProfileBtn) {
+    wizSaveProfileBtn.addEventListener("click", () => {
+      let profileName = wizNewProfileName?.value.trim();
+      if (!profileName && wizProfileSelect) {
+        profileName = wizProfileSelect.value;
+      }
+      if (!profileName) {
+        showToast("Please enter a profile name or select a profile to overwrite.");
+        return;
+      }
+
+      const fitness = document.querySelector('input[name="wiz_fitness"]:checked')?.value || "recovery";
+      const goalHrs = parseFloat(document.getElementById("wiz-goal-hrs")?.value || "5.5");
+      const recentRace = document.getElementById("wiz-recent-race")?.value || "";
+      const climbSpd = parseFloat(document.getElementById("wiz-climb-spd")?.value || "2.0");
+      const flatSpd = parseFloat(document.getElementById("wiz-flat-spd")?.value || "4.5");
+      const descSpd = parseFloat(document.getElementById("wiz-desc-spd")?.value || "4.0");
+      const steepHandling = document.getElementById("wiz-steep-handling")?.value || "cautious";
+      const penalty = parseInt(document.getElementById("wiz-penalty-slider")?.value || "15");
+
+      const newProfile = {
+        name: profileName,
+        fitness,
+        goalHrs,
+        recentRace,
+        climbSpd,
+        flatSpd,
+        descSpd,
+        steepHandling,
+        penalty
+      };
+
+      const profiles = loadProfiles();
+      const existingIdx = profiles.findIndex(p => p.name.toLowerCase() === profileName.toLowerCase());
+      if (existingIdx >= 0) {
+        profiles[existingIdx] = newProfile;
+        showToast(`Profile "${profileName}" overwritten.`);
+      } else {
+        profiles.push(newProfile);
+        showToast(`Profile "${profileName}" saved.`);
+      }
+
+      localStorage.setItem("ruff_terrain_athlete_profiles", JSON.stringify(profiles));
+      populateProfileDropdown();
+      if (wizProfileSelect) wizProfileSelect.value = profileName;
+      if (wizNewProfileName) wizNewProfileName.value = "";
+    });
+  }
+
+  if (wizDeleteProfileBtn) {
+    wizDeleteProfileBtn.addEventListener("click", () => {
+      if (!wizProfileSelect) return;
+      const selectedName = wizProfileSelect.value;
+      if (!selectedName) {
+        showToast("Please select a profile to delete.");
+        return;
+      }
+
+      const profiles = loadProfiles();
+      const filtered = profiles.filter(p => p.name !== selectedName);
+      localStorage.setItem("ruff_terrain_athlete_profiles", JSON.stringify(filtered));
+      populateProfileDropdown();
+      wizProfileSelect.value = "";
+      showToast(`Profile "${selectedName}" deleted.`);
+    });
+  }
+
+  // Populate profiles select immediately
+  populateProfileDropdown();
+
+  // Clear dropdown selection if user clicks any fitness radio button manually
+  document.querySelectorAll('input[name="wiz_fitness"]').forEach(radio => {
+    radio.addEventListener("change", () => {
+      if (wizProfileSelect) wizProfileSelect.value = "";
+    });
+  });
+
   if (wizNext1) {
     wizNext1.addEventListener("click", () => {
       const selFit = document.querySelector('input[name="wiz_fitness"]:checked')?.value || "recovery";
       const cSpdInput = document.getElementById("wiz-climb-spd");
       const dSpdInput = document.getElementById("wiz-desc-spd");
       const fSpdInput = document.getElementById("wiz-flat-spd");
-      if (selFit === "recovery") {
-        if (cSpdInput) cSpdInput.value = "2.0";
-        if (dSpdInput) dSpdInput.value = "4.0";
-        if (fSpdInput) fSpdInput.value = "4.5";
-      } else if (selFit === "intermediate") {
-        if (cSpdInput) cSpdInput.value = "3.0";
-        if (dSpdInput) dSpdInput.value = "6.0";
-        if (fSpdInput) fSpdInput.value = "6.0";
-      } else if (selFit === "elite") {
-        if (cSpdInput) cSpdInput.value = "4.5";
-        if (dSpdInput) dSpdInput.value = "8.0";
-        if (fSpdInput) fSpdInput.value = "7.5";
+      
+      // Only set default speeds if no custom profile is currently selected
+      if (!wizProfileSelect || !wizProfileSelect.value) {
+        if (selFit === "recovery") {
+          if (cSpdInput) cSpdInput.value = "2.0";
+          if (dSpdInput) dSpdInput.value = "4.0";
+          if (fSpdInput) fSpdInput.value = "4.5";
+        } else if (selFit === "intermediate") {
+          if (cSpdInput) cSpdInput.value = "3.0";
+          if (dSpdInput) dSpdInput.value = "6.0";
+          if (fSpdInput) fSpdInput.value = "6.0";
+        } else if (selFit === "elite") {
+          if (cSpdInput) cSpdInput.value = "4.5";
+          if (dSpdInput) dSpdInput.value = "8.0";
+          if (fSpdInput) fSpdInput.value = "7.5";
+        }
       }
       updatePaceLabel(wizClimbSpd, wizClimbPaceLbl);
       updatePaceLabel(wizFlatSpd, wizFlatPaceLbl);
@@ -3290,8 +3936,12 @@ function setupEventListeners() {
         avgDisp.textContent = `${Math.floor(avgPace)}:${Math.floor((avgPace%1)*60).toString().padStart(2,"0")} min/mi`;
       }
 
-      activeRoute.executionPlan = {
-        startTime: document.getElementById("wiz-start-time")?.value || "06:00",
+      const startDateVal = document.getElementById("wiz-start-date")?.value || "2026-06-20";
+      const startTimeVal = document.getElementById("wiz-start-time")?.value || "06:00";
+      const combinedStartStr = `${startDateVal}T${startTimeVal}`;
+
+      tempExecutionPlan = {
+        startTime: combinedStartStr,
         targetDurationHrs: elapsedHrs,
         sectors: generatedSectors
       };
@@ -3312,6 +3962,11 @@ function setupEventListeners() {
   }
   if (wizApplyHudBtn) {
     wizApplyHudBtn.addEventListener("click", () => {
+      if (tempExecutionPlan) {
+        activeRoute.executionPlan = tempExecutionPlan;
+        onExecutionPlanChanged();
+        saveSessionState();
+      }
       racePlannerWizardModal?.classList.add("hidden");
       showToast("Segmented Race Plan Applied to HUD!");
     });
@@ -3686,6 +4341,7 @@ function setupEventListeners() {
 
       if (plannerOutputContainer) plannerOutputContainer.classList.remove("hidden");
       showToast("Generated Segmented Race Plan!");
+      onExecutionPlanChanged();
     });
   }
 
@@ -3770,8 +4426,9 @@ function setupEventListeners() {
     weatherPlanStartInput.addEventListener("change", () => {
       if (weatherPlanStartInput.value) {
         localStorage.setItem("pref_weather_start", weatherPlanStartInput.value);
+        hasFetchedWeather = false;
         if (lastWeatherLat !== null && lastWeatherLon !== null) {
-          triggerWeatherWeather(lastWeatherLat, lastWeatherLon, true);
+          updateWeatherUI(lastWeatherLat, lastWeatherLon);
         }
       }
     });
@@ -3785,10 +4442,49 @@ function setupEventListeners() {
     weatherPlanDurationInput.addEventListener("change", () => {
       if (weatherPlanDurationInput.value) {
         localStorage.setItem("pref_weather_duration", weatherPlanDurationInput.value);
+        hasFetchedWeather = false;
         if (lastWeatherLat !== null && lastWeatherLon !== null) {
-          triggerWeatherWeather(lastWeatherLat, lastWeatherLon, true);
+          updateWeatherUI(lastWeatherLat, lastWeatherLon);
         }
       }
+    });
+  }
+
+  if (fetchWeatherBtn) {
+    fetchWeatherBtn.addEventListener("click", () => {
+      if (!weatherPlanStartInput || !weatherPlanStartInput.value) {
+        showToast("Please select a concrete start date and time first!");
+        return;
+      }
+      hasFetchedWeather = true;
+      if (lastWeatherLat !== null && lastWeatherLon !== null) {
+        updateWeatherUI(lastWeatherLat, lastWeatherLon);
+      } else if (activeRoute && activeRoute.trackpoints && activeRoute.trackpoints.length > 0) {
+        const startPt = activeRoute.trackpoints[0];
+        lastWeatherLat = startPt.lat;
+        lastWeatherLon = startPt.lon;
+        updateWeatherUI(startPt.lat, startPt.lon);
+      } else {
+        lastWeatherLat = 40.015;
+        lastWeatherLon = -105.2705;
+        updateWeatherUI(40.015, -105.2705);
+      }
+      showToast("Weather forecast fetched successfully!");
+    });
+  }
+
+  if (poiFetchWeatherBtn) {
+    poiFetchWeatherBtn.addEventListener("click", () => {
+      if (!weatherPlanStartInput || !weatherPlanStartInput.value) {
+        showToast("Please select a concrete start date and time first!");
+        return;
+      }
+      hasFetchedWeather = true;
+      if (activeDialogWpt) {
+        updatePoiWeatherUI(activeDialogWpt, activeDialogWpt.dist_m);
+        updateWeatherUI(activeDialogWpt.lat, activeDialogWpt.lon);
+      }
+      showToast("Weather forecast fetched for aid station details!");
     });
   }
 
@@ -4401,6 +5097,7 @@ function setupEventListeners() {
       renderStrategyModal(activeRoute);
       if (stratTabSectors) stratTabSectors.click();
       showToast("Generated AI Execution Plan & Enriched Aid Stations!");
+      onExecutionPlanChanged();
     });
   }
 

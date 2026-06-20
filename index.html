@@ -276,18 +276,29 @@
 
             <div id="poi-weather-section" class="poi-weather-section hidden" style="margin-top: 10px; padding-top: 10px; border-top: 1px solid rgba(255, 255, 255, 0.08);">
               <h4 style="margin: 0 0 6px 0; font-size: 11px; text-transform: uppercase; color: var(--text-muted);">Weather Forecast:</h4>
-              <div class="poi-weather-card" style="display: flex; align-items: center; justify-content: space-between; background: rgba(255,255,255,0.02); border: 1px solid rgba(255,255,255,0.05); padding: 8px 12px; border-radius: 8px;">
-                <div style="display: flex; gap: 10px; align-items: center;">
-                  <span id="poi-weather-emoji" style="font-size: 24px;">🌡️</span>
-                  <div style="display: flex; flex-direction: column; text-align: left;">
-                    <span id="poi-weather-desc" style="font-size: 12px; font-weight: 500;">Loading...</span>
-                    <span id="poi-weather-wind" style="font-size: 10px; color: var(--text-muted);">Wind: --</span>
+              
+              <!-- Offline Placeholder -->
+              <div id="poi-weather-offline-msg" style="text-align: center; padding: 12px; background: rgba(255,255,255,0.02); border: 1px dashed rgba(255,255,255,0.1); border-radius: 8px; font-size: 11px; margin-bottom: 4px;">
+                <span style="color: var(--text-muted);">Weather forecast is not loaded.</span>
+                <button id="poi-fetch-weather-btn" class="btn btn-primary" style="margin-top: 8px; width: 100%; padding: 4px; font-size: 10px; font-weight: bold; background: #10b981; border: none; border-radius: 4px; color: #fff; cursor: pointer;">⚡ Fetch Forecast</button>
+              </div>
+
+              <!-- Weather Card Container -->
+              <div id="poi-weather-card-container" class="hidden">
+                <div class="poi-weather-card" style="display: flex; align-items: center; justify-content: space-between; background: rgba(255,255,255,0.02); border: 1px solid rgba(255,255,255,0.05); padding: 8px 12px; border-radius: 8px;">
+                  <div style="display: flex; gap: 10px; align-items: center;">
+                    <span id="poi-weather-emoji" style="font-size: 24px;">🌡️</span>
+                    <div style="display: flex; flex-direction: column; text-align: left;">
+                      <span id="poi-weather-desc" style="font-size: 12px; font-weight: 500;">Loading...</span>
+                      <span id="poi-weather-wind" style="font-size: 10px; color: var(--text-muted);">Wind: --</span>
+                    </div>
+                  </div>
+                  <div style="text-align: right; display: flex; flex-direction: column;">
+                    <span id="poi-weather-temp" style="font-size: 16px; font-weight: bold;">--°C</span>
+                    <span id="poi-weather-precip" style="font-size: 10px; color: var(--text-muted);">Rain: --%</span>
                   </div>
                 </div>
-                <div style="text-align: right; display: flex; flex-direction: column;">
-                  <span id="poi-weather-temp" style="font-size: 16px; font-weight: bold;">--°C</span>
-                  <span id="poi-weather-precip" style="font-size: 10px; color: var(--text-muted);">Rain: --%</span>
-                </div>
+                <div id="poi-weather-timeline" style="margin-top: 8px; display: flex; gap: 6px; overflow-x: auto; padding-bottom: 6px;"></div>
               </div>
             </div>
 
@@ -297,8 +308,10 @@
                   <tr>
                     <th>PASS</th>
                     <th>ARRIVE AT</th>
+                    <th>EST. TIME</th>
                     <th>FROM PREV</th>
                     <th>TO NEXT</th>
+                    <th>WEATHER</th>
                     <th>CUT-OFF</th>
                   </tr>
                 </thead>
@@ -573,13 +586,19 @@
             <span style="color: var(--text-muted); font-weight: 500;">START TIME:</span>
             <input type="datetime-local" id="weather-plan-start" style="background: rgba(255,255,255,0.1); border: 1px solid rgba(255,255,255,0.2); color: #fff; border-radius: 4px; padding: 2px 6px; font-size: 10px; outline: none; cursor: pointer;" />
           </div>
-          <div style="display: flex; align-items: center; justify-content: space-between;">
+          <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px;">
             <span style="color: var(--text-muted); font-weight: 500;">EST. DURATION:</span>
             <div style="display: flex; align-items: center; gap: 4px;">
               <input type="number" id="weather-plan-duration" min="0.5" max="100" step="0.5" value="4.0" style="background: rgba(255,255,255,0.1); border: 1px solid rgba(255,255,255,0.2); color: #fff; border-radius: 4px; padding: 2px 6px; width: 50px; text-align: right; font-size: 10px; outline: none;" />
               <span style="color: var(--text-muted);">hrs</span>
             </div>
           </div>
+          <button id="fetch-weather-btn" class="btn btn-primary" style="width: 100%; padding: 6px; font-size: 11px; font-weight: bold; background: #10b981; border: none; border-radius: 4px; color: #fff; cursor: pointer;">⚡ Fetch Forecast</button>
+        </div>
+        <!-- Pending State -->
+        <div id="weather-pending-state" style="text-align: center; padding: 20px 10px; font-size: 11px; color: var(--text-secondary); background: rgba(255,255,255,0.02); border: 1px dashed rgba(255,255,255,0.1); border-radius: 8px; margin-bottom: 12px;">
+          <p style="margin: 0 0 6px 0; font-weight: 600; color: #60a5fa;">Start Date/Time Required</p>
+          <p style="margin: 0; line-height: 1.4;">Specify start date & time above, then click <strong>Fetch Forecast</strong> to retrieve weather details.</p>
         </div>
         <!-- Loader state -->
         <div id="weather-loader" class="weather-loader hidden" style="display: flex; align-items: center; justify-content: center; gap: 8px; padding: 20px 0; font-size: 12px; color: var(--text-muted);">
@@ -618,6 +637,13 @@
             <div class="weather-detail-item">
               <span class="lbl" style="color: var(--text-muted);">☁️ CLOUD COVER:</span>
               <span id="weather-current-clouds" class="val" style="font-weight: 500;">--%</span>
+            </div>
+          </div>
+
+          <div id="weather-all-stations-section" class="hidden" style="margin-bottom: 12px; border-top: 1px solid rgba(255, 255, 255, 0.08); padding-top: 10px;">
+            <h4 style="margin: 0 0 6px 0; font-size: 10px; text-transform: uppercase; color: var(--text-muted); letter-spacing: 0.5px;">Aid Station Forecasts:</h4>
+            <div id="weather-all-stations-list" style="display: flex; flex-direction: column; gap: 6px; max-height: 150px; overflow-y: auto; margin-bottom: 6px;">
+              <!-- Comparative weather per aid station populated dynamically -->
             </div>
           </div>
 
@@ -1157,6 +1183,21 @@
 
         <!-- WIZARD STEP 1: Athlete Fitness & Benchmarks -->
         <div id="wizard-step-1" class="wizard-step" style="display: flex; flex-direction: column; gap: 16px;">
+          <!-- Profile Selection and Management -->
+          <div id="wizard-profile-section" style="background: rgba(255, 255, 255, 0.03); border: 1px solid rgba(255, 255, 255, 0.08); padding: 12px; border-radius: 8px; display: flex; flex-direction: column; gap: 8px;">
+            <div style="display: flex; align-items: center; justify-content: space-between; gap: 8px;">
+              <span style="font-size: 11px; font-weight: bold; color: #60a5fa; text-transform: uppercase;">Athlete Profile:</span>
+              <select id="wiz-profile-select" style="background: rgba(0,0,0,0.5); border: 1px solid rgba(59, 130, 246, 0.4); color: #fff; padding: 4px 8px; border-radius: 6px; font-size: 11px; outline: none; flex: 1; max-width: 240px; cursor: pointer;">
+                <option value="">-- Load Profile --</option>
+              </select>
+            </div>
+            <div style="display: flex; gap: 6px; align-items: center; justify-content: flex-end;">
+              <input type="text" id="wiz-new-profile-name" placeholder="New Profile Name" style="background: rgba(255,255,255,0.1); border: 1px solid rgba(255,255,255,0.2); color: #fff; padding: 4px 8px; border-radius: 6px; font-size: 11px; outline: none; flex: 1; max-width: 160px;" />
+              <button id="wiz-save-profile-btn" class="btn btn-secondary" style="padding: 4px 10px; font-size: 10px; background: rgba(59, 130, 246, 0.2); border-color: rgba(59, 130, 246, 0.4); color: #60a5fa; font-weight: bold; cursor: pointer;">💾 Save</button>
+              <button id="wiz-delete-profile-btn" class="btn btn-secondary" style="padding: 4px 10px; font-size: 10px; background: rgba(239, 68, 68, 0.2); border-color: rgba(239, 68, 68, 0.4); color: #ef4444; font-weight: bold; cursor: pointer;">🗑️ Delete</button>
+            </div>
+          </div>
+
           <div style="background: rgba(59, 130, 246, 0.15); border: 1px solid rgba(59, 130, 246, 0.3); padding: 12px; border-radius: 8px;">
             <span style="font-size: 11px; font-weight: bold; color: #60a5fa; text-transform: uppercase;">Question 1 of 3</span>
             <h4 style="margin: 4px 0 0 0; font-size: 13px; color: #fff;">What is your current fitness level and recovery baseline?</h4>

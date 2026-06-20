@@ -2,7 +2,7 @@ import { test, describe } from "node:test";
 import assert from "node:assert";
 import { parseGPX } from "../src/gpx-parser.js";
 import { writeGPX } from "../src/gpx-writer.js";
-import { getWeatherConditionStyle } from "../src/fetch-weather.js";
+import { getWeatherConditionStyle, getElapsedHoursAtDistance, getWeatherWindowDetails } from "../src/fetch-weather.js";
 
 describe("GPX Parser & Writer Tests", () => {
   
@@ -213,4 +213,164 @@ describe("GPX Parser & Writer Tests", () => {
     assert.strictEqual(unknownStyle.label, "UNKNOWN WEATHER TYPE");
   });
 
+  test("getElapsedHoursAtDistance with linear fallback", () => {
+    const route = {
+      totalDistance: 10000 // 10km
+    };
+    
+    // Progress at 0m (start) should be 0 hrs
+    assert.strictEqual(getElapsedHoursAtDistance(route, 0, 4.0), 0);
+    
+    // Progress halfway (5000m) should be 2.0 hrs for a 4.0 hr duration
+    assert.strictEqual(getElapsedHoursAtDistance(route, 5000, 4.0), 2.0);
+    
+    // Progress at end (10000m) should be 4.0 hrs
+    assert.strictEqual(getElapsedHoursAtDistance(route, 10000, 4.0), 4.0);
+
+    // Verify it handles custom durations (e.g. 14.5 hours) correctly
+    assert.strictEqual(getElapsedHoursAtDistance(route, 5000, 14.5), 7.25);
+    assert.strictEqual(getElapsedHoursAtDistance(route, 10000, 14.5), 14.5);
+  });
+
+  test("getElapsedHoursAtDistance with active execution plan", () => {
+    const route = {
+      totalDistance: 16093.44, // 10 miles in meters
+      executionPlan: {
+        startTime: "06:00",
+        targetDurationHrs: 2.0,
+        sectors: [
+          {
+            start_dist_m: 0,
+            end_dist_m: 8046.72, // Mile 0 to 5
+            target_pace_min: 10 // 10 min/mi
+          },
+          {
+            start_dist_m: 8046.72,
+            end_dist_m: 16093.44, // Mile 5 to 10
+            target_pace_min: 12 // 12 min/mi
+          }
+        ]
+      }
+    };
+
+    // At 0m (start), should be 0 hrs
+    assert.strictEqual(getElapsedHoursAtDistance(route, 0, 4.0), 0);
+
+    // At Mile 5 (8046.72m), should be 5 miles * (10 min/mi) = 50 mins = 0.8333 hrs
+    const halfHrs = getElapsedHoursAtDistance(route, 8046.72, 4.0);
+    assert.ok(Math.abs(halfHrs - (50 / 60)) < 0.001);
+
+    // At Mile 10 (16093.44m), should be 50 mins + 5 miles * (12 min/mi) = 50 + 60 = 110 mins = 1.8333 hrs
+    const totalHrs = getElapsedHoursAtDistance(route, 16093.44, 4.0);
+    assert.ok(Math.abs(totalHrs - (110 / 60)) < 0.001);
+  });
+
+  test("getElapsedHoursAtDistance with distance overflow beyond final sector", () => {
+    const route = {
+      totalDistance: 16093.44, // 10 miles in meters
+      executionPlan: {
+        startTime: "06:00",
+        targetDurationHrs: 2.0,
+        sectors: [
+          {
+            start_dist_m: 0,
+            end_dist_m: 8046.72, // Mile 0 to 5
+            target_pace_min: 10 // 10 min/mi
+          },
+          {
+            start_dist_m: 8046.72,
+            end_dist_m: 16093.44, // Mile 5 to 10
+            target_pace_min: 12 // 12 min/mi
+          }
+        ]
+      }
+    };
+
+    // Cumulative time at the end of the last sector (16093.44m, 10 miles) is 110 mins.
+    // If we request time at Mile 11 (17702.78m), which is 1 mile past the last sector's end,
+    // it should add 1 mile * (12 min/mi) = 12 mins.
+    // Total should be 110 + 12 = 122 mins = 2.0333 hrs.
+    const distMile11 = 16093.44 + 1609.344;
+    const elapsedHrs = getElapsedHoursAtDistance(route, distMile11, 4.0);
+    assert.ok(Math.abs(elapsedHrs - (122 / 60)) < 0.001);
+  });
+
+  test("getWeatherWindowDetails scaling and range calculations", () => {
+    const route = {
+      totalDistance: 10000
+    };
+    const now = Date.now();
+    const forecastData = {
+      forecastHours: [
+        { time: new Date(now - 3600000 * 2).toISOString(), temperature: { degrees: 10 } }, // -2h
+        { time: new Date(now - 3600000).toISOString(), temperature: { degrees: 12 } },     // -1h
+        { time: new Date(now).toISOString(), temperature: { degrees: 15 } },               // 0h (closest)
+        { time: new Date(now + 3600000).toISOString(), temperature: { degrees: 18 } },     // +1h
+        { time: new Date(now + 3600000 * 2).toISOString(), temperature: { degrees: 20 } }, // +2h
+        { time: new Date(now + 3600000 * 3).toISOString(), temperature: { degrees: 22 } }  // +3h
+      ]
+    };
+
+    // 1. Waypoint at the start of the course (dist = 0): should yield a 2-hour window
+    // Center at index 2 (now). halfBefore for W=2 is Math.floor(1/2) = 0.
+    // Window starts at index 2 (now) and has length 2: indexes [2, 3] (now, +1h).
+    // Min temperature: 15, Max: 18. Window size: 2.
+    const startDetails = getWeatherWindowDetails(route, 0, forecastData, now);
+    assert.ok(startDetails);
+    assert.strictEqual(startDetails.windowSize, 2);
+    assert.strictEqual(startDetails.displayHours.length, 2);
+    assert.strictEqual(startDetails.minTemp, 15);
+    assert.strictEqual(startDetails.maxTemp, 18);
+
+    // 2. Waypoint at the end of the course (dist = 10000): should yield a 5-hour window
+    // Center at index 2 (now). halfBefore for W=5 is Math.floor(4/2) = 2.
+    // Window starts at index 2-2=0 (-2h) and has length 5: indexes [0, 1, 2, 3, 4] (-2h, -1h, now, +1h, +2h).
+    // Min temperature: 10, Max: 20. Window size: 5.
+    const endDetails = getWeatherWindowDetails(route, 10000, forecastData, now);
+    assert.ok(endDetails);
+    assert.strictEqual(endDetails.windowSize, 5);
+    assert.strictEqual(endDetails.displayHours.length, 5);
+    assert.strictEqual(endDetails.minTemp, 10);
+    assert.strictEqual(endDetails.maxTemp, 20);
+  });
+
+  test("getElapsedHoursAtDistance with scaled pacing sectors (simulating bumpArrivalTime)", () => {
+    const route = {
+      totalDistance: 16093.44, // 10 miles in meters
+      executionPlan: {
+        startTime: "06:00",
+        targetDurationHrs: 2.0,
+        sectors: [
+          {
+            start_dist_m: 0,
+            end_dist_m: 8046.72, // Mile 0 to 5
+            target_pace_min: 10 // 10 min/mi
+          },
+          {
+            start_dist_m: 8046.72,
+            end_dist_m: 16093.44, // Mile 5 to 10
+            target_pace_min: 12 // 12 min/mi
+          }
+        ]
+      }
+    };
+
+    // Simulate bumping the arrival time at Mile 5 (8046.72m) by +10 minutes:
+    // Original elapsed hours at Mile 5 is 50 mins = 0.8333 hrs.
+    // New elapsed hours at Mile 5 is 60 mins = 1.0 hr.
+    // Scale factor is 60 / 50 = 1.2.
+    // Preceding sectors (only Sector 0: start_dist_m < 8046.72) have target_pace_min scaled by 1.2.
+    route.executionPlan.sectors[0].target_pace_min *= 1.2; // New pace = 12 min/mi
+
+    // New elapsed hours at Mile 5: should be 5 miles * (12 min/mi) = 60 mins = 1.0 hr.
+    const newHalfHrs = getElapsedHoursAtDistance(route, 8046.72, 4.0);
+    assert.ok(Math.abs(newHalfHrs - 1.0) < 0.001);
+
+    // Elapsed hours at Mile 10 (16093.44m) should be:
+    // 60 mins (sector 1) + 5 miles * (12 min/mi) (sector 2) = 120 mins = 2.0 hrs.
+    const newTotalHrs = getElapsedHoursAtDistance(route, 16093.44, 4.0);
+    assert.ok(Math.abs(newTotalHrs - 2.0) < 0.001);
+  });
+
 });
+

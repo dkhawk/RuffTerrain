@@ -894,3 +894,20 @@ This journal records all design decisions, architecture patterns, development st
 *   **Key Actions Taken**:
     *   Updated `parseGPX` and `parseKML` in `src/gpx-parser.js`.
     *   Rebuilt production bundle successfully via `npm run build`.
+
+---
+
+## 📅 June 19, 2026
+
+### 🚀 Session 72: Stuck Weather Predictions & Pacing Distance Overflow Fix
+*   **Goal**: Resolve the issue where weather predictions got stuck at the end of the course (beyond Dry Fork), and show temperature ranges in the scrubber hover preview.
+*   **Decisions & Rationale**:
+    *   **Increased Forecast Query Range**: Raised the hours parameter inside `fetchWeatherForecast` calls from `24` or `48` to `96` hours (4 days). This ensures that even for long courses starting tomorrow or later, the arrival timestamps at all aid stations fall within the queried forecast range.
+    *   **Pacing Distance Overflow Projection**: Updated `getElapsedHoursAtDistance()` to project remaining durations using the final sector's target pace when the requested distance exceeds the final sector's end boundary, preventing flat stuck times at the end of the course.
+    *   **Interactive Scrubber Forecast Ranges**: Refactored the scrubber hover preview panel (`showPreviewPoiBanner`) to leverage the `getWeatherWindowDetails` helper and display temperature ranges (e.g., `15°C (12°C-17°C)`) instead of flat temperatures.
+*   **Key Actions Taken**:
+    *   Modified `main.js` to change forecast lookup hours to `96` and integrated `getWeatherWindowDetails` with temperature range formatting inside `showPreviewPoiBanner`.
+    *   Updated `getElapsedHoursAtDistance` in `src/fetch-weather.js` to handle distance overflow.
+    *   Added dedicated unit test case in `test/gpx.test.js` to verify pacing behavior beyond the final sector.
+    *   Verified all unit tests pass successfully and ran production Vite builds.
+

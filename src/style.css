@@ -1137,7 +1137,7 @@ hr {
 .poi-table-container {
   border: 1px solid var(--border-glass);
   border-radius: 8px;
-  overflow: hidden;
+  overflow-x: auto;
   background-color: rgba(0, 0, 0, 0.15);
 }
 
@@ -1145,6 +1145,7 @@ hr {
   width: 100%;
   border-collapse: collapse;
   font-size: 11px;
+  white-space: nowrap;
 }
 
 .poi-table th {
@@ -1709,6 +1710,80 @@ hr {
   border: 1px solid rgba(255, 255, 255, 0.12);
   font-size: 11px;
   color: var(--text-secondary);
+}
+
+/* ==================== AID STATION WEATHER CUSTOM STYLES ==================== */
+.poi-weather-hour-box {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid rgba(255, 255, 255, 0.05);
+  border-radius: 6px;
+  padding: 6px 8px;
+  min-width: 60px;
+  text-align: center;
+  transition: background 0.2s ease, border-color 0.2s ease;
+}
+.poi-weather-hour-box.active {
+  background: rgba(16, 185, 129, 0.15);
+  border-color: rgba(16, 185, 129, 0.4);
+}
+.poi-weather-hour-box .time {
+  font-size: 9px;
+  color: var(--text-muted);
+  margin-bottom: 2px;
+}
+.poi-weather-hour-box.active .time {
+  color: #10b981;
+  font-weight: bold;
+}
+.poi-weather-hour-box .temp {
+  font-size: 11px;
+  font-weight: bold;
+}
+.poi-weather-hour-box .emoji {
+  font-size: 14px;
+  margin: 2px 0;
+}
+
+.weather-station-card {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid rgba(255, 255, 255, 0.05);
+  border-radius: 6px;
+  padding: 6px 10px;
+  cursor: pointer;
+  transition: background 0.2s ease, border-color 0.2s ease;
+}
+.weather-station-card:hover {
+  background: rgba(255, 255, 255, 0.06);
+  border-color: rgba(255, 255, 255, 0.1);
+}
+.weather-station-card .station-name {
+  font-size: 11px;
+  font-weight: bold;
+  color: #60a5fa;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 140px;
+}
+.weather-station-card .station-meta {
+  font-size: 9px;
+  color: var(--text-muted);
+}
+.weather-station-card .station-weather {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.weather-station-card .station-temp {
+  font-size: 11.5px;
+  font-weight: bold;
 }
 
 
