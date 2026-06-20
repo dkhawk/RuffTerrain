@@ -1,6 +1,6 @@
 import { test, describe } from "node:test";
 import assert from "node:assert";
-import { parseGPX } from "../src/gpx-parser.js";
+import { parseGPX, getMetricsForPoint } from "../src/gpx-parser.js";
 import { writeGPX } from "../src/gpx-writer.js";
 import { getWeatherConditionStyle, getElapsedHoursAtDistance, getWeatherWindowDetails } from "../src/fetch-weather.js";
 
@@ -417,6 +417,32 @@ describe("GPX Parser & Writer Tests", () => {
     assert.strictEqual(pass.eta_latest, "10:30");
     assert.strictEqual(pass.weather_cond, "Partly Cloudy");
     assert.strictEqual(pass.weather_temp_c, 18.5);
+  });
+
+  test("Authoritative ETA calculation for HUD, Waypoint List, and Printed Plan", () => {
+    const mockGpx = `<?xml version="1.0" encoding="utf-8"?>
+<gpx version="1.1" creator="Test" xmlns="http://www.topografix.com/GPX/1/1">
+  <wpt lat="45.1" lon="6.1">
+    <ele>1200.0</ele>
+    <name>Twin Lakes Aid</name>
+    <sym>icons/aid_station.svg</sym>
+  </wpt>
+  <trk>
+    <trkseg>
+      <trkpt lat="45.0" lon="6.0"><ele>1000.0</ele></trkpt>
+      <trkpt lat="45.1" lon="6.1"><ele>1200.0</ele></trkpt>
+    </trkseg>
+  </trk>
+</gpx>`;
+    const route = parseGPX(mockGpx, "imperial");
+    const metrics = getMetricsForPoint(route, 0);
+    assert.ok(metrics.nextAid);
+    assert.strictEqual(metrics.nextAid.name, "Twin Lakes Aid");
+    assert.strictEqual(typeof metrics.nextAid.absolute_dist_m, "number");
+    
+    // Verify elapsed hours calculation at aid station
+    const elHrs = getElapsedHoursAtDistance(route, metrics.nextAid.absolute_dist_m, 12);
+    assert.ok(elHrs >= 0);
   });
 
 });

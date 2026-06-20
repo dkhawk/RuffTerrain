@@ -1616,6 +1616,7 @@ export function getMetricsForPoint(route, currentIdx) {
     nextAid = {
       name: nextAidWpt.name,
       dist_m: nextAidWpt.dist_m - currentDist,
+      absolute_dist_m: nextAidWpt.dist_m,
       gain_m: gain,
       loss_m: loss,
       cutoff_clock: nextAidWpt.extensions?.station?.passes?.[0]?.cutoff_clock || null

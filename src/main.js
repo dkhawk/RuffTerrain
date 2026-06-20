@@ -1536,7 +1536,15 @@ function updateHUD(index) {
     const lossStr = convertElevationValue(nextAid.loss_m);
     const eleUnit = units === "imperial" ? "ft" : "m";
 
-    hudValNextAs.textContent = `${nextAid.name} (+${distStr} ${distUnit}, +${gainStr} / -${lossStr} ${eleUnit})`;
+    const planDuration = getPlanDurationHrs();
+    const elapsedHrs = getElapsedHoursAtDistance(activeRoute, nextAid.absolute_dist_m || (currentPt.dist_m + nextAid.dist_m), planDuration);
+    const planStartMs = getPlanStartMs();
+    const targetMs = planStartMs + elapsedHrs * 3600 * 1000;
+    const targetDate = new Date(targetMs);
+    const etaDay = targetDate.toLocaleDateString([], { weekday: 'short' });
+    const etaTime = targetDate.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+
+    hudValNextAs.textContent = `${nextAid.name} (ETA: ${etaDay} ${etaTime}, +${distStr} ${distUnit}, +${gainStr} / -${lossStr} ${eleUnit})`;
   } else {
     const goalHrs = activeRoute.executionPlan?.targetDurationHrs;
     const goalStr = goalHrs ? `${goalHrs.toFixed(2)} hrs` : "Complete";
@@ -2687,7 +2695,14 @@ function renderEditWaypointList() {
     const distVal = units === "miles" 
       ? `${(wpt.dist_m / 1609.34).toFixed(1)} mi` 
       : `${(wpt.dist_m / 1000).toFixed(1)} km`;
-    nameSpan.textContent = `${wpt.name} (${distVal})`;
+    const planDuration = getPlanDurationHrs();
+    const elapsedHrs = getElapsedHoursAtDistance(activeRoute, wpt.dist_m, planDuration);
+    const planStartMs = getPlanStartMs();
+    const targetMs = planStartMs + elapsedHrs * 3600 * 1000;
+    const targetDate = new Date(targetMs);
+    const etaDayStr = targetDate.toLocaleDateString([], { weekday: 'short' });
+    const etaTimeStr = targetDate.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+    nameSpan.textContent = `${wpt.name} (${distVal}, ETA: ${etaDayStr} ${etaTimeStr})`;
     nameSpan.style.cursor = "pointer";
     nameSpan.style.color = "var(--text-color)";
     nameSpan.style.fontWeight = "500";
@@ -4305,13 +4320,52 @@ function computeIntelligentPacingAndWeatherPlan(route, opts) {
 
         rowsHtml += `
           <tr>
-            <td><strong>${sec.name}</strong></td>
+            <td><strong>${escapeHtml(sec.name)}</strong></td>
             <td><span class="badge ${badgeClass}">${badgeText}</span></td>
             <td><strong>${paceStr}</strong> min/mi</td>
-            <td>${sec.strategy}</td>
+            <td>${escapeHtml(sec.strategy)}</td>
           </tr>
         `;
       });
+
+      let aidRowsHtml = "";
+      if (activeRoute.waypoints && activeRoute.waypoints.length > 0) {
+        const planStartMs = getPlanStartMs();
+        const planDuration = getPlanDurationHrs();
+        activeRoute.waypoints.slice().sort((a, b) => a.dist_m - b.dist_m).forEach(wpt => {
+          const dMi = wpt.dist_m / 1609.34;
+          const elHrs = getElapsedHoursAtDistance(activeRoute, wpt.dist_m, planDuration);
+          const elStr = formatSplitTime(elHrs);
+          
+          const targetMs = planStartMs + elHrs * 3600 * 1000;
+          const fastMs = planStartMs + (elHrs * 0.85) * 3600 * 1000;
+          const slowMs = planStartMs + (elHrs * 1.15) * 3600 * 1000;
+          
+          const tDate = new Date(targetMs);
+          const fDate = new Date(fastMs);
+          const sDate = new Date(slowMs);
+          
+          const tStr = `${tDate.toLocaleDateString([], {weekday:'short'})} ${tDate.toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'})}`;
+          const rStr = `${fDate.toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'})} - ${sDate.toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'})}`;
+          
+          const cutoff = wpt.extensions?.station?.passes?.[0]?.cutoff_clock || wpt.extensions?.station?.passes?.[0]?.cutoff_elapsed || "--";
+          const notes = wpt.extensions?.station?.passes?.[0]?.stretch_strategy || wpt.desc || "";
+
+          aidRowsHtml += `
+            <tr>
+              <td><strong>${escapeHtml(wpt.name)}</strong></td>
+              <td>${dMi.toFixed(1)} mi</td>
+              <td><strong style="color: #1e40af;">${tStr}</strong></td>
+              <td>${rStr}</td>
+              <td>${elStr}</td>
+              <td>${cutoff}</td>
+              <td>${escapeHtml(notes)}</td>
+            </tr>
+          `;
+        });
+      } else {
+        aidRowsHtml = `<tr><td colspan="7" style="text-align:center; font-style:italic; color:#6b7280;">No course waypoints loaded.</td></tr>`;
+      }
 
       const htmlContent = `
 <!DOCTYPE html>
@@ -4335,6 +4389,7 @@ function computeIntelligentPacingAndWeatherPlan(route, opts) {
       margin-bottom: 24px;
     }
     h1 { margin: 0; font-size: 28px; font-weight: 800; text-transform: uppercase; letter-spacing: -0.5px; }
+    h2 { font-size: 18px; font-weight: 800; text-transform: uppercase; margin-top: 32px; margin-bottom: 12px; color: #111827; }
     .subtitle { font-size: 14px; color: #4b5563; margin-top: 4px; }
     .meta-grid {
       display: grid;
@@ -4411,13 +4466,32 @@ function computeIntelligentPacingAndWeatherPlan(route, opts) {
     </div>
   </div>
 
+  <h2>📍 Aid Station Arrival Schedule (ETA)</h2>
   <table>
     <thead>
       <tr>
-        <th>Sector / Aid Station Split</th>
+        <th>Aid Station / Landmark</th>
+        <th>Distance</th>
+        <th>Estimated Arrival (ETA)</th>
+        <th>ETA Tolerance Range</th>
+        <th>Elapsed Time</th>
+        <th>Cut-Off Time</th>
+        <th>Strategy &amp; Notes</th>
+      </tr>
+    </thead>
+    <tbody>
+      ${aidRowsHtml}
+    </tbody>
+  </table>
+
+  <h2>🗺️ Terrain Execution Sectors</h2>
+  <table>
+    <thead>
+      <tr>
+        <th>Sector Split</th>
         <th>Terrain</th>
         <th>Target Pace</th>
-        <th>Strategy &amp; Lighting</th>
+        <th>Strategy &amp; Notes</th>
       </tr>
     </thead>
     <tbody>
