@@ -979,3 +979,18 @@ This journal records all design decisions, architecture patterns, development st
     *   Updated `showPoiDetailDialog` and `renderEstTimeCell` in `src/main.js` with formatted range calculations.
     *   Verified all 11 unit tests passing cleanly (`npm test`) and rebuilt production web bundle (`npm run build`).
 
+---
+
+### 🚀 Session 77: Dialog Split Durations, Autosave File Recovery, & GPX Weather/ETA Extensions
+*   **Goal**: Enrich POI details dialog with elapsed and sector split travel durations, restore full active visual state on browser reload, and persist weather and arrival windows in GPX `<extensions>`.
+*   **Decisions & Rationale (*The Why*)**:
+    *   **Dialog Split & Elapsed Durations**: Added an `ELAPSED` badge to the POI dialog header and table columns to display total elapsed hours from course start. Enriched the `PREV` and `NEXT` neighbor badges to explicitly format travel duration between consecutive stations (e.g., `+2.4 mi (21m, Twin Lakes)`), giving runners immediate insight into sector travel difficulty.
+    *   **Autosave Active Route Recovery**: Previously, `restoreSessionState()` recovered `activeRoute` into memory on reload but omitted running the UI activation sequence (`cardStats`, charts, map drawing), leaving the screen blank. Extracted `activateRouteUI(route, filename)` in `src/main.js` and hooked it into recovery so refreshing the browser preserves 100% of the active visual interface.
+    *   **GPX Extensions Persistence**: Updated `writeGPX` and `parseGPX` to serialize and parse `target_arrival`, `eta_earliest`, `eta_latest`, `weather_cond`, and `weather_temp_c` within `<ca:pass>` XML extensions, ensuring exported race plans retain full simulation context.
+*   **Key Actions & Verification**:
+    *   Updated `index.html` and `public/404.html` with `ELAPSED` badges and columns.
+    *   Updated `showPoiDetailDialog` in `src/main.js` with `formatSplitTime` calculations.
+    *   Extracted `activateRouteUI` and wired into `restoreSessionState`.
+    *   Updated `gpx-writer.js` and `gpx-parser.js` schema handling and added unit test in `test/gpx.test.js`.
+    *   Verified all 12 unit tests passing (`npm test`) and production bundle verified (`npm run build`).
+

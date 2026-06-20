@@ -372,5 +372,52 @@ describe("GPX Parser & Writer Tests", () => {
     assert.ok(Math.abs(newTotalHrs - 2.0) < 0.001);
   });
 
+  test("GPX Writer and Parser preserve weather and ETA arrival time ranges", () => {
+    const mockRoute = {
+      name: "Weather Pacing Course",
+      description: "Test Course",
+      waypoints: [{
+        lat: 40.0,
+        lon: -105.0,
+        ele: 1500,
+        name: "Aid Station 1",
+        sym: "Aid",
+        desc: "Water station",
+        extensions: {
+          station: {
+            type: "segmenting",
+            id: "as-1",
+            subtype: "aid_station",
+            passes: [{
+              num: 1,
+              dist_m: 5000,
+              label: "AS1",
+              target_arrival: "10:15",
+              eta_earliest: "10:05",
+              eta_latest: "10:30",
+              weather_cond: "Partly Cloudy",
+              weather_temp_c: 18.5
+            }]
+          }
+        }
+      }],
+      trackpoints: [{ lat: 40.0, lon: -105.0, ele: 1500 }]
+    };
+
+    const xml = writeGPX(mockRoute);
+    assert.ok(xml.includes('eta_earliest="10:05"'));
+    assert.ok(xml.includes('eta_latest="10:30"'));
+    assert.ok(xml.includes('weather_cond="Partly Cloudy"'));
+    assert.ok(xml.includes('weather_temp_c="18.5"'));
+
+    const restored = parseGPX(xml, "imperial");
+    const pass = restored.waypoints[0].extensions.station.passes[0];
+    assert.strictEqual(pass.target_arrival, "10:15");
+    assert.strictEqual(pass.eta_earliest, "10:05");
+    assert.strictEqual(pass.eta_latest, "10:30");
+    assert.strictEqual(pass.weather_cond, "Partly Cloudy");
+    assert.strictEqual(pass.weather_temp_c, 18.5);
+  });
+
 });
 

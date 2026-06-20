@@ -445,13 +445,23 @@ export function parseGPX(gpxText, units = "imperial", desertThresholdMiles = 8.0
         const labelM = pAttrs.match(/label="([^"]+)"/);
         const cutoffClockM = pAttrs.match(/cutoff_clock="([^"]+)"/);
         const cutoffElapsedM = pAttrs.match(/cutoff_elapsed="([^"]+)"/);
+        const targetArrivalM = pAttrs.match(/target_arrival="([^"]+)"/);
+        const etaEarliestM = pAttrs.match(/eta_earliest="([^"]+)"/);
+        const etaLatestM = pAttrs.match(/eta_latest="([^"]+)"/);
+        const weatherCondM = pAttrs.match(/weather_cond="([^"]+)"/);
+        const weatherTempM = pAttrs.match(/weather_temp_c="([^"]+)"/);
         
         passes.push({
           num: parseInt(numM ? numM[1] : "1"),
           dist_m: parseFloat(distM ? distM[1] : "0"),
           label: labelM ? labelM[1] : "",
           cutoff_clock: cutoffClockM ? cutoffClockM[1] : "",
-          cutoff_elapsed: cutoffElapsedM ? cutoffElapsedM[1] : ""
+          cutoff_elapsed: cutoffElapsedM ? cutoffElapsedM[1] : "",
+          target_arrival: targetArrivalM ? targetArrivalM[1] : "",
+          eta_earliest: etaEarliestM ? etaEarliestM[1] : "",
+          eta_latest: etaLatestM ? etaLatestM[1] : "",
+          weather_cond: weatherCondM ? weatherCondM[1] : "",
+          weather_temp_c: weatherTempM ? parseFloat(weatherTempM[1]) : null
         });
       }
 

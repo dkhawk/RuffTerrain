@@ -204,6 +204,7 @@ const poiValNameInput = document.getElementById("poi-val-name-input");
 const poiValPassTag = document.getElementById("poi-val-pass-tag");
 const poiValCutoffTag = document.getElementById("poi-val-cutoff-tag");
 const poiValDist = document.getElementById("poi-val-dist");
+const poiValElapsed = document.getElementById("poi-val-elapsed");
 const poiValEtaRange = document.getElementById("poi-val-eta-range");
 const poiValPrev = document.getElementById("poi-val-prev");
 const poiValNext = document.getElementById("poi-val-next");
@@ -2246,9 +2247,12 @@ async function showPoiDetailDialog(wpt, index, referenceDist = null, startCollap
   // DIST distance
   if (poiValDist) poiValDist.textContent = formatDistance(currentDist);
 
+  const planDuration = getPlanDurationHrs();
+  const elapsedHrs = getElapsedHoursAtDistance(activeRoute, currentDist, planDuration);
+  if (poiValElapsed) poiValElapsed.textContent = formatSplitTime(elapsedHrs);
+
   // EST. ARRIVAL RANGE
   if (poiValEtaRange) {
-    const elapsedHrs = getElapsedHoursAtDistance(activeRoute, currentDist, getPlanDurationHrs());
     const planStartMs = getPlanStartMs();
     const fastMs = planStartMs + (elapsedHrs * 0.85) * 3600 * 1000;
     const slowMs = planStartMs + (elapsedHrs * 1.15) * 3600 * 1000;
@@ -2267,14 +2271,18 @@ async function showPoiDetailDialog(wpt, index, referenceDist = null, startCollap
     poiValEtaRange.textContent = rangeStr;
   }
 
-  // PREV AS distance metrics
+  // PREV AS distance & travel time metrics
   const neighbors = getSegmentingNeighbors(currentDist);
   const prevDiff = currentDist - neighbors.prev.dist_m;
-  poiValPrev.textContent = `+${formatDistance(prevDiff)} (${neighbors.prev.name})`;
+  const prevElapsed = getElapsedHoursAtDistance(activeRoute, neighbors.prev.dist_m, planDuration);
+  const prevTravel = Math.max(0, elapsedHrs - prevElapsed);
+  if (poiValPrev) poiValPrev.textContent = `+${formatDistance(prevDiff)} (${formatSplitTime(prevTravel)}, ${neighbors.prev.name})`;
 
-  // NEXT AS distance metrics
+  // NEXT AS distance & travel time metrics
   const nextDiff = neighbors.next.dist_m - currentDist;
-  poiValNext.textContent = `${formatDistance(nextDiff)} (${neighbors.next.name})`;
+  const nextElapsed = getElapsedHoursAtDistance(activeRoute, neighbors.next.dist_m, planDuration);
+  const nextTravel = Math.max(0, nextElapsed - elapsedHrs);
+  if (poiValNext) poiValNext.textContent = `${formatDistance(nextDiff)} (${formatSplitTime(nextTravel)}, ${neighbors.next.name})`;
 
   // Detailed passes lists
   poiTimelinePassesList.innerHTML = "";
@@ -2355,6 +2363,10 @@ async function showPoiDetailDialog(wpt, index, referenceDist = null, startCollap
       const tdArrive = document.createElement("td");
       tdArrive.textContent = formatDistance(p.dist_m);
 
+      const pElapsedHrs = getElapsedHoursAtDistance(activeRoute, p.dist_m, planDuration);
+      const tdElapsed = document.createElement("td");
+      tdElapsed.textContent = formatSplitTime(pElapsedHrs);
+
       // Calculate Expected Arrival Time
       const tdEstTime = document.createElement("td");
       renderEstTimeCell(tdEstTime, p.dist_m);
@@ -2362,12 +2374,16 @@ async function showPoiDetailDialog(wpt, index, referenceDist = null, startCollap
       const pNeighbors = getSegmentingNeighbors(p.dist_m);
       
       const pPrevDiff = p.dist_m - pNeighbors.prev.dist_m;
+      const pPrevElapsed = getElapsedHoursAtDistance(activeRoute, pNeighbors.prev.dist_m, planDuration);
+      const pPrevTravel = Math.max(0, pElapsedHrs - pPrevElapsed);
       const tdPrev = document.createElement("td");
-      tdPrev.textContent = `+${formatDistance(pPrevDiff)} (${pNeighbors.prev.name})`;
+      tdPrev.textContent = `+${formatDistance(pPrevDiff)} (${formatSplitTime(pPrevTravel)}, ${pNeighbors.prev.name})`;
 
       const pNextDiff = pNeighbors.next.dist_m - p.dist_m;
+      const pNextElapsed = getElapsedHoursAtDistance(activeRoute, pNeighbors.next.dist_m, planDuration);
+      const pNextTravel = Math.max(0, pNextElapsed - pElapsedHrs);
       const tdNext = document.createElement("td");
-      tdNext.textContent = `${formatDistance(pNextDiff)} (${pNeighbors.next.name})`;
+      tdNext.textContent = `${formatDistance(pNextDiff)} (${formatSplitTime(pNextTravel)}, ${pNeighbors.next.name})`;
 
       // Weather forecast for this pass's arrival time
       const tdWeather = document.createElement("td");
@@ -2394,6 +2410,7 @@ async function showPoiDetailDialog(wpt, index, referenceDist = null, startCollap
 
       tr.appendChild(tdNum);
       tr.appendChild(tdArrive);
+      tr.appendChild(tdElapsed);
       tr.appendChild(tdEstTime);
       tr.appendChild(tdPrev);
       tr.appendChild(tdNext);
@@ -2418,15 +2435,18 @@ async function showPoiDetailDialog(wpt, index, referenceDist = null, startCollap
     const tdArrive = document.createElement("td");
     tdArrive.textContent = formatDistance(currentDist);
 
+    const tdElapsed = document.createElement("td");
+    tdElapsed.textContent = formatSplitTime(elapsedHrs);
+
     // Calculate Expected Arrival Time
     const tdEstTime = document.createElement("td");
     renderEstTimeCell(tdEstTime, currentDist);
 
     const tdPrev = document.createElement("td");
-    tdPrev.textContent = `+${formatDistance(prevDiff)} (${neighbors.prev.name})`;
+    tdPrev.textContent = `+${formatDistance(prevDiff)} (${formatSplitTime(prevTravel)}, ${neighbors.prev.name})`;
 
     const tdNext = document.createElement("td");
-    tdNext.textContent = `${formatDistance(nextDiff)} (${neighbors.next.name})`;
+    tdNext.textContent = `${formatDistance(nextDiff)} (${formatSplitTime(nextTravel)}, ${neighbors.next.name})`;
 
     // Weather forecast for single pass
     const tdWeather = document.createElement("td");
@@ -2453,6 +2473,7 @@ async function showPoiDetailDialog(wpt, index, referenceDist = null, startCollap
 
     tr.appendChild(tdNum);
     tr.appendChild(tdArrive);
+    tr.appendChild(tdElapsed);
     tr.appendChild(tdEstTime);
     tr.appendChild(tdPrev);
     tr.appendChild(tdNext);
