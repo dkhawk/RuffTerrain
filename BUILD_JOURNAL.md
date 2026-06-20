@@ -966,3 +966,16 @@ This journal records all design decisions, architecture patterns, development st
     *   Fast-forwarded `main` worktree branch to commit `8846cec`.
     *   Verified `android-port` (`3d67ccd`), `feature/ai-race-planner` (`87c8051`), and `feature/web-dialog-fixes` (`07164d3`) are completely synchronized with their remote tracking branches.
 
+---
+
+### 🚀 Session 76: Authoritative Repository Consolidation & Waypoint ETA Range Presentation
+*   **Goal**: Consolidate all completed web features into `main` via PR rebase merging, prune stale branches/worktrees, and clearly display predicted arrival time windows in the POI waypoint details dialog.
+*   **Decisions & Rationale (*The Why*)**:
+    *   **Repository Consolidation & Branch Sweep**: Merged PR #9 (`feature/web-dialog-fixes`) into `main` via rebase strategy (`gh pr merge 9 --rebase`) to maintain a clean linear commit history. Pruned stale local and remote feature branches (`feature/ai-race-planner` and `feature/web-dialog-fixes`) and decommissioned the `feature-ai-race-planner` worktree so only authoritative production `main` and `android-port` remain.
+    *   **Waypoint ETA Range Presentation**: In the waypoint details dialog (`#poi-detail-dialog`), the top header quick metric labeled `ARRIVE` was previously displaying distance (e.g., `14.2 mi`), causing cognitive friction for users seeking their predicted arrival schedule. Renamed this metric to `DIST` and added a prominent dedicated `EST. ARRIVAL RANGE` header badge displaying the simulated earliest (85% elapsed pace) and latest (115% elapsed pace) arrival window (e.g., `Fri 01:50 PM - 02:40 PM`). Also enriched the pass table cell (`renderEstTimeCell`) to explicitly render weekday names when fast/slow range projections span across midnight.
+*   **Key Actions & Verification**:
+    *   Merged PR #9 and pruned stale branches/worktrees across the repository.
+    *   Updated `index.html` and `public/404.html` quick metrics header layout.
+    *   Updated `showPoiDetailDialog` and `renderEstTimeCell` in `src/main.js` with formatted range calculations.
+    *   Verified all 11 unit tests passing cleanly (`npm test`) and rebuilt production web bundle (`npm run build`).
+

@@ -203,7 +203,8 @@ const poiValName = document.getElementById("poi-val-name");
 const poiValNameInput = document.getElementById("poi-val-name-input");
 const poiValPassTag = document.getElementById("poi-val-pass-tag");
 const poiValCutoffTag = document.getElementById("poi-val-cutoff-tag");
-const poiValArrive = document.getElementById("poi-val-arrive");
+const poiValDist = document.getElementById("poi-val-dist");
+const poiValEtaRange = document.getElementById("poi-val-eta-range");
 const poiValPrev = document.getElementById("poi-val-prev");
 const poiValNext = document.getElementById("poi-val-next");
 
@@ -2092,8 +2093,12 @@ function renderEstTimeCell(td, dist_m) {
   // Fast/Slow ranges
   const fastMs = planStartMs + (pElapsedHrs * 0.85) * 3600 * 1000;
   const slowMs = planStartMs + (pElapsedHrs * 1.15) * 3600 * 1000;
-  const fastStr = new Date(fastMs).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-  const slowStr = new Date(slowMs).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+  const fastDate = new Date(fastMs);
+  const slowDate = new Date(slowMs);
+  const fastStr = fastDate.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+  const slowStr = slowDate.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+  const fastDayStr = fastDate.toLocaleDateString([], { weekday: 'short' });
+  const slowDayStr = slowDate.toLocaleDateString([], { weekday: 'short' });
 
   const timeContainer = document.createElement("div");
   timeContainer.style.display = "flex";
@@ -2146,7 +2151,11 @@ function renderEstTimeCell(td, dist_m) {
   const rangeLbl = document.createElement("span");
   rangeLbl.style.fontSize = "9px";
   rangeLbl.style.color = "var(--text-muted)";
-  rangeLbl.textContent = `Range: ${fastStr} - ${slowStr}`;
+  let tableRangeText = `Range: ${fastStr} - ${slowStr}`;
+  if (fastDayStr !== slowDayStr) {
+    tableRangeText = `Range: ${fastDayStr} ${fastStr} - ${slowDayStr} ${slowStr}`;
+  }
+  rangeLbl.textContent = tableRangeText;
 
   timeContainer.appendChild(adjustRow);
   timeContainer.appendChild(rangeLbl);
@@ -2234,8 +2243,29 @@ async function showPoiDetailDialog(wpt, index, referenceDist = null, startCollap
     poiValCutoffTag.classList.add("hidden");
   }
 
-  // ARRIVE distance
-  poiValArrive.textContent = formatDistance(currentDist);
+  // DIST distance
+  if (poiValDist) poiValDist.textContent = formatDistance(currentDist);
+
+  // EST. ARRIVAL RANGE
+  if (poiValEtaRange) {
+    const elapsedHrs = getElapsedHoursAtDistance(activeRoute, currentDist, getPlanDurationHrs());
+    const planStartMs = getPlanStartMs();
+    const fastMs = planStartMs + (elapsedHrs * 0.85) * 3600 * 1000;
+    const slowMs = planStartMs + (elapsedHrs * 1.15) * 3600 * 1000;
+
+    const fastDate = new Date(fastMs);
+    const slowDate = new Date(slowMs);
+    const fastDayStr = fastDate.toLocaleDateString([], { weekday: 'short' });
+    const slowDayStr = slowDate.toLocaleDateString([], { weekday: 'short' });
+    const fastTimeStr = fastDate.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+    const slowTimeStr = slowDate.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+
+    let rangeStr = `${fastDayStr} ${fastTimeStr} - ${slowTimeStr}`;
+    if (fastDayStr !== slowDayStr) {
+      rangeStr = `${fastDayStr} ${fastTimeStr} - ${slowDayStr} ${slowTimeStr}`;
+    }
+    poiValEtaRange.textContent = rangeStr;
+  }
 
   // PREV AS distance metrics
   const neighbors = getSegmentingNeighbors(currentDist);
