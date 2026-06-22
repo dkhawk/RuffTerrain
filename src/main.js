@@ -24,7 +24,7 @@
  * The preview controller iterates through trackpoint bearings to control camera panning and triggers contextual auto-pauses when approaching points of interest.
  */
 
-import { parseGPX, parseKML, reconcileCourse, getMetricsForPoint, calculateWarnings, haversine, snapToRouteSegments, recalculateRouteMetrics, classifyGradient, computeSectorGradient } from "./gpx-parser.js";
+import { parseGPX, parseKML, reconcileCourse, getMetricsForPoint, calculateWarnings, haversine, snapToRouteSegments, recalculateRouteMetrics, classifyGradient, computeSectorGradient, autoSegmentCourse, solveBackwardPacing } from "./gpx-parser.js";
 import { writeGPX } from "./gpx-writer.js";
 import { correctRouteElevations } from "./fetch-elevation.js";
 import { sendToGemini, fetchAvailableModels, generateWaypointFromDescription } from "./gemini-client.js";
@@ -2969,6 +2969,11 @@ function processGpxContent(text, filename) {
 
   updateRouteStatsUI(activeRoute);
   renderWarningsUI(activeRoute);
+  if (activeRoute && activeRoute.executionPlan && (!activeRoute.executionPlan.sectors || activeRoute.executionPlan.sectors.length === 0)) {
+    activeRoute.executionPlan.sectors = autoSegmentCourse(activeRoute);
+  }
+  if (typeof renderRunnerSectorsUI === "function") renderRunnerSectorsUI();
+
   updateUnitLabels();
   updateHUD(0);
   if (clearWarningsHighlightBtn) {
