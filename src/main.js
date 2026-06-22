@@ -4919,10 +4919,12 @@ function computeIntelligentPacingAndWeatherPlan(route, opts) {
 
   // Drag & Drop Course Importers
   if (dropZone && fileSelector) {
-    dropZone.addEventListener("click", () => {
+    dropZone.addEventListener("click", (e) => {
+      if (e.target === fileSelector || e.target.tagName === "INPUT") return;
       if (document.body.classList.contains("edit-locked")) return;
       fileSelector.click();
     });
+    fileSelector.addEventListener("click", (e) => e.stopPropagation());
     
     fileSelector.addEventListener("change", (e) => {
       if (document.body.classList.contains("edit-locked")) return;
