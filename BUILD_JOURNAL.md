@@ -1041,3 +1041,17 @@ This journal records all design decisions, architecture patterns, development st
     *   Added `formatSplitTime` helper function in `src/main.js`.
     *   Verified all 13 unit tests passing (`npm test`) and production bundle verified (`npm run build`).
 
+---
+
+### 🚀 Session 82: User-Configurable Climb Gradient Classification Scale & Harmonized Alert Styling
+*   **Goal**: Enable runners to classify trail climbs based on gradient tier cutoffs (`-2% to 2% flat`, `3% to 5% moderate`, `5% to 8% steep`, `8% to 10% very steep`, `> 10% extreme`), make thresholds user settable in settings, and harmonize color schemes across 3D polylines, UI tables, and the safety alerts dialog.
+*   **Decisions & Rationale (*The Why*)**:
+    *   **Configurable Gradient Taxonomy**: Ultra runners pacing mountain routes require granular gradient classification to dictate effort levels (e.g. running vs power hiking). Hardcoded elevation thresholds fail to accommodate different fitness levels or terrain profiles. Added user-settable gradient bound inputs inside the Kokopelli Settings modal (`#settings-overlay` in `index.html`), persisted in `localStorage` (`grad_thresh_flat`, `grad_thresh_mod`, etc.).
+    *   **Harmonized Alert & Badge Aesthetics**: To fulfill the directive *"Use the same coloring scheme as the background in the 'alerts' dialog"*, established a unified 6-tier palette (`descent` green `#10b981`, `flat` blue `#3b82f6`, `moderate` yellow `#f59e0b`, `steep` orange `#f97316`, `verysteep` red `#ef4444`, `extreme` dark red `#b91c1c`). Attached `avgGrade` directly to `DIFFICULT_CLIMB` safety warnings in `src/gpx-parser.js` and styled alert list items (`.warning-item` in `#card-warnings`) dynamically with matching semi-transparent glassmorphism backgrounds.
+    *   **Unified Route & Table Visualization**: Both the 3D map route polyline renderer (`src/map-3d.js`) and sector pacing tables (`wizPrintPlanBtn` export and `#strat-sectors-list` modal) now invoke `classifyGradient(grade)` and `computeSectorGradient(route, sec)`, ensuring 100% aesthetic and data consistency across all views.
+*   **Key Actions & Verification**:
+    *   Updated `index.html`, `src/gpx-parser.js`, `src/main.js`, and `src/map-3d.js`.
+    *   Added automated unit test suite `User-settable climb gradient classification scale and coloring` in `test/gpx.test.js`.
+    *   Verified all 15 unit tests passing (`npm test`) and production bundle built (`npm run build`).
+
+
