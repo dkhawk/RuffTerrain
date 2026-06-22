@@ -1,6 +1,6 @@
 import { test, describe } from "node:test";
 import assert from "node:assert";
-import { parseGPX, getMetricsForPoint, classifyGradient, computeSectorGradient, calculateWarnings } from "../src/gpx-parser.js";
+import { parseGPX, getMetricsForPoint, classifyGradient, computeSectorGradient, calculateWarnings, autoSegmentCourse, solveBackwardPacing } from "../src/gpx-parser.js";
 import { writeGPX } from "../src/gpx-writer.js";
 import { getWeatherConditionStyle, getElapsedHoursAtDistance, getWeatherWindowDetails } from "../src/fetch-weather.js";
 
@@ -511,6 +511,26 @@ describe("GPX Parser & Writer Tests", () => {
     const descWarn = mockRoute.warnings.find(w => w.type === "STEEP_DESCENT");
     assert.ok(descWarn);
     assert.strictEqual(descWarn.colorHex, "#10b981");
+  });
+
+  test("Day Architect automated course slicer and descent-protected deadline solver", () => {
+    const mockRoute = {
+      totalDistance: 16093.44,
+      waypoints: [{ name: "Aid Alpha", dist_m: 8046.72 }],
+      trackpoints: [
+        { dist_m: 0, ele: 1000, grade: 8 },
+        { dist_m: 8046.72, ele: 1643.7, grade: 8 },
+        { dist_m: 16093.44, ele: 1000, grade: -8 }
+      ],
+      executionPlan: { sectors: [] }
+    };
+
+    const sectors = autoSegmentCourse(mockRoute);
+    assert.ok(sectors.length >= 2);
+    mockRoute.executionPlan.sectors = sectors;
+
+    solveBackwardPacing(2.5, mockRoute, "imperial");
+    assert.strictEqual(mockRoute.executionPlan.targetDurationHrs, 2.5);
   });
 
 });

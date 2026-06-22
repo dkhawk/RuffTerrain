@@ -1910,3 +1910,172 @@ export function computeSectorGradient(route, sec) {
   return grade;
 }
 
+// ==========================================
+// DAY ARCHITECT & RUNNER PACING ENGINE
+// ==========================================
+
+export const DEFAULT_RUNNER_PROFILES = [
+  {
+    id: "profile_hawk_pro",
+    name: "Dan Hawk (Mountain Ultra Pro)",
+    basePaces: { climb: 20.0, flat: 10.0, descent: 9.0 },
+    restDurationMin: 15
+  },
+  {
+    id: "profile_casual",
+    name: "Casual Adventurer",
+    basePaces: { climb: 25.0, flat: 12.0, descent: 11.0 },
+    restDurationMin: 20
+  }
+];
+
+export const GOAL_PRESETS = {
+  hard_race: { label: "⚡ Hard Race", mult: 0.90, restMult: 0.5 },
+  training_run: { label: "🏃 Training Run", mult: 1.05, restMult: 1.0 },
+  moderate_workout: { label: "💪 Moderate Workout", mult: 1.15, restMult: 1.0 },
+  fun_day_out: { label: "🥾 Easy / Fun Day Out", mult: 1.25, restMult: 1.5 }
+};
+
+export function getRunnerProfiles() {
+  if (typeof localStorage !== "undefined") {
+    try {
+      const stored = JSON.parse(localStorage.getItem("kokopelli_runner_profiles"));
+      if (Array.isArray(stored) && stored.length > 0) return stored;
+    } catch(e) {}
+  }
+  return DEFAULT_RUNNER_PROFILES;
+}
+
+export function getActiveRunnerProfile() {
+  const profiles = getRunnerProfiles();
+  if (typeof localStorage !== "undefined") {
+    const actId = localStorage.getItem("kokopelli_active_profile_id");
+    const found = profiles.find(p => p.id === actId);
+    if (found) return found;
+  }
+  return profiles[0];
+}
+
+export function getActiveGoalPreset() {
+  let key = "training_run";
+  if (typeof localStorage !== "undefined") {
+    key = localStorage.getItem("kokopelli_goal_preset") || "training_run";
+  }
+  return GOAL_PRESETS[key] || GOAL_PRESETS.training_run;
+}
+
+/**
+ * Automatically slices a course into pacing sectors at major terrain inflections and POIs.
+ */
+export function autoSegmentCourse(route) {
+  if (!route || !route.trackpoints || route.trackpoints.length === 0) return [];
+  const pts = route.trackpoints;
+  const totalDist = route.totalDistance || pts[pts.length - 1].dist_m;
+  const profile = getActiveRunnerProfile();
+  const goal = getActiveGoalPreset();
+
+  const splits = new Set([0, Math.round(totalDist)]);
+
+  (route.waypoints || []).forEach(wpt => {
+    if (wpt.dist_m > 50 && wpt.dist_m < totalDist - 50) {
+      splits.add(Math.round(wpt.dist_m));
+    }
+  });
+
+  let currMode = classifyGradient(pts[0].grade || 0).key;
+  let modeStartDist = 0;
+  for (let i = 1; i < pts.length; i++) {
+    const d = pts[i].dist_m;
+    const mode = classifyGradient(pts[i].grade || 0).key;
+    const majorType = (m) => m === "descent" ? "descent" : (m === "flat" ? "flat" : "climb");
+    if (majorType(mode) !== majorType(currMode)) {
+      if (d - modeStartDist >= 600 && d > 100 && d < totalDist - 100) {
+        splits.add(Math.round(d));
+        currMode = mode;
+        modeStartDist = d;
+      }
+    }
+  }
+
+  const sorted = Array.from(splits).sort((a, b) => a - b);
+  const deduped = [sorted[0]];
+  for (let i = 1; i < sorted.length; i++) {
+    if (sorted[i] - deduped[deduped.length - 1] >= 250) {
+      deduped.push(sorted[i]);
+    } else if (sorted[i] === Math.round(totalDist)) {
+      deduped[deduped.length - 1] = Math.round(totalDist);
+    }
+  }
+
+  const sectors = [];
+  for (let i = 0; i < deduped.length - 1; i++) {
+    const sDist = deduped[i];
+    const eDist = deduped[i+1];
+    const sPt = pts.find(p => p.dist_m >= sDist) || pts[0];
+    const ePt = pts.find(p => p.dist_m >= eDist) || pts[pts.length - 1];
+    const gain = (ePt.ele || 0) - (sPt.ele || 0);
+    const grade = ((gain) / (eDist - sDist)) * 100;
+    const cls = classifyGradient(grade);
+    const majorType = cls.key === "descent" ? "descent" : (cls.key === "flat" ? "flat" : "climb");
+
+    const basePace = profile.basePaces[majorType] || 10.0;
+    const targetPace = parseFloat((basePace * goal.mult).toFixed(1));
+
+    const endWpt = (route.waypoints || []).find(w => Math.abs(w.dist_m - eDist) < 150);
+    const sName = endWpt ? `➔ ${endWpt.name}` : `${cls.label} Segment`;
+
+    sectors.push({
+      start_dist_m: sDist,
+      end_dist_m: eDist,
+      name: sName,
+      terrain: cls.key === "descent" ? "descend" : (cls.key === "flat" ? "flat" : "climb"),
+      avg_grade: grade,
+      target_pace_min: targetPace,
+      strategy: `${cls.label} (${grade.toFixed(1)}%). Target ${targetPace} min/mi effort.`,
+      nutrition: endWpt ? `Rest break (~${Math.round(profile.restDurationMin * goal.restMult)} mins at ${endWpt.name}).` : "Regular hydration."
+    });
+  }
+
+  return sectors;
+}
+
+/**
+ * Backward Taxi Deadline solver: scales climb/flat paces to meet mandatory curfew while locking descents.
+ */
+export function solveBackwardPacing(targetTotalHrs, route, unitsMode = "imperial") {
+  if (!route || !route.executionPlan || !route.executionPlan.sectors || targetTotalHrs <= 0) return;
+  const sectors = route.executionPlan.sectors;
+  const profile = getActiveRunnerProfile();
+  const goal = getActiveGoalPreset();
+  const restMin = profile.restDurationMin * goal.restMult;
+  const mult = unitsMode === "metric" ? 1000 : 1609.344;
+
+  let aidCount = 0;
+  sectors.forEach(sec => { if (sec.name && sec.name.startsWith("➔")) aidCount++; });
+  const totalRestHrs = (aidCount * restMin) / 60;
+  const availRunHrs = targetTotalHrs - totalRestHrs;
+  if (availRunHrs <= 0) return;
+
+  let descHrs = 0;
+  let workDistNomHrs = 0;
+  sectors.forEach(sec => {
+    const distMi = (sec.end_dist_m - sec.start_dist_m) / mult;
+    if (sec.terrain === "descend") {
+      descHrs += (distMi * sec.target_pace_min) / 60;
+    } else {
+      workDistNomHrs += (distMi * sec.target_pace_min) / 60;
+    }
+  });
+
+  const reqWorkHrs = availRunHrs - descHrs;
+  const ratio = workDistNomHrs > 0 ? (reqWorkHrs / workDistNomHrs) : 1.0;
+
+  sectors.forEach(sec => {
+    if (sec.terrain !== "descend") {
+      sec.target_pace_min = parseFloat((sec.target_pace_min * Math.max(0.4, ratio)).toFixed(1));
+    }
+  });
+
+  route.executionPlan.targetDurationHrs = targetTotalHrs;
+}
+
