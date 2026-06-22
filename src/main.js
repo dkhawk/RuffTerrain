@@ -4920,7 +4920,7 @@ function computeIntelligentPacingAndWeatherPlan(route, opts) {
   // Drag & Drop Course Importers
   if (dropZone && fileSelector) {
     dropZone.addEventListener("click", (e) => {
-      if (e.target === fileSelector || e.target.tagName === "INPUT") return;
+      if (e.target.closest("label") || e.target === fileSelector || e.target.tagName === "INPUT") return;
       if (document.body.classList.contains("edit-locked")) return;
       fileSelector.click();
     });
@@ -6643,8 +6643,10 @@ function restoreSessionState() {
     const backup = JSON.parse(raw);
     if (backup && backup.route && backup.route.trackpoints && backup.route.trackpoints.length > 0) {
       activeRoute = backup.route;
-      renderElevationChart(activeRoute);
-      renderPOICards(activeRoute);
+      if (elevationChart) elevationChart.setRoute(activeRoute);
+      updateRouteStatsUI(activeRoute);
+      renderWarningsUI(activeRoute);
+      if (typeof renderRunnerSectorsUI === "function") renderRunnerSectorsUI();
       if (mapController) {
         mapController.loadRoute(activeRoute);
       }
