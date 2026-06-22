@@ -496,7 +496,7 @@ export class Map3DController {
     if (!this.Polyline3DElement) return;
     const poly = new this.Polyline3DElement({
       strokeColor: strokeColor,
-      strokeWidth: 6,
+      strokeWidth: 4,
       altitudeMode: "CLAMP_TO_GROUND",
       path: coordinates
     });
@@ -655,7 +655,7 @@ export class Map3DController {
     if (!this.Polyline3DElement) return;
     this.activeWarningPolyline = new this.Polyline3DElement({
       strokeColor: strokeColor,
-      strokeWidth: 14,
+      strokeWidth: 6,
       altitudeMode: "CLAMP_TO_GROUND",
       path: warnPts.map(pt => ({ lat: pt.lat, lng: pt.lon, altitude: 10 }))
     });
