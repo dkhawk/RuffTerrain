@@ -3057,7 +3057,10 @@ function renderWarningsUI(route) {
     item.dataset.endDist = warn.endDist || 0;
     if (!warn.approved) item.classList.add("rejected");
 
-    if (warn.type === "DIFFICULT_CLIMB" && warn.avgGrade !== undefined) {
+    if (warn.colorBg && warn.colorHex) {
+      item.style.backgroundColor = warn.colorBg;
+      item.style.borderLeftColor = warn.colorHex;
+    } else if ((warn.type === "DIFFICULT_CLIMB" || warn.type === "STEEP_DESCENT") && warn.avgGrade !== undefined) {
       const cls = classifyGradient(warn.avgGrade);
       item.style.backgroundColor = cls.bg;
       item.style.borderLeftColor = cls.hex;

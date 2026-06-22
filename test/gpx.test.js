@@ -1,6 +1,6 @@
 import { test, describe } from "node:test";
 import assert from "node:assert";
-import { parseGPX, getMetricsForPoint, classifyGradient, computeSectorGradient } from "../src/gpx-parser.js";
+import { parseGPX, getMetricsForPoint, classifyGradient, computeSectorGradient, calculateWarnings } from "../src/gpx-parser.js";
 import { writeGPX } from "../src/gpx-writer.js";
 import { getWeatherConditionStyle, getElapsedHoursAtDistance, getWeatherWindowDetails } from "../src/fetch-weather.js";
 
@@ -495,6 +495,22 @@ describe("GPX Parser & Writer Tests", () => {
     const grade = computeSectorGradient(mockRoute, { start_dist_m: 0, end_dist_m: 1000 });
     assert.strictEqual(grade, 8);
     assert.strictEqual(classifyGradient(grade).key, "steep");
+  });
+
+  test("Steep descent warnings and unified alert coloring properties", () => {
+    const mockRoute = {
+      totalDistance: 2000,
+      trackpoints: [
+        { dist_m: 0, ele: 2000, grade: -10 },
+        { dist_m: 500, ele: 1950, grade: -10 },
+        { dist_m: 1000, ele: 1850, grade: -10 }
+      ]
+    };
+    calculateWarnings(mockRoute, [], "metric", 8.0);
+    assert.ok(mockRoute.warnings);
+    const descWarn = mockRoute.warnings.find(w => w.type === "STEEP_DESCENT");
+    assert.ok(descWarn);
+    assert.strictEqual(descWarn.colorHex, "#10b981");
   });
 
 });

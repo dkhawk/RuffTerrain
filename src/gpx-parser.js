@@ -1012,7 +1012,7 @@ export function calculateWarnings(route, extraWarnings = [], units = "imperial",
 
   // 1. RESOURCE DESERTS
   // Define water/food resources. We filter waypoints that have water or food services, or are classified as aid/water.
-  const resourceWaypoints = route.waypoints.filter((wpt) => {
+  const resourceWaypoints = (route.waypoints || []).filter((wpt) => {
     const isWaterSym = wpt.sym.includes("water") || wpt.name.toLowerCase().includes("water") || wpt.name.toLowerCase().includes("spring") || wpt.name.toLowerCase().includes("creek");
     const isAidSym = wpt.sym.includes("aid") || wpt.name.toLowerCase().includes("aid") || wpt.name.toLowerCase().includes("station") || wpt.name.toLowerCase().includes("checkpoint");
     
@@ -1104,10 +1104,7 @@ export function calculateWarnings(route, extraWarnings = [], units = "imperial",
         approved: true,
       });
     }
-  }
-
-  // 2. DIFFICULT CLIMBS
-  // A climb is difficult if it has a high difficulty score based on elevation gain and grade.
+  }  // 2. DIFFICULT CLIMBS
   let inClimb = false;
   let climbStartIdx = -1;
   let maxEle = -Infinity;
@@ -1127,47 +1124,36 @@ export function calculateWarnings(route, extraWarnings = [], units = "imperial",
         lastPositiveGradeDist = tp.dist_m;
       }
     } else {
-      // Update max elevation seen
       if (tp.ele > maxEle) {
         maxEle = tp.ele;
         maxEleIdx = i;
       }
-
       if (grade > 3.5) {
         lastPositiveGradeDist = tp.dist_m;
       }
-
-      // Check termination conditions:
-      // 1. Descended more than 20 meters from max elevation seen on this climb.
-      // 2. Traveled more than 200 meters since the last time the grade was > 3.5%.
       const descendedTooMuch = tp.ele < maxEle - 20;
       const flatTooLong = tp.dist_m - lastPositiveGradeDist > 200;
 
       if (descendedTooMuch || flatTooLong || i === trackpoints.length - 1) {
-        // We terminate the climb at the peak (maxEleIdx) or current point
         const endIdx = descendedTooMuch || flatTooLong ? maxEleIdx : i;
         const startPt = trackpoints[climbStartIdx];
         const endPt = trackpoints[endIdx];
         const climbDist = endPt.dist_m - startPt.dist_m;
         const climbGain = endPt.ele - startPt.ele;
 
-        // Ensure the climb is at least a quarter mile (400 meters) and has positive gain
         if (climbDist >= 400 && climbGain > 0) {
           const avgGrade = (climbGain / climbDist) * 100;
-          
-          // Difficulty Score = Elevation Gain (m) * Average Grade (%)
           const score = Math.round(climbGain * avgGrade);
 
-          // We warn about climbs with difficulty score >= 100
           if (score >= 100) {
             const startDist = (startPt.dist_m * distMultiplier).toFixed(1);
             const endDist = (endPt.dist_m * distMultiplier).toFixed(1);
-            
-            // Format nice message with difficulty category
             let difficultyLabel = "Moderate";
             if (score > 1500) difficultyLabel = "Extreme";
             else if (score > 600) difficultyLabel = "Severe";
             else if (score > 250) difficultyLabel = "Difficult";
+
+            const cls = classifyGradient(avgGrade);
 
             warnings.push({
               id: `climb-${climbStartIdx}`,
@@ -1177,28 +1163,113 @@ export function calculateWarnings(route, extraWarnings = [], units = "imperial",
               endDist: endPt.dist_m,
               climbScore: score,
               avgGrade: parseFloat(avgGrade.toFixed(1)),
+              colorHex: cls.hex,
+              colorBg: cls.bg,
               approved: true,
             });
           }
         }
 
-        // Reset climb tracking
         inClimb = false;
         climbStartIdx = -1;
         maxEle = -Infinity;
         maxEleIdx = -1;
-        
-        // Retrospectively backtrack the loop if we terminated early due to descent,
-        // so we don't skip the start of a new climb starting right after the peak.
         if (descendedTooMuch || flatTooLong) {
-          i = endIdx; // loop will increment this to endIdx + 1
+          i = endIdx;
         }
       }
     }
   }
 
+  // 3. STEEP DESCENTS
+  let inDescent = false;
+  let descStartIdx = -1;
+  let minEle = Infinity;
+  let minEleIdx = -1;
+  let lastNegativeGradeDist = 0;
 
+  for (let i = 0; i < trackpoints.length; i++) {
+    const tp = trackpoints[i];
+    const grade = tp.grade || 0;
 
+    if (!inDescent) {
+      if (grade < -3.5) {
+        inDescent = true;
+        descStartIdx = i;
+        minEle = tp.ele;
+        minEleIdx = i;
+        lastNegativeGradeDist = tp.dist_m;
+      }
+    } else {
+      if (tp.ele < minEle) {
+        minEle = tp.ele;
+        minEleIdx = i;
+      }
+      if (grade < -3.5) {
+        lastNegativeGradeDist = tp.dist_m;
+      }
+      const climbedTooMuch = tp.ele > minEle + 20;
+      const flatTooLongD = tp.dist_m - lastNegativeGradeDist > 200;
+
+      if (climbedTooMuch || flatTooLongD || i === trackpoints.length - 1) {
+        const endIdx = climbedTooMuch || flatTooLongD ? minEleIdx : i;
+        const startPt = trackpoints[descStartIdx];
+        const endPt = trackpoints[endIdx];
+        const descDist = endPt.dist_m - startPt.dist_m;
+        const descDrop = startPt.ele - endPt.ele; // positive drop
+
+        if (descDist >= 400 && descDrop > 0) {
+          const avgGrade = -(descDrop / descDist) * 100; // negative grade
+          const score = Math.round(descDrop * Math.abs(avgGrade));
+
+          if (score >= 100) {
+            const startDist = (startPt.dist_m * distMultiplier).toFixed(1);
+            const endDist = (endPt.dist_m * distMultiplier).toFixed(1);
+            let diffLabel = "Moderate";
+            if (score > 1500) diffLabel = "Extreme";
+            else if (score > 600) diffLabel = "Severe";
+            else if (score > 250) diffLabel = "Difficult";
+
+            const cls = classifyGradient(avgGrade);
+
+            warnings.push({
+              id: `desc-${descStartIdx}`,
+              type: "STEEP_DESCENT",
+              message: `Steep Descent (${diffLabel}, Score: ${score}): Descent from ${startDist} to ${endDist} ${distName} (-${Math.round(descDrop * elevMultiplier)}${elevName} drop, avg grade: ${avgGrade.toFixed(1)}%).`,
+              startDist: startPt.dist_m,
+              endDist: endPt.dist_m,
+              climbScore: score,
+              avgGrade: parseFloat(avgGrade.toFixed(1)),
+              colorHex: cls.hex,
+              colorBg: cls.bg,
+              approved: true,
+            });
+          }
+        }
+
+        inDescent = false;
+        descStartIdx = -1;
+        minEle = Infinity;
+        minEleIdx = -1;
+        if (climbedTooMuch || flatTooLongD) {
+          i = endIdx;
+        }
+      }
+    }
+  }
+
+  // Attach colors to deserts and spatial mismatches
+  warnings.forEach(w => {
+    if (w.type === "RESOURCE_DESERT") {
+      w.colorHex = "#ef4444";
+      w.colorBg = "rgba(239, 68, 68, 0.15)";
+    } else if (w.type === "SPATIAL_MISMATCH") {
+      w.colorHex = "#a855f7";
+      w.colorBg = "rgba(168, 85, 247, 0.15)";
+    }
+  });
+
+  warnings.sort((a, b) => (a.startDist || 0) - (b.startDist || 0));
   route.warnings = warnings;
 }
 
