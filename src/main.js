@@ -6695,6 +6695,7 @@ setTimeout(restoreSessionState, 500);
 function renderRunnerSectorsUI() {
   const listEl = document.getElementById("runner-sectors-list");
   if (!listEl) return;
+  listEl.innerHTML = "";
   if (!activeRoute || !activeRoute.executionPlan || !activeRoute.executionPlan.sectors || activeRoute.executionPlan.sectors.length === 0) {
     listEl.innerHTML = `<span style="font-size: 10px; color: var(--text-muted); text-align: center; font-style: italic; padding: 6px 0;">No pacing sectors loaded. Click 'Auto Segment Course'.</span>`;
     return;
@@ -6702,25 +6703,43 @@ function renderRunnerSectorsUI() {
   const mult = typeof units !== "undefined" && units === "metric" ? 1000 : 1609.344;
   const uUnit = typeof units !== "undefined" && units === "metric" ? "km" : "mi";
 
-  let html = "";
   activeRoute.executionPlan.sectors.forEach((sec, idx) => {
     const sMi = (sec.start_dist_m / mult).toFixed(1);
     const eMi = (sec.end_dist_m / mult).toFixed(1);
     const badgeBg = sec.terrain === "descend" ? "rgba(16,185,129,0.2)" : (sec.terrain === "flat" ? "rgba(59,130,246,0.2)" : "rgba(249,115,22,0.2)");
     const badgeCol = sec.terrain === "descend" ? "#34d399" : (sec.terrain === "flat" ? "#60a5fa" : "#fb923c");
 
-    html += `
-      <div style="background: rgba(0,0,0,0.3); border: 1px solid rgba(255,255,255,0.08); padding: 6px 8px; border-radius: 6px; display: flex; justify-content: space-between; align-items: center; margin-bottom:4px;">
-        <div style="display: flex; flex-direction: column; gap: 2px; max-width: 65%;">
-          <span style="font-size: 11px; font-weight: bold; color: #fff;">${idx+1}. ${sec.name}</span>
-          <span style="font-size: 9px; color: var(--text-muted);">${sMi} ➔ ${eMi} ${uUnit} (${(sec.avg_grade||0).toFixed(1)}%)</span>
-        </div>
-        <div style="display: flex; align-items: center; gap: 6px;">
-          <span style="background:${badgeBg}; color:${badgeCol}; font-size:10px; font-weight:bold; padding:2px 6px; border-radius:4px;">${sec.target_pace_min} min/${uUnit}</span>
-        </div>
+    const item = document.createElement("div");
+    item.className = "runner-sector-item";
+    item.style.cssText = "background: rgba(0,0,0,0.3); border: 1px solid rgba(255,255,255,0.08); padding: 6px 8px; border-radius: 6px; display: flex; justify-content: space-between; align-items: center; margin-bottom:4px; cursor:pointer; transition:all 0.2s;";
+
+    item.innerHTML = `
+      <div style="display: flex; flex-direction: column; gap: 2px; max-width: 65%;">
+        <span style="font-size: 11px; font-weight: bold; color: #fff;">${idx+1}. ${sec.name}</span>
+        <span style="font-size: 9px; color: var(--text-muted);">${sMi} ➔ ${eMi} ${uUnit} (${(sec.avg_grade||0).toFixed(1)}%)</span>
+      </div>
+      <div style="display: flex; align-items: center; gap: 6px;">
+        <span style="background:${badgeBg}; color:${badgeCol}; font-size:10px; font-weight:bold; padding:2px 6px; border-radius:4px;">${sec.target_pace_min} min/${uUnit}</span>
       </div>
     `;
+
+    item.addEventListener("click", () => {
+      const allItems = listEl.querySelectorAll(".runner-sector-item");
+      allItems.forEach(i => i.style.borderColor = "rgba(255,255,255,0.08)");
+      item.style.borderColor = badgeCol;
+
+      if (typeof mapController !== "undefined" && mapController) {
+        mapController.highlightWarning({
+          startDist: sec.start_dist_m,
+          endDist: sec.end_dist_m,
+          colorHex: badgeCol
+        });
+        const clearBtn = document.getElementById("clear-warnings-highlight-btn");
+        if (clearBtn) clearBtn.classList.remove("hidden");
+      }
+    });
+
+    listEl.appendChild(item);
   });
-  listEl.innerHTML = html;
 }
 window.renderRunnerSectorsUI = renderRunnerSectorsUI;
