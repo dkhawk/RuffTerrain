@@ -1049,9 +1049,21 @@ This journal records all design decisions, architecture patterns, development st
     *   **Configurable Gradient Taxonomy**: Ultra runners pacing mountain routes require granular gradient classification to dictate effort levels (e.g. running vs power hiking). Hardcoded elevation thresholds fail to accommodate different fitness levels or terrain profiles. Added user-settable gradient bound inputs inside the Kokopelli Settings modal (`#settings-overlay` in `index.html`), persisted in `localStorage` (`grad_thresh_flat`, `grad_thresh_mod`, etc.).
     *   **Harmonized Alert & Badge Aesthetics**: To fulfill the directive *"Use the same coloring scheme as the background in the 'alerts' dialog"*, established a unified 6-tier palette (`descent` green `#10b981`, `flat` blue `#3b82f6`, `moderate` yellow `#f59e0b`, `steep` orange `#f97316`, `verysteep` red `#ef4444`, `extreme` dark red `#b91c1c`). Attached `avgGrade` directly to `DIFFICULT_CLIMB` safety warnings in `src/gpx-parser.js` and styled alert list items (`.warning-item` in `#card-warnings`) dynamically with matching semi-transparent glassmorphism backgrounds.
     *   **Unified Route & Table Visualization**: Both the 3D map route polyline renderer (`src/map-3d.js`) and sector pacing tables (`wizPrintPlanBtn` export and `#strat-sectors-list` modal) now invoke `classifyGradient(grade)` and `computeSectorGradient(route, sec)`, ensuring 100% aesthetic and data consistency across all views.
-*   **Key Actions & Verification**:
     *   Updated `index.html`, `src/gpx-parser.js`, `src/main.js`, and `src/map-3d.js`.
     *   Added automated unit test suite `User-settable climb gradient classification scale and coloring` in `test/gpx.test.js`.
     *   Verified all 15 unit tests passing (`npm test`) and production bundle built (`npm run build`).
+
+---
+
+### 🚀 Session 83: Steep & Long Descent Detection & Unified 3D Hazard Highlight Styling
+*   **Goal**: Automatically scan courses for long, steep downhill running hazards (`STEEP_DESCENT`), and ensure 3D map polylines highlighted upon clicking sidebar alerts match exact alert card colors.
+*   **Decisions & Rationale (*The Why*)**:
+    *   **Downhill Eccentric Load Hazards**: While long climbs stress cardiovascular systems, steep prolonged descents impose heavy eccentric loading on quadriceps and knees, representing major race-ending ultra hazards if hammered too hard. In `src/gpx-parser.js` `calculateWarnings()`, implemented independent sequential scanning for sustained downhill drops (`grade < -3.5%`, distance >= 400m, drop score >= 100).
+    *   **Exact Visual Parity in Map Highlights**: Previously, clicking an alert item in the sidebar highlighted the section on the 3D map using hardcoded red or purple strokes. To fulfill *"the coloring of the highlight of the difficult section should match the color of the alert warning"*, attached explicit `colorHex` and `colorBg` properties to every single warning object (`STEEP_DESCENT` mint green `#10b981`, `DIFFICULT_CLIMB` tier color, `RESOURCE_DESERT` coral red `#ef4444`, `SPATIAL_MISMATCH` purple `#a855f7`). In `src/map-3d.js` `highlightWarning()`, the 3D highlight polyline now inherits `warn.colorHex` directly.
+*   **Key Actions & Verification**:
+    *   Updated `src/gpx-parser.js`, `src/main.js`, and `src/map-3d.js`.
+    *   Added unit test suite `Steep descent warnings and unified alert coloring properties` in `test/gpx.test.js`.
+    *   Verified all 16 unit tests passing (`npm test`) and production bundle built (`npm run build`).
+
 
 
