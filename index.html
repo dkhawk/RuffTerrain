@@ -190,6 +190,7 @@
 
         <div class="studio-tabs" style="display: flex; gap: 6px; overflow-x: auto; padding-bottom: 2px;">
           <button id="studio-tab-edit" class="btn btn-sm btn-secondary active" style="font-size: 10px; padding: 4px 8px; border-radius: 12px;">📁 Edit Course</button>
+          <button id="studio-tab-runner" class="btn btn-sm btn-secondary" style="font-size: 10px; padding: 4px 8px; border-radius: 12px; background: rgba(245, 158, 11, 0.15); color: #fbbf24; border: 1px solid #f59e0b;">🏃 Runner & Pacing</button>
           <button id="studio-tab-poi" class="btn btn-sm btn-secondary" style="font-size: 10px; padding: 4px 8px; border-radius: 12px;">📍 Waypoint Details</button>
           <button id="studio-tab-plan" class="btn btn-sm btn-secondary" style="font-size: 10px; padding: 4px 8px; border-radius: 12px; background: rgba(59, 130, 246, 0.15); color: #60a5fa; border: 1px solid #3b82f6;">⏱️ Race Planner</button>
           <button id="studio-tab-chat" class="btn btn-sm btn-secondary" style="font-size: 10px; padding: 4px 8px; border-radius: 12px; background: rgba(16, 185, 129, 0.15); color: #34d399; border: 1px solid #10b981;">✨ Gemini Chat</button>
@@ -257,6 +258,61 @@
             <button id="export-gpx-btn" class="btn btn-primary w-100" style="font-size: 12px; height: 32px; padding: 0; display: flex; align-items: center; justify-content: center; gap: 6px;">
               <span>📥 Export Enhanced GPX</span>
             </button>
+          </div>
+        </div>
+
+        <!-- VIEW 5: Runner & Pacing Profiles (`#studio-view-runner`) -->
+        <div id="studio-view-runner" class="hidden" style="display: flex; flex-direction: column; gap: 12px;">
+          <div style="background: rgba(245, 158, 11, 0.1); border: 1px solid rgba(245, 158, 11, 0.3); padding: 10px; border-radius: 8px;">
+            <h4 style="margin: 0 0 4px 0; font-size: 12px; color: #fbbf24; display: flex; align-items: center; gap: 6px;">
+              <span>🏃 Runner Identity & Pacing Engine</span>
+            </h4>
+            <p style="margin: 0; font-size: 11px; color: var(--text-secondary);">Select historical runner profiles, apply effort goals, automatically segment courses into landmarks, or solve backward from mandatory curfew deadlines.</p>
+          </div>
+
+          <div style="display: flex; flex-direction: column; gap: 4px;">
+            <label style="font-size: 10px; color: var(--text-muted); font-weight: bold;">RUNNER PROFILE</label>
+            <select id="runner-profile-select" style="background: rgba(0,0,0,0.4); border: 1px solid rgba(255,255,255,0.2); color: #fff; padding: 6px 10px; border-radius: 6px; font-size: 12px;">
+              <option value="profile_hawk_pro">Dan Hawk (Mountain Ultra Pro - 20m climb / 10m flat / 9m desc)</option>
+              <option value="profile_casual">Casual Adventurer (25m climb / 12m flat / 11m desc)</option>
+            </select>
+          </div>
+
+          <div style="display: flex; flex-direction: column; gap: 4px;">
+            <label style="font-size: 10px; color: var(--text-muted); font-weight: bold;">DAY INTENTION / EFFORT GOAL</label>
+            <div style="display: grid; grid-template-columns: repeat(2, 1fr); gap: 6px;">
+              <button class="btn btn-sm btn-secondary goal-preset-btn active" data-preset="training_run" style="font-size:10px;">🏃 Training Run (105%)</button>
+              <button class="btn btn-sm btn-secondary goal-preset-btn" data-preset="hard_race" style="font-size:10px;">⚡ Hard Race (90%)</button>
+              <button class="btn btn-sm btn-secondary goal-preset-btn" data-preset="moderate_workout" style="font-size:10px;">💪 Moderate (115%)</button>
+              <button class="btn btn-sm btn-secondary goal-preset-btn" data-preset="fun_day_out" style="font-size:10px;">🥾 Fun Day (125%)</button>
+            </div>
+          </div>
+
+          <div style="display: flex; flex-direction: column; gap: 6px; background: rgba(0,0,0,0.2); border: 1px solid rgba(255,255,255,0.06); padding: 8px; border-radius: 6px;">
+            <span style="font-size: 10px; color: var(--text-muted); font-weight: bold;">TIME SOLVING MODE</span>
+            <div style="display: grid; grid-template-columns: repeat(2, 1fr); gap: 6px;">
+              <button id="pacing-mode-forward" class="btn btn-sm btn-primary" style="font-size: 10px;">🎯 Goal Pace Mode</button>
+              <button id="pacing-mode-backward" class="btn btn-sm btn-secondary" style="font-size: 10px;">🚕 Deadline Taxi Mode</button>
+            </div>
+
+            <div id="deadline-input-box" class="hidden" style="margin-top: 4px; display: flex; flex-direction: column; gap: 4px;">
+              <label for="deadline-clock-input" style="font-size: 10px; color: #fbbf24;">Mandatory Curfew Finish Time (Target Duration Hrs):</label>
+              <div style="display: flex; gap: 6px;">
+                <input type="number" id="deadline-clock-input" step="0.25" min="1" max="48" value="12.0" style="flex:1; background:rgba(0,0,0,0.4); border:1px solid #f59e0b; color:#fff; padding:4px 8px; border-radius:4px; font-size:12px;" />
+                <button id="solve-deadline-btn" class="btn btn-sm btn-secondary" style="background:#f59e0b; color:#000; font-weight:bold;">Solve Paces</button>
+              </div>
+              <span style="font-size: 9px; color: var(--text-secondary);">Downhill running paces locked to protect quadriceps. Climb & Flat paces scale proportionally.</span>
+            </div>
+          </div>
+
+          <div style="display: flex; flex-direction: column; gap: 6px;">
+            <div style="display: flex; justify-content: space-between; align-items: center;">
+              <span style="font-size: 10px; color: var(--text-muted); font-weight: bold;">✂️ COURSE PACING SECTORS</span>
+              <button id="auto-slice-course-btn" class="btn btn-sm btn-primary" style="font-size: 9px; padding: 2px 8px;">Auto Segment Course</button>
+            </div>
+            <div id="runner-sectors-list" style="max-height: 180px; overflow-y: auto; display: flex; flex-direction: column; gap: 4px;">
+              <span style="font-size: 10px; color: var(--text-muted); text-align: center; font-style: italic; padding: 6px 0;">Load a course to view pacing sectors.</span>
+            </div>
           </div>
         </div>
 

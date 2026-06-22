@@ -115,6 +115,16 @@ const dragSnapCheckbox = document.getElementById("drag-snap-checkbox");
 const cardGeminiChat = document.getElementById("card-gemini-chat");
 const studioViewEdit = document.getElementById("studio-view-edit");
 const studioTabEdit = document.getElementById("studio-tab-edit");
+const studioTabRunner = document.getElementById("studio-tab-runner");
+const studioViewRunner = document.getElementById("studio-view-runner");
+const runnerProfileSelect = document.getElementById("runner-profile-select");
+const pacingModeForward = document.getElementById("pacing-mode-forward");
+const pacingModeBackward = document.getElementById("pacing-mode-backward");
+const deadlineInputBox = document.getElementById("deadline-input-box");
+const deadlineClockInput = document.getElementById("deadline-clock-input");
+const solveDeadlineBtn = document.getElementById("solve-deadline-btn");
+const autoSliceCourseBtn = document.getElementById("auto-slice-course-btn");
+const runnerSectorsList = document.getElementById("runner-sectors-list");
 const studioTabPoi = document.getElementById("studio-tab-poi");
 const studioTabChat = document.getElementById("studio-tab-chat");
 const studioTabPlan = document.getElementById("studio-tab-plan");
@@ -3350,59 +3360,78 @@ function setupEventListeners() {
     });
   }
 
-  if (studioTabEdit) {
-    studioTabEdit.addEventListener("click", () => {
-      studioTabEdit.classList.add("active");
-      if (studioTabPoi) studioTabPoi.classList.remove("active");
-      if (studioTabPlan) studioTabPlan.classList.remove("active");
-      if (studioTabChat) studioTabChat.classList.remove("active");
+  const allStudioTabs = [studioTabEdit, studioTabRunner, studioTabPoi, studioTabPlan, studioTabChat];
+  const allStudioViews = [studioViewEdit, studioViewRunner, poiDetailDialog, studioViewPlan, cardGeminiChat];
 
-      if (studioViewEdit) studioViewEdit.classList.remove("hidden");
-      if (poiDetailDialog) poiDetailDialog.classList.add("hidden");
-      if (studioViewPlan) studioViewPlan.classList.add("hidden");
-      if (cardGeminiChat) cardGeminiChat.classList.add("hidden");
+  const activateStudioTab = (tab, view) => {
+    allStudioTabs.forEach(t => t && t.classList.remove("active"));
+    allStudioViews.forEach(v => v && v.classList.add("hidden"));
+    if (tab) tab.classList.add("active");
+    if (view) view.classList.remove("hidden");
+  };
+
+  if (studioTabEdit) studioTabEdit.addEventListener("click", () => activateStudioTab(studioTabEdit, studioViewEdit));
+  if (studioTabRunner) studioTabRunner.addEventListener("click", () => {
+    activateStudioTab(studioTabRunner, studioViewRunner);
+    if (typeof renderRunnerSectorsUI === "function") renderRunnerSectorsUI();
+  });
+  if (studioTabPoi) studioTabPoi.addEventListener("click", () => activateStudioTab(studioTabPoi, poiDetailDialog));
+  if (studioTabPlan) studioTabPlan.addEventListener("click", () => activateStudioTab(studioTabPlan, studioViewPlan));
+  if (studioTabChat) studioTabChat.addEventListener("click", () => activateStudioTab(studioTabChat, cardGeminiChat));
+
+  // Day Architect Preset & Solver controls
+  if (runnerProfileSelect) {
+    runnerProfileSelect.addEventListener("change", (e) => {
+      localStorage.setItem("kokopelli_active_profile_id", e.target.value);
+      if (activeRoute) {
+        activeRoute.executionPlan.sectors = autoSegmentCourse(activeRoute);
+        if (typeof renderRunnerSectorsUI === "function") renderRunnerSectorsUI();
+      }
     });
   }
 
-  if (studioTabPoi) {
-    studioTabPoi.addEventListener("click", () => {
-      studioTabPoi.classList.add("active");
-      if (studioTabEdit) studioTabEdit.classList.remove("active");
-      if (studioTabPlan) studioTabPlan.classList.remove("active");
-      if (studioTabChat) studioTabChat.classList.remove("active");
+  const goalPresetBtns = document.querySelectorAll(".goal-preset-btn");
+  goalPresetBtns.forEach(btn => {
+    btn.addEventListener("click", () => {
+      goalPresetBtns.forEach(b => b.classList.remove("active"));
+      btn.classList.add("active");
+      localStorage.setItem("kokopelli_goal_preset", btn.getAttribute("data-preset"));
+      if (activeRoute) {
+        activeRoute.executionPlan.sectors = autoSegmentCourse(activeRoute);
+        if (typeof renderRunnerSectorsUI === "function") renderRunnerSectorsUI();
+      }
+    });
+  });
 
-      if (poiDetailDialog) poiDetailDialog.classList.remove("hidden");
-      if (studioViewEdit) studioViewEdit.classList.add("hidden");
-      if (studioViewPlan) studioViewPlan.classList.add("hidden");
-      if (cardGeminiChat) cardGeminiChat.classList.add("hidden");
+  if (pacingModeForward && pacingModeBackward && deadlineInputBox) {
+    pacingModeForward.addEventListener("click", () => {
+      pacingModeForward.classList.replace("btn-secondary", "btn-primary");
+      pacingModeBackward.classList.replace("btn-primary", "btn-secondary");
+      deadlineInputBox.classList.add("hidden");
+    });
+    pacingModeBackward.addEventListener("click", () => {
+      pacingModeBackward.classList.replace("btn-secondary", "btn-primary");
+      pacingModeForward.classList.replace("btn-primary", "btn-secondary");
+      deadlineInputBox.classList.remove("hidden");
     });
   }
 
-  if (studioTabPlan) {
-    studioTabPlan.addEventListener("click", () => {
-      studioTabPlan.classList.add("active");
-      if (studioTabEdit) studioTabEdit.classList.remove("active");
-      if (studioTabPoi) studioTabPoi.classList.remove("active");
-      if (studioTabChat) studioTabChat.classList.remove("active");
-
-      if (studioViewPlan) studioViewPlan.classList.remove("hidden");
-      if (studioViewEdit) studioViewEdit.classList.add("hidden");
-      if (poiDetailDialog) poiDetailDialog.classList.add("hidden");
-      if (cardGeminiChat) cardGeminiChat.classList.add("hidden");
+  if (solveDeadlineBtn && deadlineClockInput) {
+    solveDeadlineBtn.addEventListener("click", () => {
+      const hrs = parseFloat(deadlineClockInput.value);
+      if (!isNaN(hrs) && hrs > 0 && activeRoute) {
+        solveBackwardPacing(hrs, activeRoute, typeof units !== "undefined" ? units : "imperial");
+        if (typeof renderRunnerSectorsUI === "function") renderRunnerSectorsUI();
+      }
     });
   }
 
-  if (studioTabChat) {
-    studioTabChat.addEventListener("click", () => {
-      studioTabChat.classList.add("active");
-      if (studioTabEdit) studioTabEdit.classList.remove("active");
-      if (studioTabPoi) studioTabPoi.classList.remove("active");
-      if (studioTabPlan) studioTabPlan.classList.remove("active");
-
-      if (cardGeminiChat) cardGeminiChat.classList.remove("hidden");
-      if (studioViewEdit) studioViewEdit.classList.add("hidden");
-      if (poiDetailDialog) poiDetailDialog.classList.add("hidden");
-      if (studioViewPlan) studioViewPlan.classList.add("hidden");
+  if (autoSliceCourseBtn) {
+    autoSliceCourseBtn.addEventListener("click", () => {
+      if (activeRoute) {
+        activeRoute.executionPlan.sectors = autoSegmentCourse(activeRoute);
+        if (typeof renderRunnerSectorsUI === "function") renderRunnerSectorsUI();
+      }
     });
   }
 
@@ -6657,3 +6686,36 @@ document.addEventListener("visibilitychange", () => {
 
 // Automatically trigger restore after DOM setup
 setTimeout(restoreSessionState, 500);
+
+function renderRunnerSectorsUI() {
+  const listEl = document.getElementById("runner-sectors-list");
+  if (!listEl) return;
+  if (!activeRoute || !activeRoute.executionPlan || !activeRoute.executionPlan.sectors || activeRoute.executionPlan.sectors.length === 0) {
+    listEl.innerHTML = `<span style="font-size: 10px; color: var(--text-muted); text-align: center; font-style: italic; padding: 6px 0;">No pacing sectors loaded. Click 'Auto Segment Course'.</span>`;
+    return;
+  }
+  const mult = typeof units !== "undefined" && units === "metric" ? 1000 : 1609.344;
+  const uUnit = typeof units !== "undefined" && units === "metric" ? "km" : "mi";
+
+  let html = "";
+  activeRoute.executionPlan.sectors.forEach((sec, idx) => {
+    const sMi = (sec.start_dist_m / mult).toFixed(1);
+    const eMi = (sec.end_dist_m / mult).toFixed(1);
+    const badgeBg = sec.terrain === "descend" ? "rgba(16,185,129,0.2)" : (sec.terrain === "flat" ? "rgba(59,130,246,0.2)" : "rgba(249,115,22,0.2)");
+    const badgeCol = sec.terrain === "descend" ? "#34d399" : (sec.terrain === "flat" ? "#60a5fa" : "#fb923c");
+
+    html += `
+      <div style="background: rgba(0,0,0,0.3); border: 1px solid rgba(255,255,255,0.08); padding: 6px 8px; border-radius: 6px; display: flex; justify-content: space-between; align-items: center; margin-bottom:4px;">
+        <div style="display: flex; flex-direction: column; gap: 2px; max-width: 65%;">
+          <span style="font-size: 11px; font-weight: bold; color: #fff;">${idx+1}. ${sec.name}</span>
+          <span style="font-size: 9px; color: var(--text-muted);">${sMi} ➔ ${eMi} ${uUnit} (${(sec.avg_grade||0).toFixed(1)}%)</span>
+        </div>
+        <div style="display: flex; align-items: center; gap: 6px;">
+          <span style="background:${badgeBg}; color:${badgeCol}; font-size:10px; font-weight:bold; padding:2px 6px; border-radius:4px;">${sec.target_pace_min} min/${uUnit}</span>
+        </div>
+      </div>
+    `;
+  });
+  listEl.innerHTML = html;
+}
+window.renderRunnerSectorsUI = renderRunnerSectorsUI;
