@@ -1060,10 +1060,23 @@ This journal records all design decisions, architecture patterns, development st
 *   **Decisions & Rationale (*The Why*)**:
     *   **Downhill Eccentric Load Hazards**: While long climbs stress cardiovascular systems, steep prolonged descents impose heavy eccentric loading on quadriceps and knees, representing major race-ending ultra hazards if hammered too hard. In `src/gpx-parser.js` `calculateWarnings()`, implemented independent sequential scanning for sustained downhill drops (`grade < -3.5%`, distance >= 400m, drop score >= 100).
     *   **Exact Visual Parity in Map Highlights**: Previously, clicking an alert item in the sidebar highlighted the section on the 3D map using hardcoded red or purple strokes. To fulfill *"the coloring of the highlight of the difficult section should match the color of the alert warning"*, attached explicit `colorHex` and `colorBg` properties to every single warning object (`STEEP_DESCENT` mint green `#10b981`, `DIFFICULT_CLIMB` tier color, `RESOURCE_DESERT` coral red `#ef4444`, `SPATIAL_MISMATCH` purple `#a855f7`). In `src/map-3d.js` `highlightWarning()`, the 3D highlight polyline now inherits `warn.colorHex` directly.
-*   **Key Actions & Verification**:
     *   Updated `src/gpx-parser.js`, `src/main.js`, and `src/map-3d.js`.
     *   Added unit test suite `Steep descent warnings and unified alert coloring properties` in `test/gpx.test.js`.
     *   Verified all 16 unit tests passing (`npm test`) and production bundle built (`npm run build`).
+
+---
+
+### 🚀 Session 84: Day Architect & Runner Pacing Profiles Engine
+*   **Goal**: Transform the race planner into an intelligent Day Architect featuring prominent Runner Profile identity, Effort Presets (`Hard Race`, `Training Run`, `Fun Day Out`), automated course landmark segmentation, and Bidirectional Time Solving (`Goal Pace Mode` vs. `Deadline Clock Mode`).
+*   **Decisions & Rationale (*The Why*)**:
+    *   **Historical Runner Identity**: Generic mapping tools calculate hiking times using static speeds (e.g. 3.0 mph). In ultra endurance mountain running, speed is non-linear and dictated by individual aerobic capability across specific slopes. Added `DEFAULT_RUNNER_PROFILES` ([gpx-parser.js](file:///Users/dkhawk/Projects/RuffTerrain/main/src/gpx-parser.js)) tracking individual `basePaces` (e.g. Dan Hawk Pro: 20 min/mi climb, 10 min/mi flat, 9 min/mi descent).
+    *   **Automated Landmark Segmentation**: Sliced loaded courses automatically at major terrain inflection points (sustained transitions between climbing, flat, and downhill running) merged with aid station POIs via `autoSegmentCourse(route)`.
+    *   **Descent-Protected Deadline Solving**: In **Deadline Clock Mode** (e.g. must finish by curfew clock time 15:00), the mathematical solver works backward (`solveBackwardPacing`). To protect quadriceps from muscular damage and injury, downhill running paces remain locked ($\gamma_{desc} = 1.0$), while flat and climbing paces dynamically compress ($\gamma_{work}$) to meet the deadline.
+*   **Key Actions & Verification**:
+    *   Scaffolded top-level `🏃 Runner & Pacing` tab drawer and mode toggles in `index.html` and `src/main.js`.
+    *   Created specification artifact [runner_pacing_engine_spec.md](file:///Users/dkhawk/.gemini/jetski/brain/089bdb6c-3240-45d4-85de-2f7a4871f031/runner_pacing_engine_spec.md).
+    *   Added unit test suite `Day Architect automated course slicer and descent-protected deadline solver` in `test/gpx.test.js`.
+    *   Verified 17/17 automated unit tests passing (`npm test`) and production client bundle built (`npm run build`).
 
 
 
