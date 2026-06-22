@@ -24,7 +24,7 @@
  * The preview controller iterates through trackpoint bearings to control camera panning and triggers contextual auto-pauses when approaching points of interest.
  */
 
-import { parseGPX, parseKML, reconcileCourse, getMetricsForPoint, calculateWarnings, haversine, snapToRouteSegments, recalculateRouteMetrics } from "./gpx-parser.js";
+import { parseGPX, parseKML, reconcileCourse, getMetricsForPoint, calculateWarnings, haversine, snapToRouteSegments, recalculateRouteMetrics, classifyGradient, computeSectorGradient } from "./gpx-parser.js";
 import { writeGPX } from "./gpx-writer.js";
 import { correctRouteElevations } from "./fetch-elevation.js";
 import { sendToGemini, fetchAvailableModels, generateWaypointFromDescription } from "./gemini-client.js";
@@ -3057,6 +3057,12 @@ function renderWarningsUI(route) {
     item.dataset.endDist = warn.endDist || 0;
     if (!warn.approved) item.classList.add("rejected");
 
+    if (warn.type === "DIFFICULT_CLIMB" && warn.avgGrade !== undefined) {
+      const cls = classifyGradient(warn.avgGrade);
+      item.style.backgroundColor = cls.bg;
+      item.style.borderLeftColor = cls.hex;
+    }
+
     const textSpan = document.createElement("span");
     textSpan.className = "warning-text";
     textSpan.textContent = warn.message;
@@ -3223,6 +3229,16 @@ function setupEventListeners() {
     settingsUnits.value = units;
     settingsPauseTime.value = pauseDuration;
     renderRecentCoursesList();
+
+    const gFlat = document.getElementById("grad-thresh-flat");
+    const gMod = document.getElementById("grad-thresh-mod");
+    const gSteep = document.getElementById("grad-thresh-steep");
+    const gVSteep = document.getElementById("grad-thresh-vsteep");
+    if (gFlat) gFlat.value = localStorage.getItem("grad_thresh_flat") || "2.0";
+    if (gMod) gMod.value = localStorage.getItem("grad_thresh_mod") || "5.0";
+    if (gSteep) gSteep.value = localStorage.getItem("grad_thresh_steep") || "8.0";
+    if (gVSteep) gVSteep.value = localStorage.getItem("grad_thresh_vsteep") || "10.0";
+
     settingsOverlay.classList.remove("hidden");
   };
 
@@ -4328,16 +4344,13 @@ function computeIntelligentPacingAndWeatherPlan(route, opts) {
         const sRound = Math.round((sec.target_pace_min % 1) * 60).toString().padStart(2, "0");
         const paceStr = `${mFloor}:${sRound}`;
         
-        const secText = `${sec.name || ""} ${sec.strategy || ""} ${sec.terrain || ""}`.toLowerCase();
-        const isAsc = sec.terrain === "climb" || secText.includes("ascent") || secText.includes("climb") || secText.includes("uphill") || secText.includes("hike");
-        const isDesc = !isAsc && (sec.terrain === "descend" || secText.includes("descent") || secText.includes("descend") || secText.includes("downhill"));
-        const badgeClass = isAsc ? "badge-ascent" : (isDesc ? "badge-descent" : "badge-flat");
-        const badgeText = isAsc ? "CLIMB" : (isDesc ? "DESCENT" : "FLAT");
+        const sGrade = computeSectorGradient(activeRoute, sec);
+        const cls = classifyGradient(sGrade);
 
         rowsHtml += `
           <tr>
             <td><strong>${escapeHtml(sec.name)}</strong></td>
-            <td><span class="badge ${badgeClass}">${badgeText}</span></td>
+            <td><span class="badge" style="background: ${cls.bg}; color: ${cls.hex}; border: 1px solid ${cls.hex}; font-weight: 800; padding: 2px 8px; border-radius: 12px;">${cls.label} (${sGrade.toFixed(1)}%)</span></td>
             <td><strong>${paceStr}</strong> min/mi</td>
             <td>${escapeHtml(sec.strategy)}</td>
           </tr>
@@ -4830,6 +4843,15 @@ function computeIntelligentPacingAndWeatherPlan(route, opts) {
       localStorage.setItem("settings_units", units);
       localStorage.setItem("settings_pause_duration", pauseDuration);
 
+      const gFlat = document.getElementById("grad-thresh-flat");
+      const gMod = document.getElementById("grad-thresh-mod");
+      const gSteep = document.getElementById("grad-thresh-steep");
+      const gVSteep = document.getElementById("grad-thresh-vsteep");
+      if (gFlat) localStorage.setItem("grad_thresh_flat", gFlat.value);
+      if (gMod) localStorage.setItem("grad_thresh_mod", gMod.value);
+      if (gSteep) localStorage.setItem("grad_thresh_steep", gSteep.value);
+      if (gVSteep) localStorage.setItem("grad_thresh_vsteep", gVSteep.value);
+
       if (elevationChart) {
         elevationChart.units = units;
         elevationChart.draw();
@@ -4842,6 +4864,10 @@ function computeIntelligentPacingAndWeatherPlan(route, opts) {
         const spatialWarnings = activeRoute.warnings ? activeRoute.warnings.filter(w => w.type === "SPATIAL_MISMATCH") : [];
         calculateWarnings(activeRoute, spatialWarnings, units, desertThresholdMiles);
         renderWarningsUI(activeRoute);
+        renderStrategyModal(activeRoute);
+        if (mapController && climbColorsCheckbox) {
+          mapController.drawRoute(activeRoute, climbColorsCheckbox.checked);
+        }
       }
 
       updateUnitLabels();
@@ -5157,14 +5183,10 @@ function computeIntelligentPacingAndWeatherPlan(route, opts) {
           const endMi = convertDistanceValue(sec.end_dist_m);
           const unit = units === "imperial" ? "mi" : "km";
 
-          const sTxt = `${sec.name || ""} ${sec.strategy || ""} ${sec.terrain || ""}`.toLowerCase();
-          const isClimb = sec.terrain === "climb" || sTxt.includes("ascent") || sTxt.includes("climb") || sTxt.includes("uphill") || sTxt.includes("hike");
-          const isDesc = !isClimb && (sec.terrain === "descend" || sTxt.includes("descent") || sTxt.includes("descend") || sTxt.includes("downhill"));
-          const bColor = isClimb ? "#ef4444" : (isDesc ? "#10b981" : "#3b82f6");
-          const bBg = isClimb ? "rgba(239, 68, 68, 0.15)" : (isDesc ? "rgba(16, 185, 129, 0.15)" : "rgba(59, 130, 246, 0.15)");
-          const bLbl = isClimb ? "CLIMB" : (isDesc ? "DESCENT" : "FLAT");
+          const sGrade = computeSectorGradient(route, sec);
+          const cls = classifyGradient(sGrade);
 
-          header.innerHTML = `<div><span style="background: ${bBg}; color: ${bColor}; border: 1px solid ${bColor}; padding: 1px 6px; border-radius: 4px; font-size: 9px; font-weight: bold; margin-right: 6px;">${bLbl}</span><strong style="color: #60a5fa; font-size: 12px;">${escapeHtml(sec.name)}</strong> <span style="font-size: 10px; color: var(--text-muted);">(${startMi} ${unit} ➔ ${endMi} ${unit})</span></div>
+          header.innerHTML = `<div><span style="background: ${cls.bg}; color: ${cls.hex}; border: 1px solid ${cls.hex}; padding: 1px 6px; border-radius: 4px; font-size: 9px; font-weight: bold; margin-right: 6px;">${cls.label} (${sGrade.toFixed(1)}%)</span><strong style="color: #60a5fa; font-size: 12px;">${escapeHtml(sec.name)}</strong> <span style="font-size: 10px; color: var(--text-muted);">(${startMi} ${unit} ➔ ${endMi} ${unit})</span></div>
                               <span style="background: rgba(16, 185, 129, 0.15); color: #10b981; border: 1px solid rgba(16, 185, 129, 0.3); padding: 2px 8px; border-radius: 12px; font-size: 10px; font-weight: bold;">${sec.target_pace_min} min/${unit}</span>`;
 
           const body = document.createElement("div");

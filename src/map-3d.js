@@ -14,6 +14,8 @@
  * limitations under the License.
  */
 
+import { classifyGradient } from "./gpx-parser.js";
+
 /**
  * Dynamically loads the Google Maps JavaScript API.
  * @param {string} apiKey Google Maps API Key
@@ -361,16 +363,6 @@ export class Map3DController {
     }
 
     if (colorCodeClimbs) {
-      // Climb Color Visualizer:
-      // Red: steep climbs (> 2% grade)
-      // Green: descents (< -2% grade)
-      // Blue: neutral segments (-2% to 2% grade)
-      const CLIMB_COLORS = {
-        climb: "#ff4e4e",   // Red
-        descent: "#52e098", // Green
-        neutral: "#3ea4ff"  // Blue
-      };
-
       // Smooth grades using a 10-point moving average to filter GPS wiggles.
       const windowSize = 10;
       const smoothedGrades = new Array(renderPts.length);
@@ -380,39 +372,32 @@ export class Map3DController {
         const start = Math.max(0, i - windowSize / 2);
         const end = Math.min(renderPts.length - 1, i + windowSize / 2);
         for (let j = start; j <= end; j++) {
-          sum += renderPts[j].grade;
+          sum += renderPts[j].grade || 0;
           count++;
         }
         smoothedGrades[i] = sum / count;
       }
 
-      const getClimbCategory = (grade) => {
-        if (grade > 2.5) return "climb";
-        if (grade < -2.5) return "descent";
-        return "neutral";
-      };
-
       let currentSegment = [];
-      let currentCategory = getClimbCategory(smoothedGrades[0]);
+      let currentInfo = classifyGradient(smoothedGrades[0]);
 
       for (let i = 0; i < renderPts.length; i++) {
         const pt = renderPts[i];
-        const category = getClimbCategory(smoothedGrades[i]);
+        const info = classifyGradient(smoothedGrades[i]);
 
-        if (category !== currentCategory && currentSegment.length > 0) {
-          // 15m relative offset to drape slightly above the ground
+        if (info.key !== currentInfo.key && currentSegment.length > 0) {
           currentSegment.push({ lat: pt.lat, lng: pt.lon, altitude: 15 });
-          this.addPolylineSegment(currentSegment, CLIMB_COLORS[currentCategory]);
+          this.addPolylineSegment(currentSegment, currentInfo.hex);
           
           currentSegment = [{ lat: pt.lat, lng: pt.lon, altitude: 15 }];
-          currentCategory = category;
+          currentInfo = info;
         } else {
           currentSegment.push({ lat: pt.lat, lng: pt.lon, altitude: 15 });
         }
       }
 
       if (currentSegment.length > 0) {
-        this.addPolylineSegment(currentSegment, CLIMB_COLORS[currentCategory]);
+        this.addPolylineSegment(currentSegment, currentInfo.hex);
       }
     } else {
       // Standard visualizer: single solid blue/cyan line

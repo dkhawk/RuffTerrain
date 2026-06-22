@@ -1176,6 +1176,7 @@ export function calculateWarnings(route, extraWarnings = [], units = "imperial",
               startDist: startPt.dist_m,
               endDist: endPt.dist_m,
               climbScore: score,
+              avgGrade: parseFloat(avgGrade.toFixed(1)),
               approved: true,
             });
           }
@@ -1773,5 +1774,68 @@ function escapeXml(unsafe) {
       default: return c;
     }
   });
+}
+
+/**
+ * Resolves gradient category upper-bound thresholds from user settings or defaults.
+ */
+export function getGradientThresholds() {
+  let flatMax = 2.0, modMax = 5.0, steepMax = 8.0, vSteepMax = 10.0;
+  if (typeof localStorage !== "undefined") {
+    const f = parseFloat(localStorage.getItem("grad_thresh_flat"));
+    const m = parseFloat(localStorage.getItem("grad_thresh_mod"));
+    const s = parseFloat(localStorage.getItem("grad_thresh_steep"));
+    const v = parseFloat(localStorage.getItem("grad_thresh_vsteep"));
+    if (!isNaN(f) && f >= 0) flatMax = f;
+    if (!isNaN(m) && m > flatMax) modMax = m;
+    if (!isNaN(s) && s > modMax) steepMax = s;
+    if (!isNaN(v) && v > steepMax) vSteepMax = v;
+  }
+  return { flatMax, modMax, steepMax, vSteepMax };
+}
+
+/**
+ * Classifies gradient (%) into tier styling info (key, label, hex, bg).
+ */
+export function classifyGradient(grade) {
+  if (grade === null || grade === undefined || isNaN(grade)) {
+    return { key: "flat", label: "FLAT", hex: "#3b82f6", bg: "rgba(59, 130, 246, 0.15)" };
+  }
+  const { flatMax, modMax, steepMax, vSteepMax } = getGradientThresholds();
+  if (grade < -flatMax) {
+    return { key: "descent", label: "DESCENT", hex: "#10b981", bg: "rgba(16, 185, 129, 0.15)" };
+  } else if (grade <= flatMax) {
+    return { key: "flat", label: "FLAT", hex: "#3b82f6", bg: "rgba(59, 130, 246, 0.15)" };
+  } else if (grade <= modMax) {
+    return { key: "moderate", label: "MODERATE CLIMB", hex: "#f59e0b", bg: "rgba(245, 158, 11, 0.15)" };
+  } else if (grade <= steepMax) {
+    return { key: "steep", label: "STEEP CLIMB", hex: "#f97316", bg: "rgba(249, 115, 22, 0.15)" };
+  } else if (grade <= vSteepMax) {
+    return { key: "verysteep", label: "VERY STEEP", hex: "#ef4444", bg: "rgba(239, 68, 68, 0.15)" };
+  }
+  return { key: "extreme", label: "EXTREME CLIMB", hex: "#b91c1c", bg: "rgba(185, 28, 28, 0.25)" };
+}
+
+/**
+ * Computes average gradient (%) for a route sector.
+ */
+export function computeSectorGradient(route, sec) {
+  if (sec && typeof sec.avg_grade === "number" && !isNaN(sec.avg_grade)) return sec.avg_grade;
+  if (!route || !route.trackpoints || route.trackpoints.length === 0 || !sec) return 0;
+  const pts = route.trackpoints;
+  const sDist = sec.start_dist_m || 0;
+  const eDist = sec.end_dist_m || 0;
+  if (eDist <= sDist) return 0;
+  
+  let sEle = pts[0].ele || 0;
+  let eEle = pts[pts.length - 1].ele || 0;
+  let foundS = false;
+  for (let i = 0; i < pts.length; i++) {
+    if (!foundS && pts[i].dist_m >= sDist) { sEle = pts[i].ele || 0; foundS = true; }
+    if (pts[i].dist_m >= eDist) { eEle = pts[i].ele || 0; break; }
+  }
+  const grade = ((eEle - sEle) / (eDist - sDist)) * 100;
+  if (sec) sec.avg_grade = grade; // cache
+  return grade;
 }
 

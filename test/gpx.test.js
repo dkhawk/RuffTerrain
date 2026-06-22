@@ -1,6 +1,6 @@
 import { test, describe } from "node:test";
 import assert from "node:assert";
-import { parseGPX, getMetricsForPoint } from "../src/gpx-parser.js";
+import { parseGPX, getMetricsForPoint, classifyGradient, computeSectorGradient } from "../src/gpx-parser.js";
 import { writeGPX } from "../src/gpx-writer.js";
 import { getWeatherConditionStyle, getElapsedHoursAtDistance, getWeatherWindowDetails } from "../src/fetch-weather.js";
 
@@ -474,6 +474,27 @@ describe("GPX Parser & Writer Tests", () => {
     const restored = parseGPX(xml, "imperial");
     assert.strictEqual(restored.executionPlan.sectors[0].terrain, "climb");
     assert.strictEqual(restored.executionPlan.sectors[1].terrain, "descend");
+  });
+
+  test("User-settable climb gradient classification scale and coloring", () => {
+    // Test default classification thresholds
+    assert.strictEqual(classifyGradient(1.5).key, "flat");
+    assert.strictEqual(classifyGradient(4.0).key, "moderate");
+    assert.strictEqual(classifyGradient(6.5).key, "steep");
+    assert.strictEqual(classifyGradient(9.0).key, "verysteep");
+    assert.strictEqual(classifyGradient(12.0).key, "extreme");
+    assert.strictEqual(classifyGradient(-3.0).key, "descent");
+
+    // Test computeSectorGradient
+    const mockRoute = {
+      trackpoints: [
+        { dist_m: 0, ele: 1000 },
+        { dist_m: 1000, ele: 1080 } // +80m over 1000m = 8.0% grade
+      ]
+    };
+    const grade = computeSectorGradient(mockRoute, { start_dist_m: 0, end_dist_m: 1000 });
+    assert.strictEqual(grade, 8);
+    assert.strictEqual(classifyGradient(grade).key, "steep");
   });
 
 });
