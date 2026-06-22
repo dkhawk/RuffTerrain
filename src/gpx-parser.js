@@ -1918,13 +1918,27 @@ export const DEFAULT_RUNNER_PROFILES = [
   {
     id: "profile_hawk_pro",
     name: "Dan Hawk (Mountain Ultra Pro)",
-    basePaces: { climb: 20.0, flat: 10.0, descent: 9.0 },
+    basePaces: {
+      descent: 8.5,
+      flat: 9.5,
+      moderate: 12.5,
+      steep: 16.0,
+      verysteep: 20.0,
+      extreme: 26.0
+    },
     restDurationMin: 15
   },
   {
     id: "profile_casual",
     name: "Casual Adventurer",
-    basePaces: { climb: 25.0, flat: 12.0, descent: 11.0 },
+    basePaces: {
+      descent: 11.0,
+      flat: 12.0,
+      moderate: 16.0,
+      steep: 21.0,
+      verysteep: 27.0,
+      extreme: 35.0
+    },
     restDurationMin: 20
   }
 ];
@@ -1987,8 +2001,7 @@ export function autoSegmentCourse(route) {
   for (let i = 1; i < pts.length; i++) {
     const d = pts[i].dist_m;
     const mode = classifyGradient(pts[i].grade || 0).key;
-    const majorType = (m) => m === "descent" ? "descent" : (m === "flat" ? "flat" : "climb");
-    if (majorType(mode) !== majorType(currMode)) {
+    if (mode !== currMode) {
       if (d - modeStartDist >= 600 && d > 100 && d < totalDist - 100) {
         splits.add(Math.round(d));
         currMode = mode;
@@ -2016,9 +2029,7 @@ export function autoSegmentCourse(route) {
     const gain = (ePt.ele || 0) - (sPt.ele || 0);
     const grade = ((gain) / (eDist - sDist)) * 100;
     const cls = classifyGradient(grade);
-    const majorType = cls.key === "descent" ? "descent" : (cls.key === "flat" ? "flat" : "climb");
-
-    const basePace = profile.basePaces[majorType] || 10.0;
+    const basePace = profile.basePaces[cls.key] || profile.basePaces.flat || 10.0;
     const targetPace = parseFloat((basePace * goal.mult).toFixed(1));
 
     const endWpt = (route.waypoints || []).find(w => Math.abs(w.dist_m - eDist) < 150);

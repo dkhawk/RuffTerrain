@@ -533,5 +533,21 @@ describe("GPX Parser & Writer Tests", () => {
     assert.strictEqual(mockRoute.executionPlan.targetDurationHrs, 2.5);
   });
 
+  test("Granular 6-tier gradient taxonomy differentiates extreme vs moderate climb paces", () => {
+    const mockRoute = {
+      totalDistance: 12000,
+      trackpoints: [
+        { dist_m: 0, ele: 0, grade: 3 },
+        { dist_m: 5000, ele: 150, grade: 3 },
+        { dist_m: 6000, ele: 300, grade: 15 },
+        { dist_m: 12000, ele: 1200, grade: 15 }
+      ],
+      executionPlan: { sectors: [] }
+    };
+    const sectors = autoSegmentCourse(mockRoute);
+    assert.strictEqual(sectors.length, 2);
+    assert.ok(sectors[1].target_pace_min > sectors[0].target_pace_min);
+  });
+
 });
 
