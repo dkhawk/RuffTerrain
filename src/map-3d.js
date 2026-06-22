@@ -703,13 +703,22 @@ export class Map3DController {
     });
     const avgEle = sumEle / warnPts.length;
 
-    // Smoothly fly camera to show the warning segment
+    let targetHeading = this.map.heading || 0;
+    if (warnPts.length >= 2) {
+      const firstPt = warnPts[0];
+      const lastPt = warnPts[warnPts.length - 1];
+      if (firstPt && lastPt && (firstPt.lat !== lastPt.lat || firstPt.lon !== lastPt.lon)) {
+        targetHeading = calculateBearing(firstPt.lat, firstPt.lon, lastPt.lat, lastPt.lon);
+      }
+    }
+
+    // Smoothly fly camera to show the warning segment oriented along direction of travel
     this.map.flyCameraTo({
       endCamera: {
         center: { lat: centerLat, lng: centerLon, altitude: avgEle },
         range: idealRange,
-        tilt: 45, // Tilted view to show terrain details
-        heading: this.map.heading // keep current heading
+        tilt: 55, // Cinematic tilt to show route pointing away into horizon
+        heading: targetHeading
       },
       durationMillis: 1500
     });
