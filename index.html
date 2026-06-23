@@ -275,6 +275,7 @@
               <label style="font-size: 10px; color: var(--text-muted); font-weight: bold; margin: 0;">RUNNER PROFILE</label>
               <div style="display: flex; gap: 4px;">
                 <button id="add-runner-profile-btn" class="btn btn-sm btn-secondary" style="font-size: 9px; padding: 2px 6px;">+ New Profile</button>
+                <button id="edit-runner-profile-btn" class="btn btn-sm btn-secondary" style="font-size: 9px; padding: 2px 6px; color: #fbbf24; border-color: rgba(251,191,36,0.3);">✏️ Edit</button>
                 <button id="delete-runner-profile-btn" class="btn btn-sm btn-secondary" style="font-size: 9px; padding: 2px 6px; color: #ef4444; border-color: rgba(239,68,68,0.3);">🗑️ Delete</button>
               </div>
             </div>
@@ -284,7 +285,7 @@
             </select>
 
             <div id="runner-profile-creator-card" class="hidden" style="background: rgba(0,0,0,0.5); border: 1px solid #60a5fa; padding: 8px; border-radius: 6px; display: flex; flex-direction: column; gap: 6px; margin-top: 4px;">
-              <span style="font-size: 10px; font-weight: bold; color: #60a5fa;">➕ Create Custom Runner Profile</span>
+              <span id="profile-creator-title" style="font-size: 10px; font-weight: bold; color: #60a5fa;">➕ Create Custom Runner Profile</span>
               <input type="text" id="new-profile-name" placeholder="Profile Name e.g. Alex Mountain Pacer" style="background:rgba(0,0,0,0.4); border:1px solid rgba(255,255,255,0.2); color:#fff; padding:4px 6px; border-radius:4px; font-size:11px;" />
               
               <div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 4px;">

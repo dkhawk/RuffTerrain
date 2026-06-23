@@ -132,8 +132,10 @@ const runCalibrationBtn = document.getElementById("run-calibration-btn");
 const calibrationFilesList = document.getElementById("calibration-files-list");
 const calibrationResultsCard = document.getElementById("calibration-results-card");
 const addRunnerProfileBtn = document.getElementById("add-runner-profile-btn");
+const editRunnerProfileBtn = document.getElementById("edit-runner-profile-btn");
 const deleteRunnerProfileBtn = document.getElementById("delete-runner-profile-btn");
 const runnerProfileCreatorCard = document.getElementById("runner-profile-creator-card");
+const profileCreatorTitle = document.getElementById("profile-creator-title");
 const newProfileName = document.getElementById("new-profile-name");
 const newPaceClimb = document.getElementById("new-pace-climb");
 const newPaceFlat = document.getElementById("new-pace-flat");
@@ -3543,21 +3545,44 @@ function setupEventListeners() {
     });
   }
 
-  // Runner Profile CRUD Manager (Create & Delete)
+  // Runner Profile CRUD Manager (Create, Edit & Delete)
+  let editingProfileId = null;
   if (addRunnerProfileBtn && runnerProfileCreatorCard && deleteRunnerProfileBtn && saveProfileCreateBtn && cancelProfileCreateBtn) {
     addRunnerProfileBtn.addEventListener("click", () => {
+      editingProfileId = null;
+      if (profileCreatorTitle) profileCreatorTitle.textContent = "➕ Create Custom Runner Profile";
+      if (newProfileName) newProfileName.value = "";
       runnerProfileCreatorCard.classList.remove("hidden");
     });
+
+    if (editRunnerProfileBtn) {
+      editRunnerProfileBtn.addEventListener("click", () => {
+        if (!runnerProfileSelect) return;
+        const curId = runnerProfileSelect.value;
+        const activeProf = getActiveRunnerProfile();
+        editingProfileId = curId;
+        if (profileCreatorTitle) profileCreatorTitle.textContent = "✏️ Edit Runner Profile";
+        if (newProfileName) newProfileName.value = activeProf.name.split(" (")[0] || activeProf.name;
+        if (newPaceClimb && activeProf.basePaces) newPaceClimb.value = activeProf.basePaces.steep || 21.0;
+        if (newPaceFlat && activeProf.basePaces) newPaceFlat.value = activeProf.basePaces.flat || 10.5;
+        if (newPaceDesc && activeProf.basePaces) newPaceDesc.value = activeProf.basePaces.descent || 9.5;
+        runnerProfileCreatorCard.classList.remove("hidden");
+      });
+    }
+
     cancelProfileCreateBtn.addEventListener("click", () => {
+      editingProfileId = null;
       runnerProfileCreatorCard.classList.add("hidden");
     });
+
     saveProfileCreateBtn.addEventListener("click", () => {
       const name = newProfileName?.value.trim() || "Custom Runner Profile";
       const climb = parseFloat(newPaceClimb?.value) || 21.0;
       const flat = parseFloat(newPaceFlat?.value) || 10.5;
       const desc = parseFloat(newPaceDesc?.value) || 9.5;
+      const targetId = editingProfileId || `profile_custom_${Date.now()}`;
       const customProfile = {
-        id: `profile_custom_${Date.now()}`,
+        id: targetId,
         name: `${name} (${climb}m climb / ${flat}m flat / ${desc}m desc)`,
         basePaces: {
           descent: desc,
@@ -3573,14 +3598,18 @@ function setupEventListeners() {
       runnerProfileCreatorCard.classList.add("hidden");
 
       if (runnerProfileSelect) {
-        const opt = document.createElement("option");
-        opt.value = customProfile.id;
+        let opt = runnerProfileSelect.querySelector(`option[value="${targetId}"]`);
+        if (!opt) {
+          opt = document.createElement("option");
+          opt.value = targetId;
+          runnerProfileSelect.appendChild(opt);
+        }
         opt.textContent = customProfile.name;
         opt.selected = true;
-        runnerProfileSelect.appendChild(opt);
         runnerProfileSelect.dispatchEvent(new Event("change"));
       }
-      showToast(`Created runner profile: ${name}`);
+      showToast(editingProfileId ? `Updated profile: ${name}` : `Created runner profile: ${name}`);
+      editingProfileId = null;
     });
 
     deleteRunnerProfileBtn.addEventListener("click", () => {
