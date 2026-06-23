@@ -440,7 +440,9 @@ export class Map3DController {
       marker.addEventListener("click", triggerClick);
       marker.addEventListener("gmp-click", triggerClick);
 
-      this.map.append(marker);
+      if (this.showPlacemarks !== false) {
+        this.map.append(marker);
+      }
       this.markers.push(marker);
     });
 
@@ -479,6 +481,20 @@ export class Map3DController {
     this.currentTrackMarker.appendChild(template);
 
     this.map.append(this.currentTrackMarker);
+  }
+
+  /**
+   * Toggles visibility of all route waypoint placemarks on the 3D map.
+   */
+  togglePlacemarks(show) {
+    this.showPlacemarks = show;
+    this.markers.forEach(marker => {
+      if (show) {
+        if (!marker.parentNode && this.map) this.map.append(marker);
+      } else {
+        if (marker.parentNode) marker.remove();
+      }
+    });
   }
 
   /**
