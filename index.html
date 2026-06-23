@@ -288,6 +288,20 @@
             </div>
           </div>
 
+          <div style="display: flex; flex-direction: column; gap: 6px; background: rgba(16,185,129,0.1); border: 1px solid rgba(16,185,129,0.25); padding: 8px; border-radius: 6px;">
+            <div style="display: flex; justify-content: space-between; align-items: center;">
+              <span style="font-size: 10px; color: #34d399; font-weight: bold;">📊 EMPIRICAL ATHLETE CALIBRATION</span>
+            </div>
+            <p style="margin:0; font-size: 9px; color: var(--text-secondary);">Upload historical GPS run archives (GPX) to statistically derive personalized multi-slope baseline paces and fatigue decay coefficients (λ).</p>
+            <div style="display: flex; gap: 6px; align-items: center;">
+              <label for="calibration-files-input" class="btn btn-sm btn-secondary" style="flex:1; text-align:center; font-size:10px; cursor:pointer; background:rgba(255,255,255,0.1); border:1px solid rgba(255,255,255,0.2); color:#fff; margin:0;">📁 Select GPS Runs</label>
+              <input type="file" id="calibration-files-input" multiple accept=".gpx,.xml" style="display:none;" />
+              <button id="run-calibration-btn" class="btn btn-sm btn-primary" style="font-size:10px; background:#10b981; border:none; color:#000; font-weight:bold;" disabled>Calibrate Profile</button>
+            </div>
+            <div id="calibration-files-list" style="max-height: 90px; overflow-y:auto; display:flex; flex-direction:column; gap:2px;"></div>
+            <div id="calibration-results-card" class="hidden" style="background:rgba(0,0,0,0.4); padding:6px; border-radius:4px; font-size:9px; color:#fff; display:flex; flex-direction:column; gap:2px;"></div>
+          </div>
+
           <div style="display: flex; flex-direction: column; gap: 6px; background: rgba(0,0,0,0.2); border: 1px solid rgba(255,255,255,0.06); padding: 8px; border-radius: 6px;">
             <span style="font-size: 10px; color: var(--text-muted); font-weight: bold;">TIME SOLVING MODE</span>
             <div style="display: grid; grid-template-columns: repeat(2, 1fr); gap: 6px;">

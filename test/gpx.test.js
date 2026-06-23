@@ -3,6 +3,7 @@ import assert from "node:assert";
 import { parseGPX, getMetricsForPoint, classifyGradient, computeSectorGradient, calculateWarnings, autoSegmentCourse, solveBackwardPacing } from "../src/gpx-parser.js";
 import { writeGPX } from "../src/gpx-writer.js";
 import { getWeatherConditionStyle, getElapsedHoursAtDistance, getWeatherWindowDetails } from "../src/fetch-weather.js";
+import { parseCalibrationTrack, deriveFatigueDecayLambda, buildEmpiricalProfile } from "../src/empirical-calibration.js";
 
 describe("GPX Parser & Writer Tests", () => {
   
@@ -547,6 +548,34 @@ describe("GPX Parser & Writer Tests", () => {
     const sectors = autoSegmentCourse(mockRoute);
     assert.strictEqual(sectors.length, 2);
     assert.ok(sectors[1].target_pace_min > sectors[0].target_pace_min);
+  });
+
+  test("Empirical Athlete Calibration parses multi-run telemetry, derives fatigue decay lambda, and extracts brake factor beta", () => {
+    const mockGpx1 = `<?xml version="1.0" encoding="utf-8"?>
+<gpx version="1.1" creator="RuffTerrain">
+  <trk><trkseg>
+    <trkpt lat="40.0" lon="-105.0"><ele>2000</ele><time>2026-06-22T10:00:00Z</time></trkpt>
+    <trkpt lat="40.01" lon="-105.01"><ele>2010</ele><time>2026-06-22T10:05:00Z</time></trkpt>
+    <trkpt lat="40.02" lon="-105.02"><ele>2050</ele><time>2026-06-22T10:11:00Z</time></trkpt>
+    <trkpt lat="40.03" lon="-105.03"><ele>2100</ele><time>2026-06-22T10:18:00Z</time></trkpt>
+    <trkpt lat="40.04" lon="-105.04"><ele>2150</ele><time>2026-06-22T10:26:00Z</time></trkpt>
+    <trkpt lat="40.05" lon="-105.05"><ele>2200</ele><time>2026-06-22T10:35:00Z</time></trkpt>
+    <trkpt lat="40.06" lon="-105.06"><ele>2250</ele><time>2026-06-22T10:45:00Z</time></trkpt>
+    <trkpt lat="40.07" lon="-105.07"><ele>2300</ele><time>2026-06-22T10:56:00Z</time></trkpt>
+    <trkpt lat="40.08" lon="-105.08"><ele>2350</ele><time>2026-06-22T11:08:00Z</time></trkpt>
+    <trkpt lat="40.09" lon="-105.09"><ele>2400</ele><time>2026-06-22T11:21:00Z</time></trkpt>
+    <trkpt lat="40.10" lon="-105.10"><ele>2450</ele><time>2026-06-22T11:35:00Z</time></trkpt>
+  </trkseg></trk>
+</gpx>`;
+
+    const telemetry = parseCalibrationTrack(mockGpx1, "training_run");
+    assert.ok(telemetry);
+    assert.ok(telemetry.cumulativeVertGainM > 0);
+
+    const profile = buildEmpiricalProfile([telemetry, telemetry], "Dan Hawk Calibrated");
+    assert.strictEqual(profile.name, "Dan Hawk Calibrated");
+    assert.ok(profile.basePaces.flat > 0);
+    assert.ok(profile.enduranceMetrics.fatigueDecayLambda > 0);
   });
 
 });
