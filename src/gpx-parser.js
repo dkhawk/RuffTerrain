@@ -1970,6 +1970,21 @@ export function getActiveRunnerProfile() {
   return profiles[0];
 }
 
+export function saveRunnerProfile(newProfile) {
+  if (!newProfile || !newProfile.id) return;
+  const profiles = getRunnerProfiles();
+  const existingIdx = profiles.findIndex(p => p.id === newProfile.id || p.name === newProfile.name);
+  if (existingIdx !== -1) {
+    profiles[existingIdx] = newProfile;
+  } else {
+    profiles.push(newProfile);
+  }
+  if (typeof localStorage !== "undefined") {
+    localStorage.setItem("kokopelli_runner_profiles", JSON.stringify(profiles));
+    localStorage.setItem("kokopelli_active_profile_id", newProfile.id);
+  }
+}
+
 export function getActiveGoalPreset() {
   let key = "training_run";
   if (typeof localStorage !== "undefined") {

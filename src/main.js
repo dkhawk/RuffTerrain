@@ -24,10 +24,11 @@
  * The preview controller iterates through trackpoint bearings to control camera panning and triggers contextual auto-pauses when approaching points of interest.
  */
 
-import { parseGPX, parseKML, reconcileCourse, getMetricsForPoint, calculateWarnings, haversine, snapToRouteSegments, recalculateRouteMetrics, classifyGradient, computeSectorGradient, autoSegmentCourse, solveBackwardPacing } from "./gpx-parser.js";
+import { parseGPX, parseKML, reconcileCourse, getMetricsForPoint, calculateWarnings, haversine, snapToRouteSegments, recalculateRouteMetrics, classifyGradient, computeSectorGradient, autoSegmentCourse, solveBackwardPacing, saveRunnerProfile } from "./gpx-parser.js";
 import { writeGPX } from "./gpx-writer.js";
 import { correctRouteElevations } from "./fetch-elevation.js";
 import { sendToGemini, fetchAvailableModels, generateWaypointFromDescription } from "./gemini-client.js";
+import { parseCalibrationTrack, buildEmpiricalProfile } from "./empirical-calibration.js";
 import { loadGoogleMaps, Map3DController, calculateBearing } from "./map-3d.js";
 import { ElevationChart } from "./elevation-chart.js";
 import { fetchWeatherForecast, getWeatherConditionStyle, getElapsedHoursAtDistance, getWeatherWindowDetails } from "./fetch-weather.js";
@@ -126,6 +127,10 @@ const solveDeadlineBtn = document.getElementById("solve-deadline-btn");
 const autoSliceCourseBtn = document.getElementById("auto-slice-course-btn");
 const addSplitMarkerBtn = document.getElementById("add-split-marker-btn");
 const runnerSectorsList = document.getElementById("runner-sectors-list");
+const calibrationFilesInput = document.getElementById("calibration-files-input");
+const runCalibrationBtn = document.getElementById("run-calibration-btn");
+const calibrationFilesList = document.getElementById("calibration-files-list");
+const calibrationResultsCard = document.getElementById("calibration-results-card");
 const studioTabPoi = document.getElementById("studio-tab-poi");
 const studioTabChat = document.getElementById("studio-tab-chat");
 const studioTabPlan = document.getElementById("studio-tab-plan");
@@ -3451,6 +3456,80 @@ function setupEventListeners() {
         activeRoute.executionPlan.customSplits.push(pt.dist_m);
         activeRoute.executionPlan.sectors = autoSegmentCourse(activeRoute);
         if (typeof renderRunnerSectorsUI === "function") renderRunnerSectorsUI();
+      }
+    });
+  }
+
+  // Empirical Athlete Calibration multi-run upload & statistical solving
+  let uploadedCalibrationFiles = [];
+  if (calibrationFilesInput && runCalibrationBtn && calibrationFilesList) {
+    calibrationFilesInput.addEventListener("change", (e) => {
+      uploadedCalibrationFiles = Array.from(e.target.files || []);
+      calibrationFilesList.innerHTML = "";
+      if (uploadedCalibrationFiles.length > 0) {
+        runCalibrationBtn.disabled = false;
+        uploadedCalibrationFiles.forEach((file, fIdx) => {
+          const row = document.createElement("div");
+          row.style.cssText = "display:flex; justify-content:space-between; align-items:center; background:rgba(0,0,0,0.3); padding:3px 6px; border-radius:4px; font-size:9px;";
+          row.innerHTML = `
+            <span style="color:#fff; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; max-width:60%;">${file.name}</span>
+            <select class="calib-tag-select" data-fidx="${fIdx}" style="background:rgba(0,0,0,0.5); border:1px solid #10b981; color:#34d399; font-size:9px; border-radius:3px;">
+              <option value="training_run">🏃 Training Run (105%)</option>
+              <option value="hard_race">⚡ Hard Race (90%)</option>
+              <option value="moderate_workout">💪 Workout (115%)</option>
+              <option value="fun_day_out">🥾 Fun Day (125%)</option>
+            </select>
+          `;
+          calibrationFilesList.appendChild(row);
+        });
+      } else {
+        runCalibrationBtn.disabled = true;
+      }
+    });
+
+    runCalibrationBtn.addEventListener("click", async () => {
+      if (uploadedCalibrationFiles.length === 0) return;
+      runCalibrationBtn.disabled = true;
+      runCalibrationBtn.textContent = "Calibrating...";
+      try {
+        const tagSelects = calibrationFilesList.querySelectorAll(".calib-tag-select");
+        const parsedTelemetryList = [];
+        for (let i = 0; i < uploadedCalibrationFiles.length; i++) {
+          const file = uploadedCalibrationFiles[i];
+          const tag = tagSelects[i] ? tagSelects[i].value : "training_run";
+          const text = await file.text();
+          const telemetry = parseCalibrationTrack(text, tag);
+          parsedTelemetryList.push(telemetry);
+        }
+
+        const empiricalProfile = buildEmpiricalProfile(parsedTelemetryList, `Calibrated Profile (${uploadedCalibrationFiles.length} runs)`);
+        saveRunnerProfile(empiricalProfile);
+
+        // Populate results card
+        if (calibrationResultsCard) {
+          calibrationResultsCard.classList.remove("hidden");
+          calibrationResultsCard.innerHTML = `
+            <span style="color:#34d399; font-weight:bold;">✅ Calibrated & Saved: ${empiricalProfile.name}</span>
+            <span>Climb: ${empiricalProfile.basePaces.steep}m | Flat: ${empiricalProfile.basePaces.flat}m | Desc: ${empiricalProfile.basePaces.descent}m</span>
+            <span style="color:#fbbf24;">Fatigue Decay λ: ${empiricalProfile.enduranceMetrics.fatigueDecayLambda} | Downhill Brake β: ${empiricalProfile.enduranceMetrics.downhillBrakeBeta}</span>
+            <span>Empirical Rest Duration: ~${empiricalProfile.restDurationMin} mins</span>
+          `;
+        }
+
+        // Re-populate runner profile dropdown
+        if (runnerProfileSelect) {
+          const opt = document.createElement("option");
+          opt.value = empiricalProfile.id;
+          opt.textContent = `${empiricalProfile.name} (λ=${empiricalProfile.enduranceMetrics.fatigueDecayLambda})`;
+          opt.selected = true;
+          runnerProfileSelect.appendChild(opt);
+          runnerProfileSelect.dispatchEvent(new Event("change"));
+        }
+      } catch (err) {
+        showToast(`Calibration error: ${err.message}`, true);
+      } finally {
+        runCalibrationBtn.disabled = false;
+        runCalibrationBtn.textContent = "Calibrate Profile";
       }
     });
   }
