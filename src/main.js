@@ -1877,13 +1877,9 @@ function startPlayback() {
 
     const prevDist = playbackDistance;
     playbackDistance += simSpeed * dt;
-
-    if (playbackDistance >= activeRoute.totalDistance) {
-      pausePlayback();
+    const isAtEnd = playbackDistance >= activeRoute.totalDistance;
+    if (isAtEnd) {
       playbackDistance = activeRoute.totalDistance;
-      playbackIndex = activeRoute.trackpoints.length - 1;
-      updatePlaybackFrame();
-      return;
     }
 
     updatePlaybackFrame();
@@ -1944,6 +1940,14 @@ function startPlayback() {
       lastPausedPoiId = isMultiPass ? `${reachedPoi.id}-pass-${crossedPass.num}` : reachedPoi.id;
       showPreviewPoiBanner(reachedPoi, playbackDistance);
       return; 
+    }
+
+    if (isAtEnd) {
+      pausePlayback();
+      playbackDistance = activeRoute.totalDistance;
+      playbackIndex = activeRoute.trackpoints.length - 1;
+      updatePlaybackFrame();
+      return;
     }
 
     playbackAnimationId = requestAnimationFrame(renderLoop);
