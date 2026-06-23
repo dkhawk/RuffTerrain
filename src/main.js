@@ -3735,6 +3735,28 @@ function setupEventListeners() {
       });
     });
 
+    ["start", "finish", "pacing"].forEach(facet => {
+      const card = document.getElementById(`facet-card-${facet}`);
+      if (card) {
+        card.addEventListener("click", (e) => {
+          if (e.target.classList.contains("tri-facet-lock")) return;
+          if (!activeLocked.includes(facet)) {
+            if (activeLocked.length >= 2) {
+              const toRemove = activeLocked[0];
+              activeLocked = activeLocked.filter(f => f !== toRemove);
+            }
+            activeLocked.push(facet);
+            syncLocksUI();
+            if (activeRoute) solveTriangleBtn.click();
+          }
+          const input = facet === "start" ? triStartInput : (facet === "finish" ? triFinishInput : null);
+          if (input && !input.disabled) {
+            setTimeout(() => input.focus(), 10);
+          }
+        });
+      }
+    });
+
     if (triStartInput) {
       triStartInput.addEventListener("change", () => { if (activeRoute) solveTriangleBtn.click(); });
     }
