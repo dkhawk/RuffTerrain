@@ -6298,6 +6298,14 @@ function computeIntelligentPacingAndWeatherPlan(route, opts) {
     }
   };
 
+  const addPoiPickBtn = document.getElementById("add-poi-pick-btn");
+  if (addPoiPickBtn) {
+    addPoiPickBtn.addEventListener("click", () => {
+      isPlacingNewPoi = true;
+      showToast("Click anywhere on the map to pick waypoint location.");
+    });
+  }
+
   if (addPoiStartBtn) {
     addPoiStartBtn.addEventListener("click", () => {
       if (!activeRoute) {
@@ -6391,10 +6399,8 @@ function computeIntelligentPacingAndWeatherPlan(route, opts) {
         return;
       }
 
-      if (!isPlacingNewPoi) {
-        if (!activeRoute) return;
-        isPlacingNewPoi = true;
-        if (addPoiPanel) addPoiPanel.classList.remove("hidden");
+      if (!isPlacingNewPoi || !activeRoute || (addPoiPanel && addPoiPanel.classList.contains("hidden"))) {
+        return;
       }
 
       const lngVal = pos.lng !== undefined ? pos.lng : pos.lon;

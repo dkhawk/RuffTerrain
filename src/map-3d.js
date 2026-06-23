@@ -412,7 +412,7 @@ export class Map3DController {
 
     route.waypoints.forEach((wpt) => {
       const marker = document.createElement("gmp-marker-3d-interactive");
-      marker.position = { lat: wpt.lat, lng: wpt.lon, altitude: 10 };
+      marker.position = { lat: wpt.lat, lng: wpt.lon, altitude: 5 };
       marker.altitudeMode = "RELATIVE_TO_GROUND";
       marker.extruded = true;
       marker.drawsWhenOccluded = true;
@@ -467,7 +467,7 @@ export class Map3DController {
     const cursorIdx = Math.min(Math.max(0, this.currentTrackpointIndex || 0), trackpoints.length - 1);
     const cursorPt = trackpoints[cursorIdx] || trackpoints[0];
     this.currentTrackMarker = new this.Marker3DElement({
-      position: { lat: cursorPt.lat, lng: cursorPt.lng !== undefined ? cursorPt.lng : cursorPt.lon, altitude: cursorPt.ele || 15 },
+      position: { lat: cursorPt.lat, lng: cursorPt.lng !== undefined ? cursorPt.lng : cursorPt.lon, altitude: 5 },
       altitudeMode: "RELATIVE_TO_GROUND",
       extruded: true,
       drawsWhenOccluded: true
@@ -504,12 +504,12 @@ export class Map3DController {
     if (!this.markers) return;
     const marker = this.markers.find(m => m.waypoint === wpt);
     if (marker) {
-      marker.position = { lat: newPos.lat, lng: newPos.lon || newPos.lng, altitude: 10 };
+      marker.position = { lat: newPos.lat, lng: newPos.lon || newPos.lng, altitude: 5 };
     }
     if (trkptIndex !== null && this.activeRoute && this.activeRoute.trackpoints[trkptIndex]) {
       const pt = this.activeRoute.trackpoints[trkptIndex];
       if (this.currentTrackMarker) {
-        this.currentTrackMarker.position = { lat: pt.lat, lng: pt.lon, altitude: 15 };
+        this.currentTrackMarker.position = { lat: pt.lat, lng: pt.lon, altitude: 5 };
       }
       this.currentTrackpointIndex = trkptIndex;
     }
@@ -528,7 +528,7 @@ export class Map3DController {
     this.currentTrackpointIndex = trkptIndex;
 
     if (this.currentTrackMarker) {
-      this.currentTrackMarker.position = { lat: pt.lat, lng: pt.lon, altitude: 15 };
+      this.currentTrackMarker.position = { lat: pt.lat, lng: pt.lon, altitude: 5 };
     }
 
     this.currentCameraLat = pt.lat;
@@ -567,7 +567,7 @@ export class Map3DController {
     }
 
     if (this.currentTrackMarker) {
-      this.currentTrackMarker.position = { lat: pt.lat, lng: pt.lon, altitude: 15 };
+      this.currentTrackMarker.position = { lat: pt.lat, lng: pt.lon, altitude: 5 };
     }
 
     if (this.currentCameraAltitude === 0) {
@@ -723,7 +723,7 @@ export class Map3DController {
     this.removeTemporaryMarker();
 
     this.tempMarker = new this.Marker3DInteractiveElement({
-      position: { lat: pos.lat, lng: pos.lng !== undefined ? pos.lng : pos.lon, altitude: pos.altitude || pos.ele || 10 },
+      position: { lat: pos.lat, lng: pos.lng !== undefined ? pos.lng : pos.lon, altitude: 5 },
       altitudeMode: "RELATIVE_TO_GROUND",
       extruded: true,
       drawsWhenOccluded: true

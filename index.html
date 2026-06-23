@@ -912,9 +912,12 @@
       
       <div style="display: flex; flex-direction: column; gap: 4px;">
         <label style="font-size: 10px; color: var(--text-muted); font-weight: bold; text-transform: uppercase;">Location Coordinate</label>
-        <div style="font-size: 11px; font-family: monospace; background: rgba(0,0,0,0.2); padding: 6px; border-radius: 4px; border: 1px solid rgba(255,255,255,0.05); display: flex; justify-content: space-between;">
-          <span id="add-poi-latlng">No point selected. Click on map.</span>
-          <span id="add-poi-dist">-- mi</span>
+        <div style="font-size: 11px; font-family: monospace; background: rgba(0,0,0,0.2); padding: 6px; border-radius: 4px; border: 1px solid rgba(255,255,255,0.05); display: flex; justify-content: space-between; align-items: center;">
+          <div>
+            <span id="add-poi-latlng">No point selected. Click on map.</span>
+            <span id="add-poi-dist" style="margin-left: 8px;">-- mi</span>
+          </div>
+          <button id="add-poi-pick-btn" class="btn btn-secondary" type="button" style="font-size: 10px; padding: 4px 8px; background: #3b82f6; color: white; border: none; border-radius: 4px; cursor: pointer;">📍 Pick on Map</button>
         </div>
       </div>
       
