@@ -461,7 +461,7 @@ export class Map3DController {
       } else {
         console.log("[map-3d] BACKGROUND MAP CLICK DETECTED.");
         // Map background click
-        const pos = e.position || (e.detail && e.detail.position);
+        const pos = e.position || e.detail?.position || e.latLng || e.detail?.latLng || this.map?.center || this.map?.camera?.center || { lat: 39.5, lng: -106.0, altitude: 0 };
         if (pos && this.onMapClick) {
           this.onMapClick(pos);
         }
