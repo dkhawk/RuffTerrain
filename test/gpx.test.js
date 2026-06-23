@@ -645,5 +645,23 @@ describe("GPX Parser & Writer Tests", () => {
     assert.ok(res3.proportionalFactor > 0);
   });
 
+  test("GPX course parsing and automated segmentation handle standard GPX files without runtime exceptions", () => {
+    const sampleGpx = `<?xml version="1.0" encoding="UTF-8"?>
+<gpx version="1.1" creator="Kokopelli">
+  <metadata><name>Resilience Test Trail</name><desc>Testing null safe loading</desc></metadata>
+  <trk><name>Trail 1</name><trkseg>
+    <trkpt lat="39.5" lon="-106.0"><ele>2800</ele><time>2026-07-01T06:00:00Z</time></trkpt>
+    <trkpt lat="39.51" lon="-106.01"><ele>2950</ele><time>2026-07-01T06:15:00Z</time></trkpt>
+    <trkpt lat="39.52" lon="-106.02"><ele>3100</ele><time>2026-07-01T06:30:00Z</time></trkpt>
+  </trkseg></trk>
+</gpx>`;
+    const route = parseGPX(sampleGpx, "imperial");
+    assert.ok(route);
+    assert.strictEqual(route.name, "Resilience Test Trail");
+    assert.strictEqual(route.description, "Testing null safe loading");
+    const segs = autoSegmentCourse(route);
+    assert.ok(Array.isArray(segs));
+  });
+
 });
 

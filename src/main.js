@@ -2863,8 +2863,12 @@ function loadGpxFile(file) {
     try {
       processGpxContent(e.target.result, file.name);
     } catch (err) {
-      showToast("Error parsing file: " + err.message);
+      console.error("Critical course loading failure:", err);
+      showToast("Error loading course: " + err.message, true);
     }
+  };
+  reader.onerror = () => {
+    showToast("Failed to read file from disk.", true);
   };
   reader.readAsText(file);
 }
@@ -2876,28 +2880,46 @@ function processGpxContent(text, filename) {
   const isKml = filename.endsWith(".kml") || text.includes("<kml") || text.includes("</kml>");
   activeRoute = isKml ? parseKML(text, units, desertThresholdMiles) : parseGPX(text, units, desertThresholdMiles);
   activeRoute.avgSpacing = activeRoute.trackpoints.length > 0 ? (activeRoute.totalDistance / activeRoute.trackpoints.length) : 0;
-  chatHistory = []; // Reset Gemini chatbot context on new course ingestion
+  chatHistory = [];
   hasFetchedWeather = false;
-  pausePlayback();
+  if (typeof pausePlayback === "function") pausePlayback();
   playbackDistance = 0;
   playbackIndex = 0;
   lastPausedPoiIndex = -1;
-  closePoiDetailDialog(false);
+  if (typeof closePoiDetailDialog === "function") closePoiDetailDialog(false);
 
-  // Pre-calculate running elevation gain and loss values
-  precomputeRunningMetrics(activeRoute);
+  if (typeof precomputeRunningMetrics === "function") precomputeRunningMetrics(activeRoute);
 
-  // Display route name
   const nameDisplay = document.getElementById("course-name-display");
-  if (nameDisplay) {
+  if (nameDisplay && activeRoute && activeRoute.name) {
     nameDisplay.textContent = activeRoute.name.toUpperCase();
   }
 
-  // Display Course Info
-  if (activeRoute.description && activeRoute.description !== "No description provided.") {
-    let infoHtml = `<p>${escapeHtml(activeRoute.description)}</p>`;
-    if (activeRoute.segments && activeRoute.segments.length > 1) {
-      infoHtml += `<h4 style="margin-top: 20px; font-weight: 600; color: var(--primary-color);">COURSE SEGMENTS</h4>`;
+  if (courseInfoText && courseInfoBtn) {
+    if (activeRoute && activeRoute.description && activeRoute.description !== "No description provided.") {
+      let infoHtml = `<p>${escapeHtml(activeRoute.description)}</p>`;
+      if (activeRoute.segments && activeRoute.segments.length > 1) {
+        infoHtml += `<h4 style="margin-top: 20px; font-weight: 600; color: var(--primary-color);">COURSE SEGMENTS</h4>`;
+        infoHtml += `<div class="course-segments-list" style="margin-top: 10px; display: flex; flex-direction: column; gap: 8px;">`;
+        activeRoute.segments.forEach((seg, idx) => {
+          const distVal = ((seg.endDist - seg.startDist) * (units === "imperial" ? 1 / 1609.344 : 1 / 1000)).toFixed(2);
+          const distUnit = units === "imperial" ? "mi" : "km";
+          infoHtml += `
+            <div class="segment-info-item" style="padding: 8px 12px; border-radius: 6px; border: 1px solid rgba(255,255,255,0.05); background: rgba(255,255,255,0.02);">
+              <div style="font-weight: 600; font-size: 13px; color: var(--primary-color); display: flex; justify-content: space-between;">
+                <span>${idx + 1}. ${escapeHtml(seg.name)}</span>
+                <span>${distVal} ${distUnit}</span>
+              </div>
+              ${seg.desc ? `<div style="font-size: 12px; margin-top: 4px; color: rgba(255,255,255,0.6);">${escapeHtml(seg.desc)}</div>` : ''}
+            </div>
+          `;
+        });
+        infoHtml += `</div>`;
+      }
+      courseInfoText.innerHTML = infoHtml;
+      courseInfoBtn.classList.remove("hidden");
+    } else if (activeRoute && activeRoute.segments && activeRoute.segments.length > 1) {
+      let infoHtml = `<h4 style="margin-top: 10px; font-weight: 600; color: var(--primary-color);">COURSE SEGMENTS</h4>`;
       infoHtml += `<div class="course-segments-list" style="margin-top: 10px; display: flex; flex-direction: column; gap: 8px;">`;
       activeRoute.segments.forEach((seg, idx) => {
         const distVal = ((seg.endDist - seg.startDist) * (units === "imperial" ? 1 / 1609.344 : 1 / 1000)).toFixed(2);
@@ -2913,59 +2935,41 @@ function processGpxContent(text, filename) {
         `;
       });
       infoHtml += `</div>`;
+      courseInfoText.innerHTML = infoHtml;
+      courseInfoBtn.classList.remove("hidden");
+    } else {
+      courseInfoText.textContent = "No description available.";
+      courseInfoBtn.classList.add("hidden");
     }
-    courseInfoText.innerHTML = infoHtml;
-    courseInfoBtn.classList.remove("hidden");
-  } else if (activeRoute.segments && activeRoute.segments.length > 1) {
-    let infoHtml = `<h4 style="margin-top: 10px; font-weight: 600; color: var(--primary-color);">COURSE SEGMENTS</h4>`;
-    infoHtml += `<div class="course-segments-list" style="margin-top: 10px; display: flex; flex-direction: column; gap: 8px;">`;
-    activeRoute.segments.forEach((seg, idx) => {
-      const distVal = ((seg.endDist - seg.startDist) * (units === "imperial" ? 1 / 1609.344 : 1 / 1000)).toFixed(2);
-      const distUnit = units === "imperial" ? "mi" : "km";
-      infoHtml += `
-        <div class="segment-info-item" style="padding: 8px 12px; border-radius: 6px; border: 1px solid rgba(255,255,255,0.05); background: rgba(255,255,255,0.02);">
-          <div style="font-weight: 600; font-size: 13px; color: var(--primary-color); display: flex; justify-content: space-between;">
-            <span>${idx + 1}. ${escapeHtml(seg.name)}</span>
-            <span>${distVal} ${distUnit}</span>
-          </div>
-          ${seg.desc ? `<div style="font-size: 12px; margin-top: 4px; color: rgba(255,255,255,0.6);">${escapeHtml(seg.desc)}</div>` : ''}
-        </div>
-      `;
-    });
-    infoHtml += `</div>`;
-    courseInfoText.innerHTML = infoHtml;
-    courseInfoBtn.classList.remove("hidden");
-  } else {
-    courseInfoText.textContent = "No description available.";
-    courseInfoBtn.classList.add("hidden");
   }
 
-  // Clear chatbot logs
-  chatMessages.innerHTML = `
-    <div class="message assistant">
-      <p>Imported "<strong>${activeRoute.name}</strong>" successfully. Paste race details or ask me to configure aid stations.</p>
-    </div>
-  `;
+  if (chatMessages) {
+    chatMessages.innerHTML = `
+      <div class="message assistant">
+        <p>Imported "<strong>${activeRoute.name}</strong>" successfully. Paste race details or ask me to configure aid stations.</p>
+      </div>
+    `;
+  }
 
-  // Make overlays visible
-  cardStats.classList.remove("hidden");
+  if (cardStats) cardStats.classList.remove("hidden");
   if (toggleStatsBtn) toggleStatsBtn.classList.add("hidden");
-  cardWarnings.classList.remove("hidden");
+  if (cardWarnings) cardWarnings.classList.remove("hidden");
   if (toggleWarningsBtn) toggleWarningsBtn.classList.add("hidden");
-  cardWeather.classList.remove("hidden");
+  if (cardWeather) cardWeather.classList.remove("hidden");
   if (toggleWeatherBtn) toggleWeatherBtn.classList.add("hidden");
-  updateWeatherShiftedState();
-  
-  if (activeRoute.trackpoints.length > 0) {
+  if (typeof updateWeatherShiftedState === "function") updateWeatherShiftedState();
+
+  if (activeRoute && activeRoute.trackpoints && activeRoute.trackpoints.length > 0) {
     const startPt = activeRoute.trackpoints[0];
-    triggerWeatherWeather(startPt.lat, startPt.lon, true);
+    if (startPt && typeof triggerWeatherWeather === "function") {
+      triggerWeatherWeather(startPt.lat, startPt.lon, true);
+    }
   }
 
-  cardElevationScrubber.classList.remove("hidden");
-  hudMetrics.classList.remove("hidden");
+  if (cardElevationScrubber) cardElevationScrubber.classList.remove("hidden");
+  if (hudMetrics) hudMetrics.classList.remove("hidden");
 
-  // Show/hide time HUD column based on presence of actual timestamps in the GPX
-  const hasTime = activeRoute.trackpoints.length > 0 && !!activeRoute.trackpoints[0].time;
+  const hasTime = activeRoute && activeRoute.trackpoints && activeRoute.trackpoints.length > 0 && !!activeRoute.trackpoints[0].time;
   if (hudMetricTime) {
     if (hasTime) {
       hudMetricTime.classList.remove("hidden");
@@ -2973,45 +2977,46 @@ function processGpxContent(text, filename) {
       hudMetricTime.classList.add("hidden");
     }
   }
-  if (cardGeminiChat) {
-    cardGeminiChat.classList.remove("hidden");
-  }
+  if (cardGeminiChat) cardGeminiChat.classList.remove("hidden");
   const toggleChatBtn = document.getElementById("toggle-chat-btn");
-  if (toggleChatBtn) {
-    toggleChatBtn.classList.remove("hidden");
+  if (toggleChatBtn) toggleChatBtn.classList.remove("hidden");
+
+  if (elevationChart) {
+    try {
+      elevationChart.units = units;
+      elevationChart.setRoute(activeRoute);
+    } catch(e) { console.warn("ElevationChart setRoute error:", e); }
   }
 
-  // Sync components
-  elevationChart.units = units;
-  elevationChart.setRoute(activeRoute);
-
-  if (apiKeyMaps && mapController.map) {
-    mapController.drawRoute(activeRoute, climbColorsCheckbox.checked);
-    mapController.syncToTrackpoint(0, true);
+  if (apiKeyMaps && mapController && mapController.map) {
+    try {
+      mapController.drawRoute(activeRoute, climbColorsCheckbox ? climbColorsCheckbox.checked : false);
+      mapController.syncToTrackpoint(0, true);
+    } catch(e) { console.warn("MapController drawRoute error:", e); }
   }
 
-  elevationChart.progressIndex = 0;
-  elevationChart.hoverIdx = -1;
-  elevationChart.draw();
+  if (elevationChart) {
+    try {
+      elevationChart.progressIndex = 0;
+      elevationChart.hoverIdx = -1;
+      elevationChart.draw();
+    } catch(e) { console.warn("ElevationChart draw error:", e); }
+  }
 
-  updateRouteStatsUI(activeRoute);
-  renderWarningsUI(activeRoute);
+  if (typeof updateRouteStatsUI === "function") updateRouteStatsUI(activeRoute);
+  if (typeof renderWarningsUI === "function") renderWarningsUI(activeRoute);
   if (activeRoute && activeRoute.executionPlan && (!activeRoute.executionPlan.sectors || activeRoute.executionPlan.sectors.length === 0)) {
     activeRoute.executionPlan.sectors = autoSegmentCourse(activeRoute);
   }
   if (typeof renderRunnerSectorsUI === "function") renderRunnerSectorsUI();
 
-  updateUnitLabels();
-  updateHUD(0);
-  if (clearWarningsHighlightBtn) {
-    clearWarningsHighlightBtn.classList.add("hidden");
-  }
-  
-  // Render sidebar waypoints outline list
-  renderEditWaypointList();
+  if (typeof updateUnitLabels === "function") updateUnitLabels();
+  if (typeof updateHUD === "function") updateHUD(0);
+  if (clearWarningsHighlightBtn) clearWarningsHighlightBtn.classList.add("hidden");
 
-  // Save to recently played list
-  addRecentCourse(activeRoute.name, text);
+  if (typeof renderEditWaypointList === "function") renderEditWaypointList();
+
+  if (typeof addRecentCourse === "function") addRecentCourse(activeRoute ? activeRoute.name : filename, text);
 
   showToast(`Loaded ${filename}`);
 }
