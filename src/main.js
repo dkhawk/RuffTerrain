@@ -24,7 +24,7 @@
  * The preview controller iterates through trackpoint bearings to control camera panning and triggers contextual auto-pauses when approaching points of interest.
  */
 
-import { parseGPX, parseKML, reconcileCourse, getMetricsForPoint, calculateWarnings, haversine, snapToRouteSegments, recalculateRouteMetrics, classifyGradient, computeSectorGradient, autoSegmentCourse, solveBackwardPacing, saveRunnerProfile } from "./gpx-parser.js";
+import { parseGPX, parseKML, reconcileCourse, getMetricsForPoint, calculateWarnings, haversine, snapToRouteSegments, recalculateRouteMetrics, classifyGradient, computeSectorGradient, autoSegmentCourse, solveBackwardPacing, saveRunnerProfile, deleteRunnerProfile } from "./gpx-parser.js";
 import { writeGPX } from "./gpx-writer.js";
 import { correctRouteElevations } from "./fetch-elevation.js";
 import { sendToGemini, fetchAvailableModels, generateWaypointFromDescription } from "./gemini-client.js";
@@ -131,6 +131,17 @@ const calibrationFilesInput = document.getElementById("calibration-files-input")
 const runCalibrationBtn = document.getElementById("run-calibration-btn");
 const calibrationFilesList = document.getElementById("calibration-files-list");
 const calibrationResultsCard = document.getElementById("calibration-results-card");
+const addRunnerProfileBtn = document.getElementById("add-runner-profile-btn");
+const editRunnerProfileBtn = document.getElementById("edit-runner-profile-btn");
+const deleteRunnerProfileBtn = document.getElementById("delete-runner-profile-btn");
+const runnerProfileCreatorCard = document.getElementById("runner-profile-creator-card");
+const profileCreatorTitle = document.getElementById("profile-creator-title");
+const newProfileName = document.getElementById("new-profile-name");
+const newPaceClimb = document.getElementById("new-pace-climb");
+const newPaceFlat = document.getElementById("new-pace-flat");
+const newPaceDesc = document.getElementById("new-pace-desc");
+const cancelProfileCreateBtn = document.getElementById("cancel-profile-create-btn");
+const saveProfileCreateBtn = document.getElementById("save-profile-create-btn");
 const studioTabPoi = document.getElementById("studio-tab-poi");
 const studioTabChat = document.getElementById("studio-tab-chat");
 const studioTabPlan = document.getElementById("studio-tab-plan");
@@ -3531,6 +3542,89 @@ function setupEventListeners() {
         runCalibrationBtn.disabled = false;
         runCalibrationBtn.textContent = "Calibrate Profile";
       }
+    });
+  }
+
+  // Runner Profile CRUD Manager (Create, Edit & Delete)
+  let editingProfileId = null;
+  if (addRunnerProfileBtn && runnerProfileCreatorCard && deleteRunnerProfileBtn && saveProfileCreateBtn && cancelProfileCreateBtn) {
+    addRunnerProfileBtn.addEventListener("click", () => {
+      editingProfileId = null;
+      if (profileCreatorTitle) profileCreatorTitle.textContent = "➕ Create Custom Runner Profile";
+      if (newProfileName) newProfileName.value = "";
+      runnerProfileCreatorCard.classList.remove("hidden");
+    });
+
+    if (editRunnerProfileBtn) {
+      editRunnerProfileBtn.addEventListener("click", () => {
+        if (!runnerProfileSelect) return;
+        const curId = runnerProfileSelect.value;
+        const activeProf = getActiveRunnerProfile();
+        editingProfileId = curId;
+        if (profileCreatorTitle) profileCreatorTitle.textContent = "✏️ Edit Runner Profile";
+        if (newProfileName) newProfileName.value = activeProf.name.split(" (")[0] || activeProf.name;
+        if (newPaceClimb && activeProf.basePaces) newPaceClimb.value = activeProf.basePaces.steep || 21.0;
+        if (newPaceFlat && activeProf.basePaces) newPaceFlat.value = activeProf.basePaces.flat || 10.5;
+        if (newPaceDesc && activeProf.basePaces) newPaceDesc.value = activeProf.basePaces.descent || 9.5;
+        runnerProfileCreatorCard.classList.remove("hidden");
+      });
+    }
+
+    cancelProfileCreateBtn.addEventListener("click", () => {
+      editingProfileId = null;
+      runnerProfileCreatorCard.classList.add("hidden");
+    });
+
+    saveProfileCreateBtn.addEventListener("click", () => {
+      const name = newProfileName?.value.trim() || "Custom Runner Profile";
+      const climb = parseFloat(newPaceClimb?.value) || 21.0;
+      const flat = parseFloat(newPaceFlat?.value) || 10.5;
+      const desc = parseFloat(newPaceDesc?.value) || 9.5;
+      const targetId = editingProfileId || `profile_custom_${Date.now()}`;
+      const customProfile = {
+        id: targetId,
+        name: `${name} (${climb}m climb / ${flat}m flat / ${desc}m desc)`,
+        basePaces: {
+          descent: desc,
+          flat,
+          moderate: parseFloat((flat + 2).toFixed(1)),
+          steep: climb,
+          verysteep: parseFloat((climb + 4).toFixed(1)),
+          extreme: parseFloat((climb + 10).toFixed(1))
+        },
+        restDurationMin: 15
+      };
+      saveRunnerProfile(customProfile);
+      runnerProfileCreatorCard.classList.add("hidden");
+
+      if (runnerProfileSelect) {
+        let opt = runnerProfileSelect.querySelector(`option[value="${targetId}"]`);
+        if (!opt) {
+          opt = document.createElement("option");
+          opt.value = targetId;
+          runnerProfileSelect.appendChild(opt);
+        }
+        opt.textContent = customProfile.name;
+        opt.selected = true;
+        runnerProfileSelect.dispatchEvent(new Event("change"));
+      }
+      showToast(editingProfileId ? `Updated profile: ${name}` : `Created runner profile: ${name}`);
+      editingProfileId = null;
+    });
+
+    deleteRunnerProfileBtn.addEventListener("click", () => {
+      if (!runnerProfileSelect) return;
+      const curId = runnerProfileSelect.value;
+      if (curId === "profile_hawk_pro" || curId === "profile_casual") {
+        showToast("Cannot delete default factory profile.", true);
+        return;
+      }
+      deleteRunnerProfile(curId);
+      const selOpt = runnerProfileSelect.querySelector(`option[value="${curId}"]`);
+      if (selOpt) selOpt.remove();
+      runnerProfileSelect.selectedIndex = 0;
+      runnerProfileSelect.dispatchEvent(new Event("change"));
+      showToast("Deleted custom runner profile.");
     });
   }
 

@@ -1,6 +1,6 @@
 import { test, describe } from "node:test";
 import assert from "node:assert";
-import { parseGPX, getMetricsForPoint, classifyGradient, computeSectorGradient, calculateWarnings, autoSegmentCourse, solveBackwardPacing } from "../src/gpx-parser.js";
+import { parseGPX, getMetricsForPoint, classifyGradient, computeSectorGradient, calculateWarnings, autoSegmentCourse, solveBackwardPacing, saveRunnerProfile, deleteRunnerProfile, getRunnerProfiles } from "../src/gpx-parser.js";
 import { writeGPX } from "../src/gpx-writer.js";
 import { getWeatherConditionStyle, getElapsedHoursAtDistance, getWeatherWindowDetails } from "../src/fetch-weather.js";
 import { parseCalibrationTrack, deriveFatigueDecayLambda, buildEmpiricalProfile } from "../src/empirical-calibration.js";
@@ -576,6 +576,31 @@ describe("GPX Parser & Writer Tests", () => {
     assert.strictEqual(profile.name, "Dan Hawk Calibrated");
     assert.ok(profile.basePaces.flat > 0);
     assert.ok(profile.enduranceMetrics.fatigueDecayLambda > 0);
+  });
+
+  test("Runner profile CRUD operations save new profiles and delete custom profiles", () => {
+    const customProfile = {
+      id: "profile_test_crud",
+      name: "Test CRUD Athlete",
+      basePaces: { descent: 8.0, flat: 9.0, moderate: 12.0, steep: 15.0, verysteep: 19.0, extreme: 25.0 },
+      restDurationMin: 10
+    };
+    saveRunnerProfile(customProfile);
+    const profilesAfterSave = getRunnerProfiles();
+    assert.ok(profilesAfterSave.some(p => p.id === "profile_test_crud"));
+
+    const editedProfile = {
+      id: "profile_test_crud",
+      name: "Test CRUD Athlete Edited",
+      basePaces: { descent: 7.5, flat: 8.5, moderate: 11.0, steep: 14.0, verysteep: 18.0, extreme: 24.0 },
+      restDurationMin: 12
+    };
+    saveRunnerProfile(editedProfile);
+    assert.strictEqual(getRunnerProfiles().find(p => p.id === "profile_test_crud").name, "Test CRUD Athlete Edited");
+
+    deleteRunnerProfile("profile_test_crud");
+    const profilesAfterDelete = getRunnerProfiles();
+    assert.ok(!profilesAfterDelete.some(p => p.id === "profile_test_crud"));
   });
 
 });
