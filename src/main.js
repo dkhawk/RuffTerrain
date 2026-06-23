@@ -141,9 +141,12 @@ const calibrationResultsCard = document.getElementById("calibration-results-card
 const addRunnerProfileBtn = document.getElementById("add-runner-profile-btn");
 const editRunnerProfileBtn = document.getElementById("edit-runner-profile-btn");
 const deleteRunnerProfileBtn = document.getElementById("delete-runner-profile-btn");
+const exportProfilesBtn = document.getElementById("export-profiles-btn");
+const importProfilesInput = document.getElementById("import-profiles-input");
 const runnerProfileCreatorCard = document.getElementById("runner-profile-creator-card");
 const profileCreatorTitle = document.getElementById("profile-creator-title");
 const newProfileName = document.getElementById("new-profile-name");
+const newProfileDesc = document.getElementById("new-profile-desc");
 const newPaceClimb = document.getElementById("new-pace-climb");
 const newPaceFlat = document.getElementById("new-pace-flat");
 const newPaceDesc = document.getElementById("new-pace-desc");
@@ -3559,6 +3562,7 @@ function setupEventListeners() {
       editingProfileId = null;
       if (profileCreatorTitle) profileCreatorTitle.textContent = "➕ Create Custom Runner Profile";
       if (newProfileName) newProfileName.value = "";
+      if (newProfileDesc) newProfileDesc.value = "";
       runnerProfileCreatorCard.classList.remove("hidden");
     });
 
@@ -3570,6 +3574,7 @@ function setupEventListeners() {
         editingProfileId = curId;
         if (profileCreatorTitle) profileCreatorTitle.textContent = "✏️ Edit Runner Profile";
         if (newProfileName) newProfileName.value = activeProf.name.split(" (")[0] || activeProf.name;
+        if (newProfileDesc) newProfileDesc.value = activeProf.description || "";
         if (newPaceClimb && activeProf.basePaces) newPaceClimb.value = activeProf.basePaces.steep || 21.0;
         if (newPaceFlat && activeProf.basePaces) newPaceFlat.value = activeProf.basePaces.flat || 10.5;
         if (newPaceDesc && activeProf.basePaces) newPaceDesc.value = activeProf.basePaces.descent || 9.5;
@@ -3584,6 +3589,7 @@ function setupEventListeners() {
 
     saveProfileCreateBtn.addEventListener("click", () => {
       const name = newProfileName?.value.trim() || "Custom Runner Profile";
+      const descText = newProfileDesc?.value.trim() || "";
       const climb = parseFloat(newPaceClimb?.value) || 21.0;
       const flat = parseFloat(newPaceFlat?.value) || 10.5;
       const desc = parseFloat(newPaceDesc?.value) || 9.5;
@@ -3591,6 +3597,7 @@ function setupEventListeners() {
       const customProfile = {
         id: targetId,
         name: `${name} (${climb}m climb / ${flat}m flat / ${desc}m desc)`,
+        description: descText,
         basePaces: {
           descent: desc,
           flat,
@@ -3633,6 +3640,44 @@ function setupEventListeners() {
       runnerProfileSelect.dispatchEvent(new Event("change"));
       showToast("Deleted custom runner profile.");
     });
+
+    if (exportProfilesBtn) {
+      exportProfilesBtn.addEventListener("click", () => {
+        const allProfiles = getRunnerProfiles();
+        const blob = new Blob([JSON.stringify(allProfiles, null, 2)], { type: "application/json" });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement("a");
+        a.href = url;
+        a.download = "kokopelli_runner_profiles.json";
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        URL.revokeObjectURL(url);
+        showToast("Exported all runner profiles to disk.");
+      });
+    }
+
+    if (importProfilesInput) {
+      importProfilesInput.addEventListener("change", (e) => {
+        const file = e.target.files?.[0];
+        if (!file) return;
+        const reader = new FileReader();
+        reader.onload = (evt) => {
+          try {
+            const imported = JSON.parse(evt.target.result);
+            if (Array.isArray(imported) && imported.length > 0) {
+              imported.forEach(p => { if (p && p.id) saveRunnerProfile(p); });
+              renderRunnerSectorsUI();
+              showToast(`Imported ${imported.length} runner profiles successfully!`);
+            }
+          } catch(err) {
+            showToast(`Failed to import profiles: ${err.message}`, true);
+          }
+        };
+        reader.readAsText(file);
+        e.target.value = "";
+      });
+    }
   }
 
   // 📐 DIURNAL PACING TRIANGLE Triad Facet Controller

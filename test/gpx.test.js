@@ -598,6 +598,18 @@ describe("GPX Parser & Writer Tests", () => {
     saveRunnerProfile(editedProfile);
     assert.strictEqual(getRunnerProfiles().find(p => p.id === "profile_test_crud").name, "Test CRUD Athlete Edited");
 
+    const descProfile = {
+      id: "profile_test_desc",
+      name: "Test Desc Athlete",
+      description: "High altitude mountain pace tuned for UTMB with heavy pack",
+      basePaces: { descent: 8.0, flat: 9.0, moderate: 12.0, steep: 15.0, verysteep: 19.0, extreme: 25.0 },
+      restDurationMin: 10
+    };
+    saveRunnerProfile(descProfile);
+    const foundDesc = getRunnerProfiles().find(p => p.id === "profile_test_desc");
+    assert.strictEqual(foundDesc.description, "High altitude mountain pace tuned for UTMB with heavy pack");
+    deleteRunnerProfile("profile_test_desc");
+
     deleteRunnerProfile("profile_test_crud");
     const profilesAfterDelete = getRunnerProfiles();
     assert.ok(!profilesAfterDelete.some(p => p.id === "profile_test_crud"));
