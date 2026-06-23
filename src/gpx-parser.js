@@ -603,6 +603,14 @@ export function parseGPX(gpxText, units = "imperial", desertThresholdMiles = 8.0
       }
     }
 
+    if (customExtension?.station && customExtension.station.passes.length === 0) {
+      customExtension.station.passes.push({
+        num: 1,
+        dist_m: trackpoints[closestIdx]?.dist_m || 0,
+        label: name
+      });
+    }
+
     waypoints.push({
       id: customExtension?.station?.id || `wpt-${wptIdx}`,
       name,

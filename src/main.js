@@ -238,6 +238,8 @@ const clearWarningsHighlightBtn = document.getElementById("clear-warnings-highli
 const poiDetailDialog = document.getElementById("poi-detail-dialog");
 const poiValName = document.getElementById("poi-val-name");
 const poiValNameInput = document.getElementById("poi-val-name-input");
+const poiValDesc = document.getElementById("poi-val-desc");
+const poiValDescSection = document.getElementById("poi-val-desc-section");
 const poiValPassTag = document.getElementById("poi-val-pass-tag");
 const poiValCutoffTag = document.getElementById("poi-val-cutoff-tag");
 const poiValDist = document.getElementById("poi-val-dist");
@@ -2371,6 +2373,13 @@ async function showPoiDetailDialog(wpt, index, referenceDist = null, startCollap
     const li = document.createElement("li");
     li.textContent = `Waypoint location: ${formatDistance(currentDist)}`;
     poiTimelinePassesList.appendChild(li);
+  }
+
+  if (poiValDesc) {
+    poiValDesc.textContent = wpt.desc || wpt.extensions?.station?.desc || "No description provided.";
+  }
+  if (poiValDescSection) {
+    poiValDescSection.classList.remove("hidden");
   }
 
   // Handle attached photo display & update in waypoint details dialog
