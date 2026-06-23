@@ -1,6 +1,6 @@
 import { test, describe } from "node:test";
 import assert from "node:assert";
-import { parseGPX, getMetricsForPoint } from "../src/gpx-parser.js";
+import { parseGPX, getMetricsForPoint, classifyGradient, computeSectorGradient, calculateWarnings, autoSegmentCourse, solveBackwardPacing } from "../src/gpx-parser.js";
 import { writeGPX } from "../src/gpx-writer.js";
 import { getWeatherConditionStyle, getElapsedHoursAtDistance, getWeatherWindowDetails } from "../src/fetch-weather.js";
 
@@ -443,6 +443,110 @@ describe("GPX Parser & Writer Tests", () => {
     // Verify elapsed hours calculation at aid station
     const elHrs = getElapsedHoursAtDistance(route, metrics.nextAid.absolute_dist_m, 12);
     assert.ok(elHrs >= 0);
+  });
+
+  test("Sector terrain serialization and heuristic inference", () => {
+    const mockRoute = {
+      waypoints: [],
+      trackpoints: [{ lat: 40.0, lon: -105.0, ele: 1500 }],
+      executionPlan: {
+        targetDurationHrs: 12,
+        sectors: [{
+          start_dist_m: 0,
+          end_dist_m: 5000,
+          name: "Sugar Loaf Climb",
+          terrain: "climb",
+          target_pace_min: 15,
+          strategy: "Power hike steep climb"
+        }, {
+          start_dist_m: 5000,
+          end_dist_m: 10000,
+          name: "Downhill Rush",
+          target_pace_min: 8,
+          strategy: "Smooth downhill jog"
+        }]
+      }
+    };
+
+    const xml = writeGPX(mockRoute);
+    assert.ok(xml.includes('terrain="climb"'));
+
+    const restored = parseGPX(xml, "imperial");
+    assert.strictEqual(restored.executionPlan.sectors[0].terrain, "climb");
+    assert.strictEqual(restored.executionPlan.sectors[1].terrain, "descend");
+  });
+
+  test("User-settable climb gradient classification scale and coloring", () => {
+    // Test default classification thresholds
+    assert.strictEqual(classifyGradient(1.5).key, "flat");
+    assert.strictEqual(classifyGradient(4.0).key, "moderate");
+    assert.strictEqual(classifyGradient(6.5).key, "steep");
+    assert.strictEqual(classifyGradient(9.0).key, "verysteep");
+    assert.strictEqual(classifyGradient(12.0).key, "extreme");
+    assert.strictEqual(classifyGradient(-3.0).key, "descent");
+
+    // Test computeSectorGradient
+    const mockRoute = {
+      trackpoints: [
+        { dist_m: 0, ele: 1000 },
+        { dist_m: 1000, ele: 1080 } // +80m over 1000m = 8.0% grade
+      ]
+    };
+    const grade = computeSectorGradient(mockRoute, { start_dist_m: 0, end_dist_m: 1000 });
+    assert.strictEqual(grade, 8);
+    assert.strictEqual(classifyGradient(grade).key, "steep");
+  });
+
+  test("Steep descent warnings and unified alert coloring properties", () => {
+    const mockRoute = {
+      totalDistance: 2000,
+      trackpoints: [
+        { dist_m: 0, ele: 2000, grade: -10 },
+        { dist_m: 500, ele: 1950, grade: -10 },
+        { dist_m: 1000, ele: 1850, grade: -10 }
+      ]
+    };
+    calculateWarnings(mockRoute, [], "metric", 8.0);
+    assert.ok(mockRoute.warnings);
+    const descWarn = mockRoute.warnings.find(w => w.type === "STEEP_DESCENT");
+    assert.ok(descWarn);
+    assert.strictEqual(descWarn.colorHex, "#10b981");
+  });
+
+  test("Day Architect automated course slicer and descent-protected deadline solver", () => {
+    const mockRoute = {
+      totalDistance: 16093.44,
+      waypoints: [{ name: "Aid Alpha", dist_m: 8046.72 }],
+      trackpoints: [
+        { dist_m: 0, ele: 1000, grade: 8 },
+        { dist_m: 8046.72, ele: 1643.7, grade: 8 },
+        { dist_m: 16093.44, ele: 1000, grade: -8 }
+      ],
+      executionPlan: { sectors: [] }
+    };
+
+    const sectors = autoSegmentCourse(mockRoute);
+    assert.ok(sectors.length >= 2);
+    mockRoute.executionPlan.sectors = sectors;
+
+    solveBackwardPacing(2.5, mockRoute, "imperial");
+    assert.strictEqual(mockRoute.executionPlan.targetDurationHrs, 2.5);
+  });
+
+  test("Granular 6-tier gradient taxonomy differentiates extreme vs moderate climb paces", () => {
+    const mockRoute = {
+      totalDistance: 12000,
+      trackpoints: [
+        { dist_m: 0, ele: 0, grade: 3 },
+        { dist_m: 5000, ele: 150, grade: 3 },
+        { dist_m: 6000, ele: 300, grade: 15 },
+        { dist_m: 12000, ele: 1200, grade: 15 }
+      ],
+      executionPlan: { sectors: [] }
+    };
+    const sectors = autoSegmentCourse(mockRoute);
+    assert.strictEqual(sectors.length, 2);
+    assert.ok(sectors[1].target_pace_min > sectors[0].target_pace_min);
   });
 
 });

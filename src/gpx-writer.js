@@ -45,7 +45,10 @@ export function writeGPX(route) {
     if (route.executionPlan.sectors && route.executionPlan.sectors.length > 0) {
       xml += '      <ca:execution_plan>\n';
       route.executionPlan.sectors.forEach(sec => {
-        xml += `        <ca:sector start_dist_m="${sec.start_dist_m}" end_dist_m="${sec.end_dist_m}" name="${escapeXml(sec.name)}" target_pace_min="${sec.target_pace_min}">\n`;
+        let sTag = `        <ca:sector start_dist_m="${sec.start_dist_m}" end_dist_m="${sec.end_dist_m}" name="${escapeXml(sec.name)}" target_pace_min="${sec.target_pace_min}"`;
+        if (sec.terrain) sTag += ` terrain="${escapeXml(sec.terrain)}"`;
+        sTag += '>\n';
+        xml += sTag;
         if (sec.strategy) xml += `          <ca:strategy>${escapeXml(sec.strategy)}</ca:strategy>\n`;
         if (sec.nutrition) xml += `          <ca:nutrition>${escapeXml(sec.nutrition)}</ca:nutrition>\n`;
         xml += '        </ca:sector>\n';

@@ -1041,3 +1041,52 @@ This journal records all design decisions, architecture patterns, development st
     *   Added `formatSplitTime` helper function in `src/main.js`.
     *   Verified all 13 unit tests passing (`npm test`) and production bundle verified (`npm run build`).
 
+---
+
+### 🚀 Session 82: User-Configurable Climb Gradient Classification Scale & Harmonized Alert Styling
+*   **Goal**: Enable runners to classify trail climbs based on gradient tier cutoffs (`-2% to 2% flat`, `3% to 5% moderate`, `5% to 8% steep`, `8% to 10% very steep`, `> 10% extreme`), make thresholds user settable in settings, and harmonize color schemes across 3D polylines, UI tables, and the safety alerts dialog.
+*   **Decisions & Rationale (*The Why*)**:
+    *   **Configurable Gradient Taxonomy**: Ultra runners pacing mountain routes require granular gradient classification to dictate effort levels (e.g. running vs power hiking). Hardcoded elevation thresholds fail to accommodate different fitness levels or terrain profiles. Added user-settable gradient bound inputs inside the Kokopelli Settings modal (`#settings-overlay` in `index.html`), persisted in `localStorage` (`grad_thresh_flat`, `grad_thresh_mod`, etc.).
+    *   **Harmonized Alert & Badge Aesthetics**: To fulfill the directive *"Use the same coloring scheme as the background in the 'alerts' dialog"*, established a unified 6-tier palette (`descent` green `#10b981`, `flat` blue `#3b82f6`, `moderate` yellow `#f59e0b`, `steep` orange `#f97316`, `verysteep` red `#ef4444`, `extreme` dark red `#b91c1c`). Attached `avgGrade` directly to `DIFFICULT_CLIMB` safety warnings in `src/gpx-parser.js` and styled alert list items (`.warning-item` in `#card-warnings`) dynamically with matching semi-transparent glassmorphism backgrounds.
+    *   **Unified Route & Table Visualization**: Both the 3D map route polyline renderer (`src/map-3d.js`) and sector pacing tables (`wizPrintPlanBtn` export and `#strat-sectors-list` modal) now invoke `classifyGradient(grade)` and `computeSectorGradient(route, sec)`, ensuring 100% aesthetic and data consistency across all views.
+    *   Updated `index.html`, `src/gpx-parser.js`, `src/main.js`, and `src/map-3d.js`.
+    *   Added automated unit test suite `User-settable climb gradient classification scale and coloring` in `test/gpx.test.js`.
+    *   Verified all 15 unit tests passing (`npm test`) and production bundle built (`npm run build`).
+
+---
+
+### 🚀 Session 83: Steep & Long Descent Detection & Unified 3D Hazard Highlight Styling
+*   **Goal**: Automatically scan courses for long, steep downhill running hazards (`STEEP_DESCENT`), and ensure 3D map polylines highlighted upon clicking sidebar alerts match exact alert card colors.
+*   **Decisions & Rationale (*The Why*)**:
+    *   **Downhill Eccentric Load Hazards**: While long climbs stress cardiovascular systems, steep prolonged descents impose heavy eccentric loading on quadriceps and knees, representing major race-ending ultra hazards if hammered too hard. In `src/gpx-parser.js` `calculateWarnings()`, implemented independent sequential scanning for sustained downhill drops (`grade < -3.5%`, distance >= 400m, drop score >= 100).
+    *   **Exact Visual Parity in Map Highlights**: Previously, clicking an alert item in the sidebar highlighted the section on the 3D map using hardcoded red or purple strokes. To fulfill *"the coloring of the highlight of the difficult section should match the color of the alert warning"*, attached explicit `colorHex` and `colorBg` properties to every single warning object (`STEEP_DESCENT` mint green `#10b981`, `DIFFICULT_CLIMB` tier color, `RESOURCE_DESERT` coral red `#ef4444`, `SPATIAL_MISMATCH` purple `#a855f7`). In `src/map-3d.js` `highlightWarning()`, the 3D highlight polyline now inherits `warn.colorHex` directly.
+    *   Updated `src/gpx-parser.js`, `src/main.js`, and `src/map-3d.js`.
+    *   Added unit test suite `Steep descent warnings and unified alert coloring properties` in `test/gpx.test.js`.
+    *   Verified all 16 unit tests passing (`npm test`) and production bundle built (`npm run build`).
+
+---
+
+### 🚀 Session 84: Day Architect & Runner Pacing Profiles Engine
+*   **Goal**: Transform the race planner into an intelligent Day Architect featuring prominent Runner Profile identity, Effort Presets (`Hard Race`, `Training Run`, `Fun Day Out`), automated course landmark segmentation, and Bidirectional Time Solving (`Goal Pace Mode` vs. `Deadline Clock Mode`).
+*   **Decisions & Rationale (*The Why*)**:
+    *   **Historical Runner Identity**: Generic mapping tools calculate hiking times using static speeds (e.g. 3.0 mph). In ultra endurance mountain running, speed is non-linear and dictated by individual aerobic capability across specific slopes. Added `DEFAULT_RUNNER_PROFILES` ([gpx-parser.js](file:///Users/dkhawk/Projects/RuffTerrain/main/src/gpx-parser.js)) tracking individual `basePaces` (e.g. Dan Hawk Pro: 20 min/mi climb, 10 min/mi flat, 9 min/mi descent).
+    *   **Automated Landmark Segmentation**: Sliced loaded courses automatically at major terrain inflection points (sustained transitions between climbing, flat, and downhill running) merged with aid station POIs via `autoSegmentCourse(route)`.
+    *   **Descent-Protected Deadline Solving**: In **Deadline Clock Mode** (e.g. must finish by curfew clock time 15:00), the mathematical solver works backward (`solveBackwardPacing`). To protect quadriceps from muscular damage and injury, downhill running paces remain locked ($\gamma_{desc} = 1.0$), while flat and climbing paces dynamically compress ($\gamma_{work}$) to meet the deadline.
+*   **Key Actions & Verification**:
+    *   Added unit test suite `Day Architect automated course slicer and descent-protected deadline solver` in `test/gpx.test.js`.
+    *   Verified 17/17 automated unit tests passing (`npm test`) and production client bundle built (`npm run build`).
+
+---
+
+### 🧠 Session 85: Architectural Brainstorming — Empirical Athlete Calibration Engine
+*   **Goal**: Architect the statistical models and ingestion pipeline for replacing self-reported manual pace sliders with empirical biological telemetry extracted from uploaded multi-run GPS archives.
+*   **Decisions & Rationale (*The Why*)**:
+    *   **Human Optimism vs. Ground Truth**: Self-reported pacing guesses fail to account for late-race muscular fatigue or weather anomalies. Ingesting multiple historical outings tagged with exertion (`Hard Race`, `Training Run`) allows the engine to apply inverse exertion multipliers ($V_{base} = V_{observed} / \mu_m$) to isolate objective baseline capability.
+    *   **Vertical Fatigue Decay Modeling**: Ultra marathon climbing velocity degrades exponentially over cumulative elevation gain ($H_{cum}$). Designed the extraction model for the **Vertical Fatigue Decay Coefficient** ($\lambda$), modeling late-race slowing ($P_{climb}(h) = P_0 \cdot e^{\lambda(h/1000)}$).
+    *   **Technical Downhill Brake Factor**: Defined $\beta = \bar{V}_{desc} / \bar{V}_{flat}$ to quantify aggressive descenders vs. technical braking behavior.
+*   **Key Actions**:
+    *   Synthesized architectural design and mathematical regression specification into persistent reference artifact [empirical_athlete_calibration_spec.md](file:///Users/dkhawk/.gemini/jetski/brain/089bdb6c-3240-45d4-85de-2f7a4871f031/empirical_athlete_calibration_spec.md).
+    *   *(No code created or modified per explicit user directive.)*
+
+
+

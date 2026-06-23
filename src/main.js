@@ -24,7 +24,7 @@
  * The preview controller iterates through trackpoint bearings to control camera panning and triggers contextual auto-pauses when approaching points of interest.
  */
 
-import { parseGPX, parseKML, reconcileCourse, getMetricsForPoint, calculateWarnings, haversine, snapToRouteSegments, recalculateRouteMetrics } from "./gpx-parser.js";
+import { parseGPX, parseKML, reconcileCourse, getMetricsForPoint, calculateWarnings, haversine, snapToRouteSegments, recalculateRouteMetrics, classifyGradient, computeSectorGradient, autoSegmentCourse, solveBackwardPacing } from "./gpx-parser.js";
 import { writeGPX } from "./gpx-writer.js";
 import { correctRouteElevations } from "./fetch-elevation.js";
 import { sendToGemini, fetchAvailableModels, generateWaypointFromDescription } from "./gemini-client.js";
@@ -115,6 +115,17 @@ const dragSnapCheckbox = document.getElementById("drag-snap-checkbox");
 const cardGeminiChat = document.getElementById("card-gemini-chat");
 const studioViewEdit = document.getElementById("studio-view-edit");
 const studioTabEdit = document.getElementById("studio-tab-edit");
+const studioTabRunner = document.getElementById("studio-tab-runner");
+const studioViewRunner = document.getElementById("studio-view-runner");
+const runnerProfileSelect = document.getElementById("runner-profile-select");
+const pacingModeForward = document.getElementById("pacing-mode-forward");
+const pacingModeBackward = document.getElementById("pacing-mode-backward");
+const deadlineInputBox = document.getElementById("deadline-input-box");
+const deadlineClockInput = document.getElementById("deadline-clock-input");
+const solveDeadlineBtn = document.getElementById("solve-deadline-btn");
+const autoSliceCourseBtn = document.getElementById("auto-slice-course-btn");
+const addSplitMarkerBtn = document.getElementById("add-split-marker-btn");
+const runnerSectorsList = document.getElementById("runner-sectors-list");
 const studioTabPoi = document.getElementById("studio-tab-poi");
 const studioTabChat = document.getElementById("studio-tab-chat");
 const studioTabPlan = document.getElementById("studio-tab-plan");
@@ -2959,6 +2970,11 @@ function processGpxContent(text, filename) {
 
   updateRouteStatsUI(activeRoute);
   renderWarningsUI(activeRoute);
+  if (activeRoute && activeRoute.executionPlan && (!activeRoute.executionPlan.sectors || activeRoute.executionPlan.sectors.length === 0)) {
+    activeRoute.executionPlan.sectors = autoSegmentCourse(activeRoute);
+  }
+  if (typeof renderRunnerSectorsUI === "function") renderRunnerSectorsUI();
+
   updateUnitLabels();
   updateHUD(0);
   if (clearWarningsHighlightBtn) {
@@ -3056,6 +3072,15 @@ function renderWarningsUI(route) {
     item.dataset.startDist = warn.startDist || 0;
     item.dataset.endDist = warn.endDist || 0;
     if (!warn.approved) item.classList.add("rejected");
+
+    if (warn.colorBg && warn.colorHex) {
+      item.style.backgroundColor = warn.colorBg;
+      item.style.borderLeftColor = warn.colorHex;
+    } else if ((warn.type === "DIFFICULT_CLIMB" || warn.type === "STEEP_DESCENT") && warn.avgGrade !== undefined) {
+      const cls = classifyGradient(warn.avgGrade);
+      item.style.backgroundColor = cls.bg;
+      item.style.borderLeftColor = cls.hex;
+    }
 
     const textSpan = document.createElement("span");
     textSpan.className = "warning-text";
@@ -3223,6 +3248,16 @@ function setupEventListeners() {
     settingsUnits.value = units;
     settingsPauseTime.value = pauseDuration;
     renderRecentCoursesList();
+
+    const gFlat = document.getElementById("grad-thresh-flat");
+    const gMod = document.getElementById("grad-thresh-mod");
+    const gSteep = document.getElementById("grad-thresh-steep");
+    const gVSteep = document.getElementById("grad-thresh-vsteep");
+    if (gFlat) gFlat.value = localStorage.getItem("grad_thresh_flat") || "2.0";
+    if (gMod) gMod.value = localStorage.getItem("grad_thresh_mod") || "5.0";
+    if (gSteep) gSteep.value = localStorage.getItem("grad_thresh_steep") || "8.0";
+    if (gVSteep) gVSteep.value = localStorage.getItem("grad_thresh_vsteep") || "10.0";
+
     settingsOverlay.classList.remove("hidden");
   };
 
@@ -3331,59 +3366,92 @@ function setupEventListeners() {
     });
   }
 
-  if (studioTabEdit) {
-    studioTabEdit.addEventListener("click", () => {
-      studioTabEdit.classList.add("active");
-      if (studioTabPoi) studioTabPoi.classList.remove("active");
-      if (studioTabPlan) studioTabPlan.classList.remove("active");
-      if (studioTabChat) studioTabChat.classList.remove("active");
+  const allStudioTabs = [studioTabEdit, studioTabRunner, studioTabPoi, studioTabPlan, studioTabChat];
+  const allStudioViews = [studioViewEdit, studioViewRunner, poiDetailDialog, studioViewPlan, cardGeminiChat];
 
-      if (studioViewEdit) studioViewEdit.classList.remove("hidden");
-      if (poiDetailDialog) poiDetailDialog.classList.add("hidden");
-      if (studioViewPlan) studioViewPlan.classList.add("hidden");
-      if (cardGeminiChat) cardGeminiChat.classList.add("hidden");
+  const activateStudioTab = (tab, view) => {
+    allStudioTabs.forEach(t => t && t.classList.remove("active"));
+    allStudioViews.forEach(v => v && v.classList.add("hidden"));
+    if (tab) tab.classList.add("active");
+    if (view) view.classList.remove("hidden");
+  };
+
+  if (studioTabEdit) studioTabEdit.addEventListener("click", () => activateStudioTab(studioTabEdit, studioViewEdit));
+  if (studioTabRunner) studioTabRunner.addEventListener("click", () => {
+    activateStudioTab(studioTabRunner, studioViewRunner);
+    if (typeof renderRunnerSectorsUI === "function") renderRunnerSectorsUI();
+  });
+  if (studioTabPoi) studioTabPoi.addEventListener("click", () => activateStudioTab(studioTabPoi, poiDetailDialog));
+  if (studioTabPlan) studioTabPlan.addEventListener("click", () => activateStudioTab(studioTabPlan, studioViewPlan));
+  if (studioTabChat) studioTabChat.addEventListener("click", () => activateStudioTab(studioTabChat, cardGeminiChat));
+
+  // Day Architect Preset & Solver controls
+  if (runnerProfileSelect) {
+    runnerProfileSelect.addEventListener("change", (e) => {
+      localStorage.setItem("kokopelli_active_profile_id", e.target.value);
+      if (activeRoute) {
+        activeRoute.executionPlan.sectors = autoSegmentCourse(activeRoute);
+        if (typeof renderRunnerSectorsUI === "function") renderRunnerSectorsUI();
+      }
     });
   }
 
-  if (studioTabPoi) {
-    studioTabPoi.addEventListener("click", () => {
-      studioTabPoi.classList.add("active");
-      if (studioTabEdit) studioTabEdit.classList.remove("active");
-      if (studioTabPlan) studioTabPlan.classList.remove("active");
-      if (studioTabChat) studioTabChat.classList.remove("active");
+  const goalPresetBtns = document.querySelectorAll(".goal-preset-btn");
+  goalPresetBtns.forEach(btn => {
+    btn.addEventListener("click", () => {
+      goalPresetBtns.forEach(b => b.classList.remove("active"));
+      btn.classList.add("active");
+      localStorage.setItem("kokopelli_goal_preset", btn.getAttribute("data-preset"));
+      if (activeRoute) {
+        activeRoute.executionPlan.sectors = autoSegmentCourse(activeRoute);
+        if (typeof renderRunnerSectorsUI === "function") renderRunnerSectorsUI();
+      }
+    });
+  });
 
-      if (poiDetailDialog) poiDetailDialog.classList.remove("hidden");
-      if (studioViewEdit) studioViewEdit.classList.add("hidden");
-      if (studioViewPlan) studioViewPlan.classList.add("hidden");
-      if (cardGeminiChat) cardGeminiChat.classList.add("hidden");
+  if (pacingModeForward && pacingModeBackward && deadlineInputBox) {
+    pacingModeForward.addEventListener("click", () => {
+      pacingModeForward.classList.replace("btn-secondary", "btn-primary");
+      pacingModeBackward.classList.replace("btn-primary", "btn-secondary");
+      deadlineInputBox.classList.add("hidden");
+    });
+    pacingModeBackward.addEventListener("click", () => {
+      pacingModeBackward.classList.replace("btn-secondary", "btn-primary");
+      pacingModeForward.classList.replace("btn-primary", "btn-secondary");
+      deadlineInputBox.classList.remove("hidden");
     });
   }
 
-  if (studioTabPlan) {
-    studioTabPlan.addEventListener("click", () => {
-      studioTabPlan.classList.add("active");
-      if (studioTabEdit) studioTabEdit.classList.remove("active");
-      if (studioTabPoi) studioTabPoi.classList.remove("active");
-      if (studioTabChat) studioTabChat.classList.remove("active");
-
-      if (studioViewPlan) studioViewPlan.classList.remove("hidden");
-      if (studioViewEdit) studioViewEdit.classList.add("hidden");
-      if (poiDetailDialog) poiDetailDialog.classList.add("hidden");
-      if (cardGeminiChat) cardGeminiChat.classList.add("hidden");
+  if (solveDeadlineBtn && deadlineClockInput) {
+    solveDeadlineBtn.addEventListener("click", () => {
+      const hrs = parseFloat(deadlineClockInput.value);
+      if (!isNaN(hrs) && hrs > 0 && activeRoute) {
+        solveBackwardPacing(hrs, activeRoute, typeof units !== "undefined" ? units : "imperial");
+        if (typeof renderRunnerSectorsUI === "function") renderRunnerSectorsUI();
+      }
     });
   }
 
-  if (studioTabChat) {
-    studioTabChat.addEventListener("click", () => {
-      studioTabChat.classList.add("active");
-      if (studioTabEdit) studioTabEdit.classList.remove("active");
-      if (studioTabPoi) studioTabPoi.classList.remove("active");
-      if (studioTabPlan) studioTabPlan.classList.remove("active");
+  if (autoSliceCourseBtn) {
+    autoSliceCourseBtn.addEventListener("click", () => {
+      if (activeRoute) {
+        activeRoute.executionPlan.sectors = autoSegmentCourse(activeRoute);
+        if (typeof renderRunnerSectorsUI === "function") renderRunnerSectorsUI();
+      }
+    });
+  }
 
-      if (cardGeminiChat) cardGeminiChat.classList.remove("hidden");
-      if (studioViewEdit) studioViewEdit.classList.add("hidden");
-      if (poiDetailDialog) poiDetailDialog.classList.add("hidden");
-      if (studioViewPlan) studioViewPlan.classList.add("hidden");
+  if (addSplitMarkerBtn) {
+    addSplitMarkerBtn.addEventListener("click", () => {
+      if (!activeRoute || !activeRoute.trackpoints || activeRoute.trackpoints.length === 0) return;
+      if (!activeRoute.executionPlan) activeRoute.executionPlan = { sectors: [], customSplits: [] };
+      if (!activeRoute.executionPlan.customSplits) activeRoute.executionPlan.customSplits = [];
+      const pt = activeRoute.trackpoints[playbackIndex || 0] || activeRoute.trackpoints[0];
+      if (pt && pt.dist_m > 50) {
+        activeRoute.executionPlan.customSplits.push(pt.dist_m);
+        activeRoute.executionPlan.sectors = autoSegmentCourse(activeRoute);
+        if (typeof renderRunnerSectorsUI === "function") renderRunnerSectorsUI();
+      }
     });
   }
 
@@ -4328,15 +4396,13 @@ function computeIntelligentPacingAndWeatherPlan(route, opts) {
         const sRound = Math.round((sec.target_pace_min % 1) * 60).toString().padStart(2, "0");
         const paceStr = `${mFloor}:${sRound}`;
         
-        const isAsc = sec.strategy.includes("Ascent");
-        const isDesc = sec.strategy.includes("Descent");
-        const badgeClass = isAsc ? "badge-ascent" : (isDesc ? "badge-descent" : "badge-flat");
-        const badgeText = isAsc ? "CLIMB" : (isDesc ? "DESCENT" : "FLAT");
+        const sGrade = computeSectorGradient(activeRoute, sec);
+        const cls = classifyGradient(sGrade);
 
         rowsHtml += `
           <tr>
             <td><strong>${escapeHtml(sec.name)}</strong></td>
-            <td><span class="badge ${badgeClass}">${badgeText}</span></td>
+            <td><span class="badge" style="background: ${cls.bg}; color: ${cls.hex}; border: 1px solid ${cls.hex}; font-weight: 800; padding: 2px 8px; border-radius: 12px;">${cls.label} (${sGrade.toFixed(1)}%)</span></td>
             <td><strong>${paceStr}</strong> min/mi</td>
             <td>${escapeHtml(sec.strategy)}</td>
           </tr>
@@ -4829,6 +4895,15 @@ function computeIntelligentPacingAndWeatherPlan(route, opts) {
       localStorage.setItem("settings_units", units);
       localStorage.setItem("settings_pause_duration", pauseDuration);
 
+      const gFlat = document.getElementById("grad-thresh-flat");
+      const gMod = document.getElementById("grad-thresh-mod");
+      const gSteep = document.getElementById("grad-thresh-steep");
+      const gVSteep = document.getElementById("grad-thresh-vsteep");
+      if (gFlat) localStorage.setItem("grad_thresh_flat", gFlat.value);
+      if (gMod) localStorage.setItem("grad_thresh_mod", gMod.value);
+      if (gSteep) localStorage.setItem("grad_thresh_steep", gSteep.value);
+      if (gVSteep) localStorage.setItem("grad_thresh_vsteep", gVSteep.value);
+
       if (elevationChart) {
         elevationChart.units = units;
         elevationChart.draw();
@@ -4841,6 +4916,10 @@ function computeIntelligentPacingAndWeatherPlan(route, opts) {
         const spatialWarnings = activeRoute.warnings ? activeRoute.warnings.filter(w => w.type === "SPATIAL_MISMATCH") : [];
         calculateWarnings(activeRoute, spatialWarnings, units, desertThresholdMiles);
         renderWarningsUI(activeRoute);
+        renderStrategyModal(activeRoute);
+        if (mapController && climbColorsCheckbox) {
+          mapController.drawRoute(activeRoute, climbColorsCheckbox.checked);
+        }
       }
 
       updateUnitLabels();
@@ -4855,10 +4934,12 @@ function computeIntelligentPacingAndWeatherPlan(route, opts) {
 
   // Drag & Drop Course Importers
   if (dropZone && fileSelector) {
-    dropZone.addEventListener("click", () => {
+    dropZone.addEventListener("click", (e) => {
+      if (e.target.closest("label") || e.target === fileSelector || e.target.tagName === "INPUT") return;
       if (document.body.classList.contains("edit-locked")) return;
       fileSelector.click();
     });
+    fileSelector.addEventListener("click", (e) => e.stopPropagation());
     
     fileSelector.addEventListener("change", (e) => {
       if (document.body.classList.contains("edit-locked")) return;
@@ -5156,7 +5237,10 @@ function computeIntelligentPacingAndWeatherPlan(route, opts) {
           const endMi = convertDistanceValue(sec.end_dist_m);
           const unit = units === "imperial" ? "mi" : "km";
 
-          header.innerHTML = `<div><strong style="color: #60a5fa; font-size: 12px;">${escapeHtml(sec.name)}</strong> <span style="font-size: 10px; color: var(--text-muted);">(${startMi} ${unit} ➔ ${endMi} ${unit})</span></div>
+          const sGrade = computeSectorGradient(route, sec);
+          const cls = classifyGradient(sGrade);
+
+          header.innerHTML = `<div><span style="background: ${cls.bg}; color: ${cls.hex}; border: 1px solid ${cls.hex}; padding: 1px 6px; border-radius: 4px; font-size: 9px; font-weight: bold; margin-right: 6px;">${cls.label} (${sGrade.toFixed(1)}%)</span><strong style="color: #60a5fa; font-size: 12px;">${escapeHtml(sec.name)}</strong> <span style="font-size: 10px; color: var(--text-muted);">(${startMi} ${unit} ➔ ${endMi} ${unit})</span></div>
                               <span style="background: rgba(16, 185, 129, 0.15); color: #10b981; border: 1px solid rgba(16, 185, 129, 0.3); padding: 2px 8px; border-radius: 12px; font-size: 10px; font-weight: bold;">${sec.target_pace_min} min/${unit}</span>`;
 
           const body = document.createElement("div");
@@ -5314,6 +5398,7 @@ function computeIntelligentPacingAndWeatherPlan(route, opts) {
               start_dist_m: startDist,
               end_dist_m: endDist,
               name: `${name} (${(sLenMi).toFixed(1)} mi)`,
+              terrain: currentType,
               target_pace_min: parseFloat(secPace.toFixed(1)),
               strategy: strat,
               nutrition: nut
@@ -5331,6 +5416,7 @@ function computeIntelligentPacingAndWeatherPlan(route, opts) {
           start_dist_m: 0,
           end_dist_m: activeRoute.totalDistance,
           name: "Complete Course Push",
+          terrain: "flat",
           target_pace_min: parseFloat(flatPace.toFixed(1)),
           strategy: `Maintain steady pace around ${flatMph.toFixed(1)} mph.`,
           nutrition: "Regular hydration every 20 mins."
@@ -5400,10 +5486,19 @@ function computeIntelligentPacingAndWeatherPlan(route, opts) {
       }
       if (!activeRoute.executionPlan.sectors) activeRoute.executionPlan.sectors = [];
 
+      const txtSearch = `${name || ""} ${strat || ""}`.toLowerCase();
+      let inferredTerrain = "flat";
+      if (txtSearch.includes("climb") || txtSearch.includes("ascent") || txtSearch.includes("uphill") || txtSearch.includes("hike")) {
+        inferredTerrain = "climb";
+      } else if (txtSearch.includes("descent") || txtSearch.includes("descend") || txtSearch.includes("downhill")) {
+        inferredTerrain = "descend";
+      }
+
       activeRoute.executionPlan.sectors.push({
         start_dist_m: startVal * mult,
         end_dist_m: endVal * mult,
         name: name || "New Sector",
+        terrain: inferredTerrain,
         target_pace_min: pace,
         strategy: strat,
         nutrition: nut
@@ -6563,8 +6658,10 @@ function restoreSessionState() {
     const backup = JSON.parse(raw);
     if (backup && backup.route && backup.route.trackpoints && backup.route.trackpoints.length > 0) {
       activeRoute = backup.route;
-      renderElevationChart(activeRoute);
-      renderPOICards(activeRoute);
+      if (elevationChart) elevationChart.setRoute(activeRoute);
+      updateRouteStatsUI(activeRoute);
+      renderWarningsUI(activeRoute);
+      if (typeof renderRunnerSectorsUI === "function") renderRunnerSectorsUI();
       if (mapController) {
         mapController.loadRoute(activeRoute);
       }
@@ -6613,3 +6710,55 @@ document.addEventListener("visibilitychange", () => {
 
 // Automatically trigger restore after DOM setup
 setTimeout(restoreSessionState, 500);
+
+function renderRunnerSectorsUI() {
+  const listEl = document.getElementById("runner-sectors-list");
+  if (!listEl) return;
+  listEl.innerHTML = "";
+  if (!activeRoute || !activeRoute.executionPlan || !activeRoute.executionPlan.sectors || activeRoute.executionPlan.sectors.length === 0) {
+    listEl.innerHTML = `<span style="font-size: 10px; color: var(--text-muted); text-align: center; font-style: italic; padding: 6px 0;">No pacing sectors loaded. Click 'Auto Segment Course'.</span>`;
+    return;
+  }
+  const mult = typeof units !== "undefined" && units === "metric" ? 1000 : 1609.344;
+  const uUnit = typeof units !== "undefined" && units === "metric" ? "km" : "mi";
+
+  activeRoute.executionPlan.sectors.forEach((sec, idx) => {
+    const sMi = (sec.start_dist_m / mult).toFixed(1);
+    const eMi = (sec.end_dist_m / mult).toFixed(1);
+    const badgeBg = sec.terrain === "descend" ? "rgba(16,185,129,0.2)" : (sec.terrain === "flat" ? "rgba(59,130,246,0.2)" : "rgba(249,115,22,0.2)");
+    const badgeCol = sec.terrain === "descend" ? "#34d399" : (sec.terrain === "flat" ? "#60a5fa" : "#fb923c");
+
+    const item = document.createElement("div");
+    item.className = "runner-sector-item";
+    item.style.cssText = "background: rgba(0,0,0,0.3); border: 1px solid rgba(255,255,255,0.08); padding: 6px 8px; border-radius: 6px; display: flex; justify-content: space-between; align-items: center; margin-bottom:4px; cursor:pointer; transition:all 0.2s;";
+
+    item.innerHTML = `
+      <div style="display: flex; flex-direction: column; gap: 2px; max-width: 65%;">
+        <span style="font-size: 11px; font-weight: bold; color: #fff;">${idx+1}. ${sec.name}</span>
+        <span style="font-size: 9px; color: var(--text-muted);">${sMi} ➔ ${eMi} ${uUnit} (${(sec.avg_grade||0).toFixed(1)}%)</span>
+      </div>
+      <div style="display: flex; align-items: center; gap: 6px;">
+        <span style="background:${badgeBg}; color:${badgeCol}; font-size:10px; font-weight:bold; padding:2px 6px; border-radius:4px;">${sec.target_pace_min} min/${uUnit}</span>
+      </div>
+    `;
+
+    item.addEventListener("click", () => {
+      const allItems = listEl.querySelectorAll(".runner-sector-item");
+      allItems.forEach(i => i.style.borderColor = "rgba(255,255,255,0.08)");
+      item.style.borderColor = badgeCol;
+
+      if (typeof mapController !== "undefined" && mapController) {
+        mapController.highlightWarning({
+          startDist: sec.start_dist_m,
+          endDist: sec.end_dist_m,
+          colorHex: badgeCol
+        });
+        const clearBtn = document.getElementById("clear-warnings-highlight-btn");
+        if (clearBtn) clearBtn.classList.remove("hidden");
+      }
+    });
+
+    listEl.appendChild(item);
+  });
+}
+window.renderRunnerSectorsUI = renderRunnerSectorsUI;

@@ -714,14 +714,23 @@ export function parseGPX(gpxText, units = "imperial", desertThresholdMiles = 8.0
       const endDistM = sAttrs.match(/end_dist_m="([^"]+)"/);
       const nameM = sAttrs.match(/name="([^"]+)"/);
       const targetPaceM = sAttrs.match(/target_pace_min="([^"]+)"/);
+      const terrainM = sAttrs.match(/terrain="([^"]+)"/);
 
       const stratM = sInner.match(/<(?:ca:)?strategy>([\s\S]*?)<\/(?:ca:)?strategy>/);
       const nutM = sInner.match(/<(?:ca:)?nutrition>([\s\S]*?)<\/(?:ca:)?nutrition>/);
+
+      let terrainVal = terrainM ? terrainM[1] : "flat";
+      if (!terrainM) {
+        const txt = `${nameM?.[1] || ""} ${stratM?.[1] || ""}`.toLowerCase();
+        if (txt.includes("climb") || txt.includes("ascent") || txt.includes("uphill") || txt.includes("hike")) terrainVal = "climb";
+        else if (txt.includes("descent") || txt.includes("descend") || txt.includes("downhill")) terrainVal = "descend";
+      }
 
       executionPlan.sectors.push({
         start_dist_m: parseFloat(startDistM ? startDistM[1] : "0"),
         end_dist_m: parseFloat(endDistM ? endDistM[1] : "0"),
         name: nameM ? nameM[1] : "Sector",
+        terrain: terrainVal,
         target_pace_min: parseFloat(targetPaceM ? targetPaceM[1] : "10"),
         strategy: stratM ? stratM[1].trim() : "",
         nutrition: nutM ? nutM[1].trim() : ""
@@ -1003,7 +1012,7 @@ export function calculateWarnings(route, extraWarnings = [], units = "imperial",
 
   // 1. RESOURCE DESERTS
   // Define water/food resources. We filter waypoints that have water or food services, or are classified as aid/water.
-  const resourceWaypoints = route.waypoints.filter((wpt) => {
+  const resourceWaypoints = (route.waypoints || []).filter((wpt) => {
     const isWaterSym = wpt.sym.includes("water") || wpt.name.toLowerCase().includes("water") || wpt.name.toLowerCase().includes("spring") || wpt.name.toLowerCase().includes("creek");
     const isAidSym = wpt.sym.includes("aid") || wpt.name.toLowerCase().includes("aid") || wpt.name.toLowerCase().includes("station") || wpt.name.toLowerCase().includes("checkpoint");
     
@@ -1095,10 +1104,7 @@ export function calculateWarnings(route, extraWarnings = [], units = "imperial",
         approved: true,
       });
     }
-  }
-
-  // 2. DIFFICULT CLIMBS
-  // A climb is difficult if it has a high difficulty score based on elevation gain and grade.
+  }  // 2. DIFFICULT CLIMBS
   let inClimb = false;
   let climbStartIdx = -1;
   let maxEle = -Infinity;
@@ -1118,47 +1124,36 @@ export function calculateWarnings(route, extraWarnings = [], units = "imperial",
         lastPositiveGradeDist = tp.dist_m;
       }
     } else {
-      // Update max elevation seen
       if (tp.ele > maxEle) {
         maxEle = tp.ele;
         maxEleIdx = i;
       }
-
       if (grade > 3.5) {
         lastPositiveGradeDist = tp.dist_m;
       }
-
-      // Check termination conditions:
-      // 1. Descended more than 20 meters from max elevation seen on this climb.
-      // 2. Traveled more than 200 meters since the last time the grade was > 3.5%.
       const descendedTooMuch = tp.ele < maxEle - 20;
       const flatTooLong = tp.dist_m - lastPositiveGradeDist > 200;
 
       if (descendedTooMuch || flatTooLong || i === trackpoints.length - 1) {
-        // We terminate the climb at the peak (maxEleIdx) or current point
         const endIdx = descendedTooMuch || flatTooLong ? maxEleIdx : i;
         const startPt = trackpoints[climbStartIdx];
         const endPt = trackpoints[endIdx];
         const climbDist = endPt.dist_m - startPt.dist_m;
         const climbGain = endPt.ele - startPt.ele;
 
-        // Ensure the climb is at least a quarter mile (400 meters) and has positive gain
         if (climbDist >= 400 && climbGain > 0) {
           const avgGrade = (climbGain / climbDist) * 100;
-          
-          // Difficulty Score = Elevation Gain (m) * Average Grade (%)
           const score = Math.round(climbGain * avgGrade);
 
-          // We warn about climbs with difficulty score >= 100
           if (score >= 100) {
             const startDist = (startPt.dist_m * distMultiplier).toFixed(1);
             const endDist = (endPt.dist_m * distMultiplier).toFixed(1);
-            
-            // Format nice message with difficulty category
             let difficultyLabel = "Moderate";
             if (score > 1500) difficultyLabel = "Extreme";
             else if (score > 600) difficultyLabel = "Severe";
             else if (score > 250) difficultyLabel = "Difficult";
+
+            const cls = classifyGradient(avgGrade);
 
             warnings.push({
               id: `climb-${climbStartIdx}`,
@@ -1167,28 +1162,114 @@ export function calculateWarnings(route, extraWarnings = [], units = "imperial",
               startDist: startPt.dist_m,
               endDist: endPt.dist_m,
               climbScore: score,
+              avgGrade: parseFloat(avgGrade.toFixed(1)),
+              colorHex: cls.hex,
+              colorBg: cls.bg,
               approved: true,
             });
           }
         }
 
-        // Reset climb tracking
         inClimb = false;
         climbStartIdx = -1;
         maxEle = -Infinity;
         maxEleIdx = -1;
-        
-        // Retrospectively backtrack the loop if we terminated early due to descent,
-        // so we don't skip the start of a new climb starting right after the peak.
         if (descendedTooMuch || flatTooLong) {
-          i = endIdx; // loop will increment this to endIdx + 1
+          i = endIdx;
         }
       }
     }
   }
 
+  // 3. STEEP DESCENTS
+  let inDescent = false;
+  let descStartIdx = -1;
+  let minEle = Infinity;
+  let minEleIdx = -1;
+  let lastNegativeGradeDist = 0;
 
+  for (let i = 0; i < trackpoints.length; i++) {
+    const tp = trackpoints[i];
+    const grade = tp.grade || 0;
 
+    if (!inDescent) {
+      if (grade < -3.5) {
+        inDescent = true;
+        descStartIdx = i;
+        minEle = tp.ele;
+        minEleIdx = i;
+        lastNegativeGradeDist = tp.dist_m;
+      }
+    } else {
+      if (tp.ele < minEle) {
+        minEle = tp.ele;
+        minEleIdx = i;
+      }
+      if (grade < -3.5) {
+        lastNegativeGradeDist = tp.dist_m;
+      }
+      const climbedTooMuch = tp.ele > minEle + 20;
+      const flatTooLongD = tp.dist_m - lastNegativeGradeDist > 200;
+
+      if (climbedTooMuch || flatTooLongD || i === trackpoints.length - 1) {
+        const endIdx = climbedTooMuch || flatTooLongD ? minEleIdx : i;
+        const startPt = trackpoints[descStartIdx];
+        const endPt = trackpoints[endIdx];
+        const descDist = endPt.dist_m - startPt.dist_m;
+        const descDrop = startPt.ele - endPt.ele; // positive drop
+
+        if (descDist >= 400 && descDrop > 0) {
+          const avgGrade = -(descDrop / descDist) * 100; // negative grade
+          const score = Math.round(descDrop * Math.abs(avgGrade));
+
+          if (score >= 100) {
+            const startDist = (startPt.dist_m * distMultiplier).toFixed(1);
+            const endDist = (endPt.dist_m * distMultiplier).toFixed(1);
+            let diffLabel = "Moderate";
+            if (score > 1500) diffLabel = "Extreme";
+            else if (score > 600) diffLabel = "Severe";
+            else if (score > 250) diffLabel = "Difficult";
+
+            const cls = classifyGradient(avgGrade);
+
+            warnings.push({
+              id: `desc-${descStartIdx}`,
+              type: "STEEP_DESCENT",
+              message: `Steep Descent (${diffLabel}, Score: ${score}): Descent from ${startDist} to ${endDist} ${distName} (-${Math.round(descDrop * elevMultiplier)}${elevName} drop, avg grade: ${avgGrade.toFixed(1)}%).`,
+              startDist: startPt.dist_m,
+              endDist: endPt.dist_m,
+              climbScore: score,
+              avgGrade: parseFloat(avgGrade.toFixed(1)),
+              colorHex: cls.hex,
+              colorBg: cls.bg,
+              approved: true,
+            });
+          }
+        }
+
+        inDescent = false;
+        descStartIdx = -1;
+        minEle = Infinity;
+        minEleIdx = -1;
+        if (climbedTooMuch || flatTooLongD) {
+          i = endIdx;
+        }
+      }
+    }
+  }
+
+  // Attach colors to deserts and spatial mismatches
+  warnings.forEach(w => {
+    if (w.type === "RESOURCE_DESERT") {
+      w.colorHex = "#ef4444";
+      w.colorBg = "rgba(239, 68, 68, 0.15)";
+    } else if (w.type === "SPATIAL_MISMATCH") {
+      w.colorHex = "#a855f7";
+      w.colorBg = "rgba(168, 85, 247, 0.15)";
+    }
+  });
+
+  warnings.sort((a, b) => (a.startDist || 0) - (b.startDist || 0));
   route.warnings = warnings;
 }
 
@@ -1764,5 +1845,254 @@ function escapeXml(unsafe) {
       default: return c;
     }
   });
+}
+
+/**
+ * Resolves gradient category upper-bound thresholds from user settings or defaults.
+ */
+export function getGradientThresholds() {
+  let flatMax = 2.0, modMax = 5.0, steepMax = 8.0, vSteepMax = 10.0;
+  if (typeof localStorage !== "undefined") {
+    const f = parseFloat(localStorage.getItem("grad_thresh_flat"));
+    const m = parseFloat(localStorage.getItem("grad_thresh_mod"));
+    const s = parseFloat(localStorage.getItem("grad_thresh_steep"));
+    const v = parseFloat(localStorage.getItem("grad_thresh_vsteep"));
+    if (!isNaN(f) && f >= 0) flatMax = f;
+    if (!isNaN(m) && m > flatMax) modMax = m;
+    if (!isNaN(s) && s > modMax) steepMax = s;
+    if (!isNaN(v) && v > steepMax) vSteepMax = v;
+  }
+  return { flatMax, modMax, steepMax, vSteepMax };
+}
+
+/**
+ * Classifies gradient (%) into tier styling info (key, label, hex, bg).
+ */
+export function classifyGradient(grade) {
+  if (grade === null || grade === undefined || isNaN(grade)) {
+    return { key: "flat", label: "FLAT", hex: "#3b82f6", bg: "rgba(59, 130, 246, 0.15)" };
+  }
+  const { flatMax, modMax, steepMax, vSteepMax } = getGradientThresholds();
+  if (grade < -flatMax) {
+    return { key: "descent", label: "DESCENT", hex: "#10b981", bg: "rgba(16, 185, 129, 0.15)" };
+  } else if (grade <= flatMax) {
+    return { key: "flat", label: "FLAT", hex: "#3b82f6", bg: "rgba(59, 130, 246, 0.15)" };
+  } else if (grade <= modMax) {
+    return { key: "moderate", label: "MODERATE CLIMB", hex: "#f59e0b", bg: "rgba(245, 158, 11, 0.15)" };
+  } else if (grade <= steepMax) {
+    return { key: "steep", label: "STEEP CLIMB", hex: "#f97316", bg: "rgba(249, 115, 22, 0.15)" };
+  } else if (grade <= vSteepMax) {
+    return { key: "verysteep", label: "VERY STEEP", hex: "#ef4444", bg: "rgba(239, 68, 68, 0.15)" };
+  }
+  return { key: "extreme", label: "EXTREME CLIMB", hex: "#b91c1c", bg: "rgba(185, 28, 28, 0.25)" };
+}
+
+/**
+ * Computes average gradient (%) for a route sector.
+ */
+export function computeSectorGradient(route, sec) {
+  if (sec && typeof sec.avg_grade === "number" && !isNaN(sec.avg_grade)) return sec.avg_grade;
+  if (!route || !route.trackpoints || route.trackpoints.length === 0 || !sec) return 0;
+  const pts = route.trackpoints;
+  const sDist = sec.start_dist_m || 0;
+  const eDist = sec.end_dist_m || 0;
+  if (eDist <= sDist) return 0;
+  
+  let sEle = pts[0].ele || 0;
+  let eEle = pts[pts.length - 1].ele || 0;
+  let foundS = false;
+  for (let i = 0; i < pts.length; i++) {
+    if (!foundS && pts[i].dist_m >= sDist) { sEle = pts[i].ele || 0; foundS = true; }
+    if (pts[i].dist_m >= eDist) { eEle = pts[i].ele || 0; break; }
+  }
+  const grade = ((eEle - sEle) / (eDist - sDist)) * 100;
+  if (sec) sec.avg_grade = grade; // cache
+  return grade;
+}
+
+// ==========================================
+// DAY ARCHITECT & RUNNER PACING ENGINE
+// ==========================================
+
+export const DEFAULT_RUNNER_PROFILES = [
+  {
+    id: "profile_hawk_pro",
+    name: "Dan Hawk (Mountain Ultra Pro)",
+    basePaces: {
+      descent: 8.5,
+      flat: 9.5,
+      moderate: 12.5,
+      steep: 16.0,
+      verysteep: 20.0,
+      extreme: 26.0
+    },
+    restDurationMin: 15
+  },
+  {
+    id: "profile_casual",
+    name: "Casual Adventurer",
+    basePaces: {
+      descent: 11.0,
+      flat: 12.0,
+      moderate: 16.0,
+      steep: 21.0,
+      verysteep: 27.0,
+      extreme: 35.0
+    },
+    restDurationMin: 20
+  }
+];
+
+export const GOAL_PRESETS = {
+  hard_race: { label: "⚡ Hard Race", mult: 0.90, restMult: 0.5 },
+  training_run: { label: "🏃 Training Run", mult: 1.05, restMult: 1.0 },
+  moderate_workout: { label: "💪 Moderate Workout", mult: 1.15, restMult: 1.0 },
+  fun_day_out: { label: "🥾 Easy / Fun Day Out", mult: 1.25, restMult: 1.5 }
+};
+
+export function getRunnerProfiles() {
+  if (typeof localStorage !== "undefined") {
+    try {
+      const stored = JSON.parse(localStorage.getItem("kokopelli_runner_profiles"));
+      if (Array.isArray(stored) && stored.length > 0) return stored;
+    } catch(e) {}
+  }
+  return DEFAULT_RUNNER_PROFILES;
+}
+
+export function getActiveRunnerProfile() {
+  const profiles = getRunnerProfiles();
+  if (typeof localStorage !== "undefined") {
+    const actId = localStorage.getItem("kokopelli_active_profile_id");
+    const found = profiles.find(p => p.id === actId);
+    if (found) return found;
+  }
+  return profiles[0];
+}
+
+export function getActiveGoalPreset() {
+  let key = "training_run";
+  if (typeof localStorage !== "undefined") {
+    key = localStorage.getItem("kokopelli_goal_preset") || "training_run";
+  }
+  return GOAL_PRESETS[key] || GOAL_PRESETS.training_run;
+}
+
+/**
+ * Automatically slices a course into pacing sectors at major terrain inflections and POIs.
+ */
+export function autoSegmentCourse(route) {
+  if (!route || !route.trackpoints || route.trackpoints.length === 0) return [];
+  const pts = route.trackpoints;
+  const totalDist = route.totalDistance || pts[pts.length - 1].dist_m;
+  const profile = getActiveRunnerProfile();
+  const goal = getActiveGoalPreset();
+
+  const splits = new Set([0, Math.round(totalDist)]);
+
+  (route.waypoints || []).forEach(wpt => {
+    if (wpt.dist_m > 50 && wpt.dist_m < totalDist - 50) {
+      splits.add(Math.round(wpt.dist_m));
+    }
+  });
+
+  if (route.executionPlan && route.executionPlan.customSplits) {
+    route.executionPlan.customSplits.forEach(d => {
+      if (d > 50 && d < totalDist - 50) splits.add(Math.round(d));
+    });
+  }
+
+  let currMode = classifyGradient(pts[0].grade || 0).key;
+  let modeStartDist = 0;
+  for (let i = 1; i < pts.length; i++) {
+    const d = pts[i].dist_m;
+    const mode = classifyGradient(pts[i].grade || 0).key;
+    if (mode !== currMode) {
+      if (d - modeStartDist >= 600 && d > 100 && d < totalDist - 100) {
+        splits.add(Math.round(d));
+        currMode = mode;
+        modeStartDist = d;
+      }
+    }
+  }
+
+  const sorted = Array.from(splits).sort((a, b) => a - b);
+  const deduped = [sorted[0]];
+  for (let i = 1; i < sorted.length; i++) {
+    if (sorted[i] - deduped[deduped.length - 1] >= 250) {
+      deduped.push(sorted[i]);
+    } else if (sorted[i] === Math.round(totalDist)) {
+      deduped[deduped.length - 1] = Math.round(totalDist);
+    }
+  }
+
+  const sectors = [];
+  for (let i = 0; i < deduped.length - 1; i++) {
+    const sDist = deduped[i];
+    const eDist = deduped[i+1];
+    const sPt = pts.find(p => p.dist_m >= sDist) || pts[0];
+    const ePt = pts.find(p => p.dist_m >= eDist) || pts[pts.length - 1];
+    const gain = (ePt.ele || 0) - (sPt.ele || 0);
+    const grade = ((gain) / (eDist - sDist)) * 100;
+    const cls = classifyGradient(grade);
+    const basePace = profile.basePaces[cls.key] || profile.basePaces.flat || 10.0;
+    const targetPace = parseFloat((basePace * goal.mult).toFixed(1));
+
+    const endWpt = (route.waypoints || []).find(w => Math.abs(w.dist_m - eDist) < 150);
+    const sName = endWpt ? `➔ ${endWpt.name}` : `${cls.label} Segment`;
+
+    sectors.push({
+      start_dist_m: sDist,
+      end_dist_m: eDist,
+      name: sName,
+      terrain: cls.key === "descent" ? "descend" : (cls.key === "flat" ? "flat" : "climb"),
+      avg_grade: grade,
+      target_pace_min: targetPace,
+      strategy: `${cls.label} (${grade.toFixed(1)}%). Target ${targetPace} min/mi effort.`,
+      nutrition: endWpt ? `Rest break (~${Math.round(profile.restDurationMin * goal.restMult)} mins at ${endWpt.name}).` : "Regular hydration."
+    });
+  }
+
+  return sectors;
+}
+
+/**
+ * Backward Taxi Deadline solver: scales climb/flat paces to meet mandatory curfew while locking descents.
+ */
+export function solveBackwardPacing(targetTotalHrs, route, unitsMode = "imperial") {
+  if (!route || !route.executionPlan || !route.executionPlan.sectors || targetTotalHrs <= 0) return;
+  const sectors = route.executionPlan.sectors;
+  const profile = getActiveRunnerProfile();
+  const goal = getActiveGoalPreset();
+  const restMin = profile.restDurationMin * goal.restMult;
+  const mult = unitsMode === "metric" ? 1000 : 1609.344;
+
+  let aidCount = 0;
+  sectors.forEach(sec => { if (sec.name && sec.name.startsWith("➔")) aidCount++; });
+  const totalRestHrs = (aidCount * restMin) / 60;
+  const availRunHrs = targetTotalHrs - totalRestHrs;
+  if (availRunHrs <= 0) return;
+
+  let descHrs = 0;
+  let workDistNomHrs = 0;
+  sectors.forEach(sec => {
+    const distMi = (sec.end_dist_m - sec.start_dist_m) / mult;
+    if (sec.terrain === "descend") {
+      descHrs += (distMi * sec.target_pace_min) / 60;
+    } else {
+      workDistNomHrs += (distMi * sec.target_pace_min) / 60;
+    }
+  });
+
+  const reqWorkHrs = availRunHrs - descHrs;
+  const ratio = workDistNomHrs > 0 ? (reqWorkHrs / workDistNomHrs) : 1.0;
+
+  sectors.forEach(sec => {
+    if (sec.terrain !== "descend") {
+      sec.target_pace_min = parseFloat((sec.target_pace_min * Math.max(0.4, ratio)).toFixed(1));
+    }
+  });
+
+  route.executionPlan.targetDurationHrs = targetTotalHrs;
 }
 

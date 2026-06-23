@@ -14,6 +14,8 @@
  * limitations under the License.
  */
 
+import { classifyGradient } from "./gpx-parser.js";
+
 /**
  * Dynamically loads the Google Maps JavaScript API.
  * @param {string} apiKey Google Maps API Key
@@ -361,16 +363,6 @@ export class Map3DController {
     }
 
     if (colorCodeClimbs) {
-      // Climb Color Visualizer:
-      // Red: steep climbs (> 2% grade)
-      // Green: descents (< -2% grade)
-      // Blue: neutral segments (-2% to 2% grade)
-      const CLIMB_COLORS = {
-        climb: "#ff4e4e",   // Red
-        descent: "#52e098", // Green
-        neutral: "#3ea4ff"  // Blue
-      };
-
       // Smooth grades using a 10-point moving average to filter GPS wiggles.
       const windowSize = 10;
       const smoothedGrades = new Array(renderPts.length);
@@ -380,39 +372,32 @@ export class Map3DController {
         const start = Math.max(0, i - windowSize / 2);
         const end = Math.min(renderPts.length - 1, i + windowSize / 2);
         for (let j = start; j <= end; j++) {
-          sum += renderPts[j].grade;
+          sum += renderPts[j].grade || 0;
           count++;
         }
         smoothedGrades[i] = sum / count;
       }
 
-      const getClimbCategory = (grade) => {
-        if (grade > 2.5) return "climb";
-        if (grade < -2.5) return "descent";
-        return "neutral";
-      };
-
       let currentSegment = [];
-      let currentCategory = getClimbCategory(smoothedGrades[0]);
+      let currentInfo = classifyGradient(smoothedGrades[0]);
 
       for (let i = 0; i < renderPts.length; i++) {
         const pt = renderPts[i];
-        const category = getClimbCategory(smoothedGrades[i]);
+        const info = classifyGradient(smoothedGrades[i]);
 
-        if (category !== currentCategory && currentSegment.length > 0) {
-          // 15m relative offset to drape slightly above the ground
+        if (info.key !== currentInfo.key && currentSegment.length > 0) {
           currentSegment.push({ lat: pt.lat, lng: pt.lon, altitude: 15 });
-          this.addPolylineSegment(currentSegment, CLIMB_COLORS[currentCategory]);
+          this.addPolylineSegment(currentSegment, currentInfo.hex);
           
           currentSegment = [{ lat: pt.lat, lng: pt.lon, altitude: 15 }];
-          currentCategory = category;
+          currentInfo = info;
         } else {
           currentSegment.push({ lat: pt.lat, lng: pt.lon, altitude: 15 });
         }
       }
 
       if (currentSegment.length > 0) {
-        this.addPolylineSegment(currentSegment, CLIMB_COLORS[currentCategory]);
+        this.addPolylineSegment(currentSegment, currentInfo.hex);
       }
     } else {
       // Standard visualizer: single solid blue/cyan line
@@ -511,7 +496,7 @@ export class Map3DController {
     if (!this.Polyline3DElement) return;
     const poly = new this.Polyline3DElement({
       strokeColor: strokeColor,
-      strokeWidth: 6,
+      strokeWidth: 4,
       altitudeMode: "CLAMP_TO_GROUND",
       path: coordinates
     });
@@ -663,19 +648,14 @@ export class Map3DController {
     const warnPts = trackpoints.filter(pt => pt.dist_m >= warn.startDist && pt.dist_m <= warn.endDist);
     if (warnPts.length === 0) return;
 
-    // 2. Select color based on warning type (original semi-transparent colors)
-    let strokeColor = "rgba(245, 158, 11, 0.55)"; // default Amber for Resource Deserts
-    if (warn.type === "DIFFICULT_CLIMB" || warn.type === "EXPOSURE_RISK") {
-      strokeColor = "rgba(239, 68, 68, 0.6)"; // Red for terrain hazards
-    } else if (warn.type === "SPATIAL_MISMATCH") {
-      strokeColor = "rgba(168, 85, 247, 0.6)"; // Purple for spatial mismatches
-    }
+    // 2. Select color matching the alert warning
+    const strokeColor = warn.colorHex || "rgba(245, 158, 11, 0.8)";
 
     // 3. Create a thick highlight polyline
     if (!this.Polyline3DElement) return;
     this.activeWarningPolyline = new this.Polyline3DElement({
       strokeColor: strokeColor,
-      strokeWidth: 14,
+      strokeWidth: 6,
       altitudeMode: "CLAMP_TO_GROUND",
       path: warnPts.map(pt => ({ lat: pt.lat, lng: pt.lon, altitude: 10 }))
     });
@@ -723,13 +703,22 @@ export class Map3DController {
     });
     const avgEle = sumEle / warnPts.length;
 
-    // Smoothly fly camera to show the warning segment
+    let targetHeading = this.map.heading || 0;
+    if (warnPts.length >= 2) {
+      const firstPt = warnPts[0];
+      const lastPt = warnPts[warnPts.length - 1];
+      if (firstPt && lastPt && (firstPt.lat !== lastPt.lat || firstPt.lon !== lastPt.lon)) {
+        targetHeading = calculateBearing(firstPt.lat, firstPt.lon, lastPt.lat, lastPt.lon);
+      }
+    }
+
+    // Smoothly fly camera to show the warning segment oriented along direction of travel
     this.map.flyCameraTo({
       endCamera: {
         center: { lat: centerLat, lng: centerLon, altitude: avgEle },
         range: idealRange,
-        tilt: 45, // Tilted view to show terrain details
-        heading: this.map.heading // keep current heading
+        tilt: 55, // Cinematic tilt to show route pointing away into horizon
+        heading: targetHeading
       },
       durationMillis: 1500
     });
