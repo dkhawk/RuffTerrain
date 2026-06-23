@@ -6981,8 +6981,8 @@ function restoreSessionState() {
       updateRouteStatsUI(activeRoute);
       renderWarningsUI(activeRoute);
       if (typeof renderRunnerSectorsUI === "function") renderRunnerSectorsUI();
-      if (mapController) {
-        mapController.loadRoute(activeRoute);
+      if (mapController && typeof mapController.drawRoute === "function") {
+        mapController.drawRoute(activeRoute, typeof climbColorsCheckbox !== "undefined" && climbColorsCheckbox ? climbColorsCheckbox.checked : false);
       }
 
       if (backup.wizard) {
