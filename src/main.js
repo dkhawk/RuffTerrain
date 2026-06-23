@@ -3731,8 +3731,16 @@ function setupEventListeners() {
           }
         }
         syncLocksUI();
+        if (activeRoute) solveTriangleBtn.click();
       });
     });
+
+    if (triStartInput) {
+      triStartInput.addEventListener("change", () => { if (activeRoute) solveTriangleBtn.click(); });
+    }
+    if (triFinishInput) {
+      triFinishInput.addEventListener("change", () => { if (activeRoute) solveTriangleBtn.click(); });
+    }
 
     solveTriangleBtn.addEventListener("click", () => {
       if (!activeRoute) {
