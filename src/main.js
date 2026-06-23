@@ -3706,7 +3706,10 @@ function setupEventListeners() {
         const f = chk.dataset.facet;
         chk.checked = activeLocked.includes(f);
         const input = f === "start" ? triStartInput : (f === "finish" ? triFinishInput : null);
-        if (input) input.disabled = !activeLocked.includes(f);
+        if (input) {
+          input.disabled = false;
+          input.style.opacity = activeLocked.includes(f) ? "1.0" : "0.55";
+        }
       });
       const solved = ["start", "finish", "pacing"].find(f => !activeLocked.includes(f));
       if (triangleModeBadge) {
@@ -3735,33 +3738,39 @@ function setupEventListeners() {
       });
     });
 
+    const activateFacetInput = (facet) => {
+      if (!activeLocked.includes(facet)) {
+        if (activeLocked.length >= 2) {
+          const toRemove = activeLocked[0] === facet ? activeLocked[1] : activeLocked[0];
+          activeLocked = activeLocked.filter(f => f !== toRemove);
+        }
+        activeLocked.push(facet);
+        syncLocksUI();
+        if (activeRoute) solveTriangleBtn.click();
+      }
+    };
+
     ["start", "finish", "pacing"].forEach(facet => {
       const card = document.getElementById(`facet-card-${facet}`);
       if (card) {
         card.addEventListener("click", (e) => {
           if (e.target.classList.contains("tri-facet-lock")) return;
-          if (!activeLocked.includes(facet)) {
-            if (activeLocked.length >= 2) {
-              const toRemove = activeLocked[0];
-              activeLocked = activeLocked.filter(f => f !== toRemove);
-            }
-            activeLocked.push(facet);
-            syncLocksUI();
-            if (activeRoute) solveTriangleBtn.click();
-          }
+          activateFacetInput(facet);
           const input = facet === "start" ? triStartInput : (facet === "finish" ? triFinishInput : null);
-          if (input && !input.disabled) {
-            setTimeout(() => input.focus(), 10);
-          }
+          if (input) setTimeout(() => input.focus(), 10);
         });
       }
     });
 
     if (triStartInput) {
-      triStartInput.addEventListener("change", () => { if (activeRoute) solveTriangleBtn.click(); });
+      triStartInput.addEventListener("focus", () => activateFacetInput("start"));
+      triStartInput.addEventListener("input", () => { activateFacetInput("start"); if (activeRoute) solveTriangleBtn.click(); });
+      triStartInput.addEventListener("change", () => { activateFacetInput("start"); if (activeRoute) solveTriangleBtn.click(); });
     }
     if (triFinishInput) {
-      triFinishInput.addEventListener("change", () => { if (activeRoute) solveTriangleBtn.click(); });
+      triFinishInput.addEventListener("focus", () => activateFacetInput("finish"));
+      triFinishInput.addEventListener("input", () => { activateFacetInput("finish"); if (activeRoute) solveTriangleBtn.click(); });
+      triFinishInput.addEventListener("change", () => { activateFacetInput("finish"); if (activeRoute) solveTriangleBtn.click(); });
     }
 
     solveTriangleBtn.addEventListener("click", () => {
