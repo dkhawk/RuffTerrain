@@ -273,10 +273,13 @@
           <div style="display: flex; flex-direction: column; gap: 4px;">
             <div style="display: flex; justify-content: space-between; align-items: center;">
               <label style="font-size: 10px; color: var(--text-muted); font-weight: bold; margin: 0;">RUNNER PROFILE</label>
-              <div style="display: flex; gap: 4px;">
-                <button id="add-runner-profile-btn" class="btn btn-sm btn-secondary" style="font-size: 9px; padding: 2px 6px;">+ New Profile</button>
+              <div style="display: flex; gap: 4px; flex-wrap: wrap;">
+                <button id="add-runner-profile-btn" class="btn btn-sm btn-secondary" style="font-size: 9px; padding: 2px 6px;">+ New</button>
                 <button id="edit-runner-profile-btn" class="btn btn-sm btn-secondary" style="font-size: 9px; padding: 2px 6px; color: #fbbf24; border-color: rgba(251,191,36,0.3);">✏️ Edit</button>
                 <button id="delete-runner-profile-btn" class="btn btn-sm btn-secondary" style="font-size: 9px; padding: 2px 6px; color: #ef4444; border-color: rgba(239,68,68,0.3);">🗑️ Delete</button>
+                <button id="export-profiles-btn" class="btn btn-sm btn-secondary" style="font-size: 9px; padding: 2px 6px; color: #60a5fa; border-color: rgba(96,165,250,0.3);" title="Export all runner profiles to disk">📥 Export</button>
+                <label for="import-profiles-input" class="btn btn-sm btn-secondary" style="font-size: 9px; padding: 2px 6px; color: #34d399; border-color: rgba(52,211,153,0.3); margin:0; cursor:pointer;" title="Import saved runner profiles JSON">📤 Import</label>
+                <input type="file" id="import-profiles-input" accept=".json" style="display: none;" />
               </div>
             </div>
             <select id="runner-profile-select" style="background: rgba(0,0,0,0.4); border: 1px solid rgba(255,255,255,0.2); color: #fff; padding: 6px 10px; border-radius: 6px; font-size: 12px;">
@@ -287,6 +290,7 @@
             <div id="runner-profile-creator-card" class="hidden" style="background: rgba(0,0,0,0.5); border: 1px solid #60a5fa; padding: 8px; border-radius: 6px; display: flex; flex-direction: column; gap: 6px; margin-top: 4px;">
               <span id="profile-creator-title" style="font-size: 10px; font-weight: bold; color: #60a5fa;">➕ Create Custom Runner Profile</span>
               <input type="text" id="new-profile-name" placeholder="Profile Name e.g. Alex Mountain Pacer" style="background:rgba(0,0,0,0.4); border:1px solid rgba(255,255,255,0.2); color:#fff; padding:4px 6px; border-radius:4px; font-size:11px;" />
+              <textarea id="new-profile-desc" placeholder="Profile Description & Notes e.g. High altitude mountain pace tuned for UTMB with heavy pack" rows="2" style="background:rgba(0,0,0,0.4); border:1px solid rgba(255,255,255,0.2); color:#fff; padding:4px 6px; border-radius:4px; font-size:10px; resize:vertical; font-family:inherit;"></textarea>
               
               <div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 4px;">
                 <div>
@@ -334,20 +338,46 @@
             <div id="calibration-results-card" class="hidden" style="background:rgba(0,0,0,0.4); padding:6px; border-radius:4px; font-size:9px; color:#fff; display:flex; flex-direction:column; gap:2px;"></div>
           </div>
 
-          <div style="display: flex; flex-direction: column; gap: 6px; background: rgba(0,0,0,0.2); border: 1px solid rgba(255,255,255,0.06); padding: 8px; border-radius: 6px;">
-            <span style="font-size: 10px; color: var(--text-muted); font-weight: bold;">TIME SOLVING MODE</span>
-            <div style="display: grid; grid-template-columns: repeat(2, 1fr); gap: 6px;">
-              <button id="pacing-mode-forward" class="btn btn-sm btn-primary" style="font-size: 10px;">🎯 Goal Pace Mode</button>
-              <button id="pacing-mode-backward" class="btn btn-sm btn-secondary" style="font-size: 10px;">🚕 Deadline Taxi Mode</button>
+          <div id="pacing-triangle-card" style="display: flex; flex-direction: column; gap: 8px; background: rgba(59,130,246,0.12); border: 1px solid rgba(59,130,246,0.35); padding: 10px; border-radius: 8px;">
+            <div style="display: flex; justify-content: space-between; align-items: center;">
+              <span style="font-size: 11px; color: #60a5fa; font-weight: bold;">📐 DIURNAL PACING TRIANGLE</span>
+              <span id="triangle-mode-badge" style="font-size: 9px; background: rgba(96,165,250,0.2); color: #93c5fd; padding: 2px 6px; border-radius: 4px; font-weight: bold;">Solving: Finish Time</span>
+            </div>
+            <p style="margin:0; font-size: 9px; color: var(--text-secondary);">Specify any two facets of the triangle to deterministically compute the third while preserving proportional slope pacing.</p>
+
+            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 6px;">
+              <div id="facet-card-start" style="background: rgba(0,0,0,0.45); border: 1px solid #3b82f6; padding: 6px; border-radius: 6px; display:flex; flex-direction:column; gap:4px;">
+                <div style="display: flex; justify-content: space-between; align-items: center;">
+                  <label for="tri-start-input" style="font-size: 9px; font-weight: bold; color: #93c5fd; cursor:pointer;">🟢 1. START TIME</label>
+                  <input type="checkbox" id="tri-start-lock" class="tri-facet-lock" data-facet="start" checked style="cursor:pointer;" title="Lock Start Time facet" />
+                </div>
+                <input type="datetime-local" id="tri-start-input" style="background: rgba(0,0,0,0.5); border: 1px solid rgba(255,255,255,0.2); color: #fff; padding: 4px 6px; border-radius: 4px; font-size: 10px; width: 100%; box-sizing: border-box;" />
+              </div>
+
+              <div id="facet-card-finish" style="background: rgba(0,0,0,0.45); border: 1px solid rgba(255,255,255,0.1); padding: 6px; border-radius: 6px; display:flex; flex-direction:column; gap:4px; opacity: 0.7;">
+                <div style="display: flex; justify-content: space-between; align-items: center;">
+                  <label for="tri-finish-input" style="font-size: 9px; font-weight: bold; color: #cbd5e1; cursor:pointer;">🏁 2. FINISH TIME</label>
+                  <input type="checkbox" id="tri-finish-lock" class="tri-facet-lock" data-facet="finish" style="cursor:pointer;" title="Lock Finish Time facet" />
+                </div>
+                <input type="datetime-local" id="tri-finish-input" style="background: rgba(0,0,0,0.5); border: 1px solid rgba(255,255,255,0.2); color: #fff; padding: 4px 6px; border-radius: 4px; font-size: 10px; width: 100%; box-sizing: border-box;" />
+              </div>
             </div>
 
-            <div id="deadline-input-box" class="hidden" style="margin-top: 4px; display: flex; flex-direction: column; gap: 4px;">
-              <label for="deadline-clock-input" style="font-size: 10px; color: #fbbf24;">Mandatory Curfew Finish Time (Target Duration Hrs):</label>
-              <div style="display: flex; gap: 6px;">
-                <input type="number" id="deadline-clock-input" step="0.25" min="1" max="48" value="12.0" style="flex:1; background:rgba(0,0,0,0.4); border:1px solid #f59e0b; color:#fff; padding:4px 8px; border-radius:4px; font-size:12px;" />
-                <button id="solve-deadline-btn" class="btn btn-sm btn-secondary" style="background:#f59e0b; color:#000; font-weight:bold;">Solve Paces</button>
+            <div id="facet-card-pacing" style="background: rgba(0,0,0,0.45); border: 1px solid #3b82f6; padding: 6px; border-radius: 6px; display:flex; flex-direction:column; gap:4px;">
+              <div style="display: flex; justify-content: space-between; align-items: center;">
+                <span style="font-size: 9px; font-weight: bold; color: #93c5fd;">⚡ 3. TOPOGRAPHIC PACING</span>
+                <div style="display: flex; align-items: center; gap: 4px;">
+                  <span id="pacing-scaling-label" style="font-size: 9px; color: #34d399; font-weight:bold;">Factor: 1.00x</span>
+                  <input type="checkbox" id="tri-pacing-lock" class="tri-facet-lock" data-facet="pacing" checked style="cursor:pointer;" title="Lock Pacing Schedule facet" />
+                </div>
               </div>
-              <span style="font-size: 9px; color: var(--text-secondary);">Downhill running paces locked to protect quadriceps. Climb & Flat paces scale proportionally.</span>
+              <span id="tri-pacing-summary" style="font-size: 9px; color: var(--text-secondary);">Nominal Profile (Steep Climbs / Flat scale proportionally; Descents locked)</span>
+            </div>
+
+            <div style="display: none;">
+              <button id="pacing-mode-forward"></button>
+              <button id="pacing-mode-backward"></button>
+              <div id="deadline-input-box"><input id="deadline-clock-input" value="12.0" /><button id="solve-deadline-btn"></button></div>
             </div>
           </div>
 
@@ -361,6 +391,30 @@
             </div>
             <div id="runner-sectors-list" style="max-height: 180px; overflow-y: auto; display: flex; flex-direction: column; gap: 4px;">
               <span style="font-size: 10px; color: var(--text-muted); text-align: center; font-style: italic; padding: 6px 0;">Load a course to view pacing sectors.</span>
+            </div>
+
+            <!-- SECTOR PREVIEW / TELEMETRY CARD -->
+            <div id="sector-preview-card" style="background: rgba(0,0,0,0.5); border: 1px solid rgba(255,255,255,0.15); padding: 8px; border-radius: 6px; display: flex; flex-direction: column; gap: 6px; margin-top: 2px;">
+              <div style="display: flex; justify-content: space-between; align-items: center;">
+                <span style="font-size: 10px; font-weight: bold; color: #38bdf8;">🔭 SECTOR PREVIEW & TELEMETRY</span>
+                <div style="display: flex; gap: 4px;">
+                  <button id="preview-sector-prev" class="btn btn-sm btn-secondary" style="font-size: 10px; padding: 2px 8px;" title="Step Backward">⏮️ Prev</button>
+                  <button id="preview-sector-play" class="btn btn-sm btn-primary" style="font-size: 10px; padding: 2px 8px;" title="Auto Preview Sectors">▶️ Auto</button>
+                  <button id="preview-sector-next" class="btn btn-sm btn-secondary" style="font-size: 10px; padding: 2px 8px;" title="Step Forward">⏭️ Next</button>
+                </div>
+              </div>
+              
+              <div id="preview-sec-body" style="background: rgba(255,255,255,0.03); border: 1px solid rgba(255,255,255,0.05); padding: 6px; border-radius: 4px; display: flex; flex-direction: column; gap: 4px;">
+                <div style="font-size: 11px; font-weight: bold; color: #fff;" id="preview-sec-name">Select a sector or press Auto</div>
+                <div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 4px; font-size: 9px; color: #cbd5e1;">
+                  <div>📏 Dist: <strong id="preview-sec-dist" style="color:#fff;">--</strong></div>
+                  <div>⛰️ Climb: <strong id="preview-sec-climb" style="color:#fff;">--</strong></div>
+                  <div>📐 Grade: <strong id="preview-sec-grade" style="color:#fff;">--</strong></div>
+                  <div>⚡ Pace: <strong id="preview-sec-pace" style="color:#fff;">--</strong></div>
+                  <div>⏱️ Elapsed: <strong id="preview-sec-elapsed" style="color:#fff;">--</strong></div>
+                  <div>🟢🏁 Times: <strong id="preview-sec-times" style="color:#fff;">--</strong></div>
+                </div>
+              </div>
             </div>
           </div>
         </div>
@@ -417,6 +471,18 @@
           </header>
 
           <div class="poi-body" id="poi-body-container" style="margin-top: 10px;">
+            <div id="poi-val-desc-section" style="margin-bottom: 10px; padding: 8px 12px; background: rgba(255,255,255,0.03); border: 1px solid rgba(255,255,255,0.08); border-radius: 6px; font-size: 12px; color: var(--text-color); line-height: 1.4;">
+              <div style="font-size: 10px; color: var(--text-muted); font-weight: bold; text-transform: uppercase; margin-bottom: 4px;">Description / Notes:</div>
+              <div id="poi-val-desc" style="white-space: pre-wrap; font-family: var(--font-ui);">No description provided.</div>
+            </div>
+            <div id="poi-photo-display" style="margin-bottom: 10px; border-radius: 8px; border: 1px solid rgba(255,255,255,0.1); text-align: center; background: rgba(0,0,0,0.3); padding: 8px;">
+              <img id="poi-photo-img" src="" alt="Waypoint photo" class="hidden" style="max-width: 100%; max-height: 200px; object-fit: contain; display: block; margin: 0 auto 6px auto; border-radius:4px;" />
+              <div style="display:flex; justify-content:space-between; align-items:center; gap:8px;">
+                <label for="poi-dialog-photo-upload" class="btn btn-sm btn-secondary" style="font-size:10px; cursor:pointer; margin:0;">📷 Attach / Update Photo</label>
+                <input type="file" id="poi-dialog-photo-upload" accept="image/*" class="hidden" />
+                <span id="poi-photo-label" style="font-size:9px; color:var(--text-muted); overflow:hidden; text-overflow:ellipsis; white-space:nowrap; max-width:180px;">No photo attached</span>
+              </div>
+            </div>
             <div class="poi-detail-grid">
               <div class="poi-timeline-list">
                 <h4 style="font-size: 11px;">Waypoint Passes:</h4>
@@ -850,20 +916,34 @@
       
       <div style="display: flex; flex-direction: column; gap: 4px;">
         <label style="font-size: 10px; color: var(--text-muted); font-weight: bold; text-transform: uppercase;">Location Coordinate</label>
-        <div style="font-size: 11px; font-family: monospace; background: rgba(0,0,0,0.2); padding: 6px; border-radius: 4px; border: 1px solid rgba(255,255,255,0.05); display: flex; justify-content: space-between;">
-          <span id="add-poi-latlng">No point selected. Click on map.</span>
-          <span id="add-poi-dist">-- mi</span>
+        <div style="font-size: 11px; font-family: monospace; background: rgba(0,0,0,0.2); padding: 6px; border-radius: 4px; border: 1px solid rgba(255,255,255,0.05); display: flex; justify-content: space-between; align-items: center;">
+          <div>
+            <span id="add-poi-latlng">No point selected. Click on map.</span>
+            <span id="add-poi-dist" style="margin-left: 8px;">-- mi</span>
+          </div>
+          <button id="add-poi-pick-btn" class="btn btn-secondary" type="button" style="font-size: 10px; padding: 4px 8px; background: #3b82f6; color: white; border: none; border-radius: 4px; cursor: pointer;">📍 Pick on Map</button>
         </div>
       </div>
       
+      <div style="display: flex; flex-direction: column; gap: 4px;">
+        <label for="add-poi-name" style="font-size: 10px; color: var(--text-muted); font-weight: bold; text-transform: uppercase;">Waypoint Name / Title</label>
+        <input type="text" id="add-poi-name" placeholder="e.g. 'Critical Turn Left at Fork'" style="width: 100%; background: rgba(0,0,0,0.2); border: 1px solid rgba(255,255,255,0.1); color: var(--text-color); font-size: 12px; border-radius: 6px; padding: 8px; box-sizing: border-box; outline: none;" />
+      </div>
+
       <div style="display: flex; flex-direction: column; gap: 4px;">
         <label for="add-poi-desc" style="font-size: 10px; color: var(--text-muted); font-weight: bold; text-transform: uppercase;">Station Details / Description</label>
         <textarea id="add-poi-desc" placeholder="e.g. 'Water station called Twin Lakes, includes 10 gallons of water, snacks, no medical, cutoff is 2:00 PM'" rows="3" style="width: 100%; background: rgba(0,0,0,0.2); border: 1px solid rgba(255,255,255,0.1); color: var(--text-color); font-family: var(--font-ui); font-size: 12px; border-radius: 6px; padding: 8px; box-sizing: border-box; resize: none; outline: none;"></textarea>
       </div>
 
+      <div style="display: flex; flex-direction: column; gap: 4px;">
+        <label for="add-poi-photo-input" style="font-size: 10px; color: var(--text-muted); font-weight: bold; text-transform: uppercase;">Attach Photo / Picture (Optional)</label>
+        <input type="file" id="add-poi-photo-input" accept="image/*" style="font-size: 11px; color: var(--text-muted); background: rgba(0,0,0,0.2); border: 1px dashed rgba(255,255,255,0.15); border-radius: 6px; padding: 6px;" />
+        <div id="add-poi-photo-preview" class="hidden" style="max-height: 80px; overflow: hidden; border-radius: 4px; margin-top: 4px; border: 1px solid rgba(255,255,255,0.1); text-align: center;"><img id="add-poi-photo-preview-img" src="" alt="Preview" style="max-height:80px; max-width:100%; object-fit:contain;"/></div>
+      </div>
+
       <div style="display: flex; gap: 8px; margin-top: 4px;">
         <button id="add-poi-cancel-btn" class="btn btn-secondary" style="flex: 1; font-size: 12px; height: 32px; padding: 0;">Cancel</button>
-        <button id="add-poi-submit-btn" class="btn btn-primary" style="flex: 1; font-size: 12px; height: 32px; padding: 0;" disabled>Generate Waypoint</button>
+        <button id="add-poi-submit-btn" class="btn btn-primary" style="flex: 1; font-size: 12px; height: 32px; padding: 0;" disabled>Save Waypoint to Map</button>
       </div>
     </section>
 
@@ -878,19 +958,19 @@
     </div>
 
     <!-- Floating POI Preview Banner (Shown during fly-through preview to avoid screen clutter) -->
-    <div id="preview-poi-banner" class="glass-card hidden" style="position: absolute; top: 90px; left: 50%; transform: translateX(-50%); z-index: 1050; display: flex; flex-direction: column; gap: 8px; min-width: 380px; max-width: 480px; padding: 12px 20px; background: rgba(15, 23, 42, 0.88); backdrop-filter: blur(16px); border: 1px solid rgba(59, 130, 246, 0.4); border-radius: 16px; box-shadow: 0 12px 32px rgba(0, 0, 0, 0.6); color: #fff; animation: popDown 0.3s ease-out;">
-      <button id="close-preview-poi-btn" class="close-card-btn" title="Dismiss Dialog">&times;</button>
-      <div style="display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid rgba(255,255,255,0.1); padding-bottom: 6px; padding-right: 32px;">
-        <div style="display: flex; align-items: center; gap: 8px;">
-          <span id="preview-poi-sym" style="font-size: 20px;">📍</span>
-          <div style="display: flex; flex-direction: column; text-align: left;">
-            <h4 id="preview-poi-name" style="margin: 0; font-size: 14px; font-weight: 700;">Waypoint Name</h4>
-            <span id="preview-poi-type" style="font-size: 10px; color: #60a5fa; text-transform: uppercase; font-weight: 600; letter-spacing: 0.5px;">Milestone</span>
+    <div id="preview-poi-banner" class="glass-card hidden" style="position: absolute; top: 90px; left: 50%; transform: translateX(-50%); z-index: 1050; display: flex; flex-direction: column; gap: 12px; min-width: 440px; max-width: 560px; padding: 16px 24px; background: rgba(15, 23, 42, 0.92); backdrop-filter: blur(16px); border: 1px solid rgba(59, 130, 246, 0.4); border-radius: 16px; box-shadow: 0 12px 32px rgba(0, 0, 0, 0.6); color: #fff; animation: popDown 0.3s ease-out;">
+      <button id="close-preview-poi-btn" class="close-card-btn" style="top: 14px; right: 14px;" title="Dismiss Dialog">&times;</button>
+      <div style="display: flex; justify-content: space-between; align-items: flex-start; border-bottom: 1px solid rgba(255,255,255,0.12); padding-bottom: 10px; padding-right: 28px; gap: 16px;">
+        <div style="display: flex; align-items: flex-start; gap: 10px; flex: 1; min-width: 0;">
+          <span id="preview-poi-sym" style="font-size: 22px; flex-shrink: 0; margin-top: 1px;">📍</span>
+          <div style="display: flex; flex-direction: column; text-align: left; flex: 1; min-width: 0;">
+            <h4 id="preview-poi-name" style="margin: 0; font-size: 15px; font-weight: 700; line-height: 1.4; word-break: break-word; color: #fff;">Waypoint Name</h4>
+            <span id="preview-poi-type" style="font-size: 11px; color: #60a5fa; text-transform: uppercase; font-weight: 600; letter-spacing: 0.5px; margin-top: 4px;">Milestone</span>
           </div>
         </div>
-        <div style="display: flex; align-items: center; gap: 6px; background: rgba(16, 185, 129, 0.15); border: 1px solid rgba(16, 185, 129, 0.3); padding: 3px 8px; border-radius: 20px;">
-          <span id="preview-poi-weather-icon" style="font-size: 14px;">☀️</span>
-          <span id="preview-poi-weather-temp" style="font-size: 11px; font-weight: 700; color: #10b981;">--°</span>
+        <div style="display: flex; align-items: center; gap: 6px; background: rgba(16, 185, 129, 0.15); border: 1px solid rgba(16, 185, 129, 0.3); padding: 4px 10px; border-radius: 20px; flex-shrink: 0; margin-top: 2px;">
+          <span id="preview-poi-weather-icon" style="font-size: 15px;">☀️</span>
+          <span id="preview-poi-weather-temp" style="font-size: 12px; font-weight: 700; color: #10b981;">--°</span>
         </div>
       </div>
 

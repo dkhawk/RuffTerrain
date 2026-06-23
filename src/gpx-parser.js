@@ -181,6 +181,13 @@ export function recalculateRouteMetrics(route) {
   route.maxElevation = maxElevation === -Infinity ? 0 : maxElevation;
   route.avgSpacing = pts.length > 0 ? (totalDistance / pts.length) : 0;
 
+  if (route.segments && route.segments.length === 1) {
+    route.segments[0].startIndex = 0;
+    route.segments[0].endIndex = pts.length - 1;
+    route.segments[0].startDist = 0;
+    route.segments[0].endDist = totalDistance;
+  }
+
   // Re-snap waypoints
   route.waypoints.forEach((wpt) => {
     const snapped = snapToRouteSegments(route, { lat: wpt.lat, lng: wpt.lon });
@@ -503,9 +510,15 @@ export function parseGPX(gpxText, units = "imperial", desertThresholdMiles = 8.0
         };
       }
 
+      let photo_url = null;
+      const photoUrlMatch = stationInner.match(/<(?:ca:)?photo_url>([^<]+)<\/(?:ca:)?photo_url>/) || inner.match(/<link[^>]+href="([^"]+)"/);
+      if (photoUrlMatch) {
+        photo_url = photoUrlMatch[1];
+      }
+
       customExtension = {
         station: {
-          id, type, subtype, passes, accessibility, services, navigation_alert
+          id, type, subtype, passes, accessibility, services, navigation_alert, photo_url
         }
       };
     }
@@ -595,6 +608,14 @@ export function parseGPX(gpxText, units = "imperial", desertThresholdMiles = 8.0
           sym = "icons/scenic.svg";
         }
       }
+    }
+
+    if (customExtension?.station && customExtension.station.passes.length === 0) {
+      customExtension.station.passes.push({
+        num: 1,
+        dist_m: trackpoints[closestIdx]?.dist_m || 0,
+        label: name
+      });
     }
 
     waypoints.push({
@@ -1810,6 +1831,10 @@ export function serializeGPX(route) {
         xml += `/>\n`;
       }
 
+      if (station.photo_url) {
+        xml += `        <ca:photo_url>${escapeXml(station.photo_url)}</ca:photo_url>\n`;
+      }
+
       xml += `      </ca:station>\n`;
       xml += `    </extensions>\n`;
     }
@@ -2133,5 +2158,100 @@ export function solveBackwardPacing(targetTotalHrs, route, unitsMode = "imperial
   });
 
   route.executionPlan.targetDurationHrs = targetTotalHrs;
+}
+
+/**
+ * Diurnal Pacing Triangle Triad solver.
+ * Given 2 locked facets (from 'start', 'finish', 'pacing'), calculates the 3rd.
+ */
+export function solvePacingTriangle(lockedFacets, startMs, finishMs, route, unitsMode = "imperial") {
+  if (!route || !route.executionPlan) return null;
+  const locked = new Set(lockedFacets || ["start", "pacing"]);
+  const mult = unitsMode === "metric" ? 1000 : 1609.344;
+  
+  const nominalSectors = autoSegmentCourse(route);
+  if (!nominalSectors || nominalSectors.length === 0) return null;
+
+  const profile = getActiveRunnerProfile();
+  const goal = getActiveGoalPreset();
+  const restMin = (profile?.restDurationMin || 15) * (goal?.restMult || 1);
+
+  let aidCount = 0;
+  nominalSectors.forEach(sec => { if (sec.name && sec.name.startsWith("➔")) aidCount++; });
+  const totalRestHrs = (aidCount * restMin) / 60;
+
+  let nomRunHrs = 0;
+  let nomDescHrs = 0;
+  let nomWorkHrs = 0;
+
+  nominalSectors.forEach(sec => {
+    const distMi = (sec.end_dist_m - sec.start_dist_m) / mult;
+    const secHrs = (distMi * sec.target_pace_min) / 60;
+    nomRunHrs += secHrs;
+    if (sec.terrain === "descend") {
+      nomDescHrs += secHrs;
+    } else {
+      nomWorkHrs += secHrs;
+    }
+  });
+
+  const nomTotalHrs = nomRunHrs + totalRestHrs;
+
+  if (!locked.has("finish")) {
+    route.executionPlan.sectors = nominalSectors;
+    route.executionPlan.startTime = startMs ? new Date(startMs).toISOString() : (route.executionPlan.startTime || new Date().toISOString());
+    route.executionPlan.targetDurationHrs = parseFloat(nomTotalHrs.toFixed(2));
+    const solvedFinishMs = (startMs || Date.now()) + nomTotalHrs * 3600 * 1000;
+    return {
+      startMs: startMs || Date.now(),
+      finishMs: solvedFinishMs,
+      proportionalFactor: 1.0,
+      durationHrs: parseFloat(nomTotalHrs.toFixed(2))
+    };
+  }
+
+  if (!locked.has("start")) {
+    route.executionPlan.sectors = nominalSectors;
+    const solvedStartMs = (finishMs || (Date.now() + nomTotalHrs * 3600 * 1000)) - nomTotalHrs * 3600 * 1000;
+    route.executionPlan.startTime = new Date(solvedStartMs).toISOString();
+    route.executionPlan.targetDurationHrs = parseFloat(nomTotalHrs.toFixed(2));
+    return {
+      startMs: solvedStartMs,
+      finishMs: finishMs || (solvedStartMs + nomTotalHrs * 3600 * 1000),
+      proportionalFactor: 1.0,
+      durationHrs: parseFloat(nomTotalHrs.toFixed(2))
+    };
+  }
+
+  const reqTotalHrs = ((finishMs || Date.now()) - (startMs || Date.now())) / (3600 * 1000);
+  if (reqTotalHrs <= 0) {
+    throw new Error("Finish time must be chronologically after start time.");
+  }
+  const availRunHrs = reqTotalHrs - totalRestHrs;
+  if (availRunHrs <= 0) {
+    throw new Error("Time window is too narrow for scheduled aid break rest stops.");
+  }
+
+  const reqWorkHrs = Math.max(0.01, availRunHrs - nomDescHrs);
+  const gamma = nomWorkHrs > 0 ? (reqWorkHrs / nomWorkHrs) : 1.0;
+  const propFactor = parseFloat(gamma.toFixed(2));
+
+  nominalSectors.forEach(sec => {
+    if (sec.terrain !== "descend") {
+      sec.target_pace_min = Math.max(3.0, parseFloat((sec.target_pace_min * gamma).toFixed(1)));
+      sec.strategy = `${sec.terrain === "flat" ? "Flat" : "Climb"} (${sec.avg_grade ? sec.avg_grade.toFixed(1) : 0}%). Scaled ${sec.target_pace_min} min/mi (${propFactor}x effort).`;
+    }
+  });
+
+  route.executionPlan.sectors = nominalSectors;
+  route.executionPlan.startTime = new Date(startMs || Date.now()).toISOString();
+  route.executionPlan.targetDurationHrs = parseFloat(reqTotalHrs.toFixed(2));
+
+  return {
+    startMs: startMs || Date.now(),
+    finishMs: finishMs || Date.now(),
+    proportionalFactor: propFactor,
+    durationHrs: parseFloat(reqTotalHrs.toFixed(2))
+  };
 }
 

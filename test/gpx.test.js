@@ -1,6 +1,6 @@
 import { test, describe } from "node:test";
 import assert from "node:assert";
-import { parseGPX, getMetricsForPoint, classifyGradient, computeSectorGradient, calculateWarnings, autoSegmentCourse, solveBackwardPacing, saveRunnerProfile, deleteRunnerProfile, getRunnerProfiles } from "../src/gpx-parser.js";
+import { parseGPX, getMetricsForPoint, classifyGradient, computeSectorGradient, calculateWarnings, autoSegmentCourse, solveBackwardPacing, saveRunnerProfile, deleteRunnerProfile, getRunnerProfiles, solvePacingTriangle } from "../src/gpx-parser.js";
 import { writeGPX } from "../src/gpx-writer.js";
 import { getWeatherConditionStyle, getElapsedHoursAtDistance, getWeatherWindowDetails } from "../src/fetch-weather.js";
 import { parseCalibrationTrack, deriveFatigueDecayLambda, buildEmpiricalProfile } from "../src/empirical-calibration.js";
@@ -598,9 +598,90 @@ describe("GPX Parser & Writer Tests", () => {
     saveRunnerProfile(editedProfile);
     assert.strictEqual(getRunnerProfiles().find(p => p.id === "profile_test_crud").name, "Test CRUD Athlete Edited");
 
+    const descProfile = {
+      id: "profile_test_desc",
+      name: "Test Desc Athlete",
+      description: "High altitude mountain pace tuned for UTMB with heavy pack",
+      basePaces: { descent: 8.0, flat: 9.0, moderate: 12.0, steep: 15.0, verysteep: 19.0, extreme: 25.0 },
+      restDurationMin: 10
+    };
+    saveRunnerProfile(descProfile);
+    const foundDesc = getRunnerProfiles().find(p => p.id === "profile_test_desc");
+    assert.strictEqual(foundDesc.description, "High altitude mountain pace tuned for UTMB with heavy pack");
+    deleteRunnerProfile("profile_test_desc");
+
     deleteRunnerProfile("profile_test_crud");
     const profilesAfterDelete = getRunnerProfiles();
     assert.ok(!profilesAfterDelete.some(p => p.id === "profile_test_crud"));
+  });
+
+  test("Diurnal Pacing Triangle deterministically solves finish, start, or proportional terrain pacing", () => {
+    const mockRoute = {
+      totalDistance: 10000,
+      trackpoints: [
+        { dist_m: 0, ele: 0, grade: 0 },
+        { dist_m: 5000, ele: 0, grade: 0 },
+        { dist_m: 10000, ele: 0, grade: -5 }
+      ],
+      executionPlan: { sectors: [] }
+    };
+
+    const now = Date.now();
+    const res1 = solvePacingTriangle(["start", "pacing"], now, null, mockRoute, "metric");
+    assert.ok(res1);
+    assert.ok(res1.finishMs > now);
+    assert.strictEqual(res1.proportionalFactor, 1.0);
+
+    const finish = now + 10 * 3600 * 1000;
+    const res2 = solvePacingTriangle(["finish", "pacing"], null, finish, mockRoute, "metric");
+    assert.ok(res2);
+    assert.ok(res2.startMs < finish);
+
+    const start3 = now;
+    const finish3 = now + 2.0 * 3600 * 1000;
+    const res3 = solvePacingTriangle(["start", "finish"], start3, finish3, mockRoute, "metric");
+    assert.ok(res3);
+    assert.strictEqual(res3.durationHrs, 2.0);
+    assert.ok(res3.proportionalFactor > 0);
+  });
+
+  test("GPX course parsing and automated segmentation handle standard GPX files without runtime exceptions", () => {
+    const sampleGpx = `<?xml version="1.0" encoding="UTF-8"?>
+<gpx version="1.1" creator="Kokopelli">
+  <metadata><name>Resilience Test Trail</name><desc>Testing null safe loading</desc></metadata>
+  <trk><name>Trail 1</name><trkseg>
+    <trkpt lat="39.5" lon="-106.0"><ele>2800</ele><time>2026-07-01T06:00:00Z</time></trkpt>
+    <trkpt lat="39.51" lon="-106.01"><ele>2950</ele><time>2026-07-01T06:15:00Z</time></trkpt>
+    <trkpt lat="39.52" lon="-106.02"><ele>3100</ele><time>2026-07-01T06:30:00Z</time></trkpt>
+  </trkseg></trk>
+</gpx>`;
+    const route = parseGPX(sampleGpx, "imperial");
+    assert.ok(route);
+    assert.strictEqual(route.name, "Resilience Test Trail");
+    assert.strictEqual(route.description, "Testing null safe loading");
+    const segs = autoSegmentCourse(route);
+    assert.ok(Array.isArray(segs));
+  });
+
+  test("GPX Parser and Writer preserve waypoint photo_url extensions", () => {
+    const photoGpx = `<?xml version="1.0" encoding="UTF-8"?>
+<gpx version="1.1" creator="Kokopelli">
+  <wpt lat="39.5" lon="-106.0">
+    <name>Turn Marker</name>
+    <extensions>
+      <ca:station type="informational" id="wpt-turn">
+        <ca:photo_url>data:image/png;base64,iVBORw0KGgo=</ca:photo_url>
+      </ca:station>
+    </extensions>
+  </wpt>
+  <trk><name>Track 1</name><trkseg><trkpt lat="39.5" lon="-106.0"><ele>2800</ele></trkpt></trkseg></trk>
+</gpx>`;
+    const route = parseGPX(photoGpx, "imperial");
+    assert.ok(route.waypoints[0].extensions?.station?.photo_url);
+    assert.strictEqual(route.waypoints[0].extensions.station.photo_url, "data:image/png;base64,iVBORw0KGgo=");
+
+    const outXml = writeGPX(route);
+    assert.ok(outXml.includes("<ca:photo_url>data:image/png;base64,iVBORw0KGgo=</ca:photo_url>"));
   });
 
 });

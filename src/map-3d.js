@@ -188,8 +188,13 @@ export class Map3DController {
         this.onCameraChange({
           heading: this.map.heading,
           tilt: this.map.tilt,
-          range: this.map.range
         });
+      }
+    });
+
+    this.map.addEventListener("gmp-click", (e) => {
+      if (this.onMapClick && e.position && !this.mapClickListener) {
+        this.onMapClick(e.position);
       }
     });
 
@@ -407,7 +412,7 @@ export class Map3DController {
 
     route.waypoints.forEach((wpt) => {
       const marker = document.createElement("gmp-marker-3d-interactive");
-      marker.position = { lat: wpt.lat, lng: wpt.lon, altitude: 10 };
+      marker.position = { lat: wpt.lat, lng: wpt.lon, altitude: 5 };
       marker.altitudeMode = "RELATIVE_TO_GROUND";
       marker.extruded = true;
       marker.drawsWhenOccluded = true;
@@ -446,36 +451,23 @@ export class Map3DController {
     }
     
     this.mapClickListener = (e) => {
-      console.log("[map-3d] MAP CLICK LISTENER INTERCEPTED EVENT. Target:", e.target?.tagName, "Type:", e.type);
-      // If they clicked the temporary placement marker, ignore it
-      if (this.tempMarker && (this.tempMarker === e.target || this.tempMarker.contains(e.target))) {
-        return;
-      }
-
-      // Find if the target is a marker
+      if (this.tempMarker && (this.tempMarker === e.target || this.tempMarker.contains(e.target))) return;
       const clickedMarker = this.markers.find(m => m === e.target || m.contains(e.target));
       if (clickedMarker && clickedMarker.waypoint) {
-        console.log("[map-3d] FOUND CLICKED MARKER VIA MAP LISTENER:", clickedMarker.waypoint.name);
-        const event = new CustomEvent("waypoint-click", { detail: clickedMarker.waypoint });
-        window.dispatchEvent(event);
-      } else {
-        console.log("[map-3d] BACKGROUND MAP CLICK DETECTED.");
-        // Map background click
-        const pos = e.position || (e.detail && e.detail.position);
-        if (pos && this.onMapClick) {
-          this.onMapClick(pos);
-        }
+        const evt = new CustomEvent("waypoint-click", { detail: clickedMarker.waypoint });
+        window.dispatchEvent(evt);
+      } else if (e.position) {
+        if (this.onMapClick) this.onMapClick(e.position);
       }
     };
 
-    this.map.addEventListener("click", this.mapClickListener);
     this.map.addEventListener("gmp-click", this.mapClickListener);
 
     // Create scrubbing tracker cursor at the last known trackpoint progress index
     const cursorIdx = Math.min(Math.max(0, this.currentTrackpointIndex || 0), trackpoints.length - 1);
     const cursorPt = trackpoints[cursorIdx] || trackpoints[0];
     this.currentTrackMarker = new this.Marker3DElement({
-      position: { lat: cursorPt.lat, lng: cursorPt.lon, altitude: 15 },
+      position: { lat: cursorPt.lat, lng: cursorPt.lng !== undefined ? cursorPt.lng : cursorPt.lon, altitude: 5 },
       altitudeMode: "RELATIVE_TO_GROUND",
       extruded: true,
       drawsWhenOccluded: true
@@ -512,12 +504,12 @@ export class Map3DController {
     if (!this.markers) return;
     const marker = this.markers.find(m => m.waypoint === wpt);
     if (marker) {
-      marker.position = { lat: newPos.lat, lng: newPos.lon || newPos.lng, altitude: 10 };
+      marker.position = { lat: newPos.lat, lng: newPos.lon || newPos.lng, altitude: 5 };
     }
     if (trkptIndex !== null && this.activeRoute && this.activeRoute.trackpoints[trkptIndex]) {
       const pt = this.activeRoute.trackpoints[trkptIndex];
       if (this.currentTrackMarker) {
-        this.currentTrackMarker.position = { lat: pt.lat, lng: pt.lon, altitude: 15 };
+        this.currentTrackMarker.position = { lat: pt.lat, lng: pt.lon, altitude: 5 };
       }
       this.currentTrackpointIndex = trkptIndex;
     }
@@ -536,7 +528,7 @@ export class Map3DController {
     this.currentTrackpointIndex = trkptIndex;
 
     if (this.currentTrackMarker) {
-      this.currentTrackMarker.position = { lat: pt.lat, lng: pt.lon, altitude: 15 };
+      this.currentTrackMarker.position = { lat: pt.lat, lng: pt.lon, altitude: 5 };
     }
 
     this.currentCameraLat = pt.lat;
@@ -575,7 +567,7 @@ export class Map3DController {
     }
 
     if (this.currentTrackMarker) {
-      this.currentTrackMarker.position = { lat: pt.lat, lng: pt.lon, altitude: 15 };
+      this.currentTrackMarker.position = { lat: pt.lat, lng: pt.lon, altitude: 5 };
     }
 
     if (this.currentCameraAltitude === 0) {
@@ -731,7 +723,7 @@ export class Map3DController {
     this.removeTemporaryMarker();
 
     this.tempMarker = new this.Marker3DInteractiveElement({
-      position: { lat: pos.lat, lng: pos.lng, altitude: 10 },
+      position: { lat: pos.lat, lng: pos.lng !== undefined ? pos.lng : pos.lon, altitude: 5 },
       altitudeMode: "RELATIVE_TO_GROUND",
       extruded: true,
       drawsWhenOccluded: true

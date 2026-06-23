@@ -24,7 +24,7 @@
  * The preview controller iterates through trackpoint bearings to control camera panning and triggers contextual auto-pauses when approaching points of interest.
  */
 
-import { parseGPX, parseKML, reconcileCourse, getMetricsForPoint, calculateWarnings, haversine, snapToRouteSegments, recalculateRouteMetrics, classifyGradient, computeSectorGradient, autoSegmentCourse, solveBackwardPacing, saveRunnerProfile, deleteRunnerProfile } from "./gpx-parser.js";
+import { parseGPX, parseKML, reconcileCourse, getMetricsForPoint, calculateWarnings, haversine, snapToRouteSegments, recalculateRouteMetrics, classifyGradient, computeSectorGradient, autoSegmentCourse, solveBackwardPacing, saveRunnerProfile, deleteRunnerProfile, solvePacingTriangle, getRunnerProfiles, getActiveRunnerProfile, getActiveGoalPreset } from "./gpx-parser.js";
 import { writeGPX } from "./gpx-writer.js";
 import { correctRouteElevations } from "./fetch-elevation.js";
 import { sendToGemini, fetchAvailableModels, generateWaypointFromDescription } from "./gemini-client.js";
@@ -124,6 +124,13 @@ const pacingModeBackward = document.getElementById("pacing-mode-backward");
 const deadlineInputBox = document.getElementById("deadline-input-box");
 const deadlineClockInput = document.getElementById("deadline-clock-input");
 const solveDeadlineBtn = document.getElementById("solve-deadline-btn");
+const pacingTriangleCard = document.getElementById("pacing-triangle-card");
+const triangleModeBadge = document.getElementById("triangle-mode-badge");
+const triStartInput = document.getElementById("tri-start-input");
+const triFinishInput = document.getElementById("tri-finish-input");
+const triPacingSummary = document.getElementById("tri-pacing-summary");
+const pacingScalingLabel = document.getElementById("pacing-scaling-label");
+const solveTriangleBtn = document.getElementById("solve-triangle-btn");
 const autoSliceCourseBtn = document.getElementById("auto-slice-course-btn");
 const addSplitMarkerBtn = document.getElementById("add-split-marker-btn");
 const runnerSectorsList = document.getElementById("runner-sectors-list");
@@ -134,9 +141,12 @@ const calibrationResultsCard = document.getElementById("calibration-results-card
 const addRunnerProfileBtn = document.getElementById("add-runner-profile-btn");
 const editRunnerProfileBtn = document.getElementById("edit-runner-profile-btn");
 const deleteRunnerProfileBtn = document.getElementById("delete-runner-profile-btn");
+const exportProfilesBtn = document.getElementById("export-profiles-btn");
+const importProfilesInput = document.getElementById("import-profiles-input");
 const runnerProfileCreatorCard = document.getElementById("runner-profile-creator-card");
 const profileCreatorTitle = document.getElementById("profile-creator-title");
 const newProfileName = document.getElementById("new-profile-name");
+const newProfileDesc = document.getElementById("new-profile-desc");
 const newPaceClimb = document.getElementById("new-pace-climb");
 const newPaceFlat = document.getElementById("new-pace-flat");
 const newPaceDesc = document.getElementById("new-pace-desc");
@@ -228,6 +238,8 @@ const clearWarningsHighlightBtn = document.getElementById("clear-warnings-highli
 const poiDetailDialog = document.getElementById("poi-detail-dialog");
 const poiValName = document.getElementById("poi-val-name");
 const poiValNameInput = document.getElementById("poi-val-name-input");
+const poiValDesc = document.getElementById("poi-val-desc");
+const poiValDescSection = document.getElementById("poi-val-desc-section");
 const poiValPassTag = document.getElementById("poi-val-pass-tag");
 const poiValCutoffTag = document.getElementById("poi-val-cutoff-tag");
 const poiValDist = document.getElementById("poi-val-dist");
@@ -1847,7 +1859,7 @@ function startPlayback() {
   }
   playbackDistance = pts[Math.floor(playbackIndex)]?.dist_m || 0;
 
-  if (playbackDistance >= activeRoute.totalDistance) {
+  if (playbackDistance >= activeRoute.totalDistance - 1 && !lastPausedPoiId) {
     playbackDistance = 0;
     playbackIndex = 0;
   }
@@ -1865,13 +1877,9 @@ function startPlayback() {
 
     const prevDist = playbackDistance;
     playbackDistance += simSpeed * dt;
-
-    if (playbackDistance >= activeRoute.totalDistance) {
-      pausePlayback();
+    const isAtEnd = playbackDistance >= activeRoute.totalDistance;
+    if (isAtEnd) {
       playbackDistance = activeRoute.totalDistance;
-      playbackIndex = activeRoute.trackpoints.length - 1;
-      updatePlaybackFrame();
-      return;
     }
 
     updatePlaybackFrame();
@@ -1907,8 +1915,8 @@ function startPlayback() {
         for (const pass of passes) {
           const passDist = pass.dist_m;
           const passKey = `${wpt.id}-pass-${pass.num}`;
-          if (passDist >= Math.min(prevDist, playbackDistance) && 
-              passDist <= Math.max(prevDist, playbackDistance) && 
+          if (passDist >= Math.min(prevDist, playbackDistance) - 0.5 && 
+              passDist <= Math.max(prevDist, playbackDistance) + 0.5 && 
               passKey !== lastPausedPoiId) {
             reachedPoi = wpt;
             crossedPass = pass;
@@ -1917,8 +1925,8 @@ function startPlayback() {
         }
       } else {
         // Single-pass / standard waypoint: check base dist_m
-        if (wpt.dist_m >= Math.min(prevDist, playbackDistance) && 
-            wpt.dist_m <= Math.max(prevDist, playbackDistance) && 
+        if (wpt.dist_m >= Math.min(prevDist, playbackDistance) - 0.5 && 
+            wpt.dist_m <= Math.max(prevDist, playbackDistance) + 0.5 && 
             wpt.id !== lastPausedPoiId) {
           reachedPoi = wpt;
           break;
@@ -1932,6 +1940,14 @@ function startPlayback() {
       lastPausedPoiId = isMultiPass ? `${reachedPoi.id}-pass-${crossedPass.num}` : reachedPoi.id;
       showPreviewPoiBanner(reachedPoi, playbackDistance);
       return; 
+    }
+
+    if (isAtEnd) {
+      pausePlayback();
+      playbackDistance = activeRoute.totalDistance;
+      playbackIndex = activeRoute.trackpoints.length - 1;
+      updatePlaybackFrame();
+      return;
     }
 
     playbackAnimationId = requestAnimationFrame(renderLoop);
@@ -2361,6 +2377,55 @@ async function showPoiDetailDialog(wpt, index, referenceDist = null, startCollap
     const li = document.createElement("li");
     li.textContent = `Waypoint location: ${formatDistance(currentDist)}`;
     poiTimelinePassesList.appendChild(li);
+  }
+
+  if (poiValDesc) {
+    poiValDesc.textContent = wpt.desc || wpt.extensions?.station?.desc || "No description provided.";
+  }
+  if (poiValDescSection) {
+    poiValDescSection.classList.remove("hidden");
+  }
+
+  // Handle attached photo display & update in waypoint details dialog
+  const photoImgEl = document.getElementById("poi-photo-img");
+  const photoUploadEl = document.getElementById("poi-dialog-photo-upload");
+  const photoLabelEl = document.getElementById("poi-photo-label");
+  const attachedUrl = wpt.extensions?.station?.photo_url || wpt.link || null;
+
+  if (photoImgEl && photoLabelEl) {
+    if (attachedUrl) {
+      photoImgEl.src = attachedUrl;
+      photoImgEl.classList.remove("hidden");
+      photoLabelEl.textContent = "Photo attached";
+    } else {
+      photoImgEl.src = "";
+      photoImgEl.classList.add("hidden");
+      photoLabelEl.textContent = "No photo attached";
+    }
+  }
+
+  if (photoUploadEl && !photoUploadEl._hasDialogPhotoListener) {
+    photoUploadEl._hasDialogPhotoListener = true;
+    photoUploadEl.addEventListener("change", (e) => {
+      const file = e.target.files?.[0];
+      if (!file || !activeDialogWpt) return;
+      const reader = new FileReader();
+      reader.onload = (evt) => {
+        const url = evt.target?.result;
+        if (!activeDialogWpt.extensions) activeDialogWpt.extensions = {};
+        if (!activeDialogWpt.extensions.station) activeDialogWpt.extensions.station = { type: "informational" };
+        activeDialogWpt.extensions.station.photo_url = url;
+        activeDialogWpt.link = url;
+        if (photoImgEl && photoLabelEl) {
+          photoImgEl.src = url;
+          photoImgEl.classList.remove("hidden");
+          photoLabelEl.textContent = file.name;
+        }
+        saveActiveRouteState();
+        showToast("Saved photo attachment to waypoint!");
+      };
+      reader.readAsDataURL(file);
+    });
   }
 
   // Service icons mapping (restrooms, aid, water, sleep, etc.)
@@ -2853,8 +2918,12 @@ function loadGpxFile(file) {
     try {
       processGpxContent(e.target.result, file.name);
     } catch (err) {
-      showToast("Error parsing file: " + err.message);
+      console.error("Critical course loading failure:", err);
+      showToast("Error loading course: " + err.message, true);
     }
+  };
+  reader.onerror = () => {
+    showToast("Failed to read file from disk.", true);
   };
   reader.readAsText(file);
 }
@@ -2866,28 +2935,46 @@ function processGpxContent(text, filename) {
   const isKml = filename.endsWith(".kml") || text.includes("<kml") || text.includes("</kml>");
   activeRoute = isKml ? parseKML(text, units, desertThresholdMiles) : parseGPX(text, units, desertThresholdMiles);
   activeRoute.avgSpacing = activeRoute.trackpoints.length > 0 ? (activeRoute.totalDistance / activeRoute.trackpoints.length) : 0;
-  chatHistory = []; // Reset Gemini chatbot context on new course ingestion
+  chatHistory = [];
   hasFetchedWeather = false;
-  pausePlayback();
+  if (typeof pausePlayback === "function") pausePlayback();
   playbackDistance = 0;
   playbackIndex = 0;
   lastPausedPoiIndex = -1;
-  closePoiDetailDialog(false);
+  if (typeof closePoiDetailDialog === "function") closePoiDetailDialog(false);
 
-  // Pre-calculate running elevation gain and loss values
-  precomputeRunningMetrics(activeRoute);
+  if (typeof precomputeRunningMetrics === "function") precomputeRunningMetrics(activeRoute);
 
-  // Display route name
   const nameDisplay = document.getElementById("course-name-display");
-  if (nameDisplay) {
+  if (nameDisplay && activeRoute && activeRoute.name) {
     nameDisplay.textContent = activeRoute.name.toUpperCase();
   }
 
-  // Display Course Info
-  if (activeRoute.description && activeRoute.description !== "No description provided.") {
-    let infoHtml = `<p>${escapeHtml(activeRoute.description)}</p>`;
-    if (activeRoute.segments && activeRoute.segments.length > 1) {
-      infoHtml += `<h4 style="margin-top: 20px; font-weight: 600; color: var(--primary-color);">COURSE SEGMENTS</h4>`;
+  if (courseInfoText && courseInfoBtn) {
+    if (activeRoute && activeRoute.description && activeRoute.description !== "No description provided.") {
+      let infoHtml = `<p>${escapeHtml(activeRoute.description)}</p>`;
+      if (activeRoute.segments && activeRoute.segments.length > 1) {
+        infoHtml += `<h4 style="margin-top: 20px; font-weight: 600; color: var(--primary-color);">COURSE SEGMENTS</h4>`;
+        infoHtml += `<div class="course-segments-list" style="margin-top: 10px; display: flex; flex-direction: column; gap: 8px;">`;
+        activeRoute.segments.forEach((seg, idx) => {
+          const distVal = ((seg.endDist - seg.startDist) * (units === "imperial" ? 1 / 1609.344 : 1 / 1000)).toFixed(2);
+          const distUnit = units === "imperial" ? "mi" : "km";
+          infoHtml += `
+            <div class="segment-info-item" style="padding: 8px 12px; border-radius: 6px; border: 1px solid rgba(255,255,255,0.05); background: rgba(255,255,255,0.02);">
+              <div style="font-weight: 600; font-size: 13px; color: var(--primary-color); display: flex; justify-content: space-between;">
+                <span>${idx + 1}. ${escapeHtml(seg.name)}</span>
+                <span>${distVal} ${distUnit}</span>
+              </div>
+              ${seg.desc ? `<div style="font-size: 12px; margin-top: 4px; color: rgba(255,255,255,0.6);">${escapeHtml(seg.desc)}</div>` : ''}
+            </div>
+          `;
+        });
+        infoHtml += `</div>`;
+      }
+      courseInfoText.innerHTML = infoHtml;
+      courseInfoBtn.classList.remove("hidden");
+    } else if (activeRoute && activeRoute.segments && activeRoute.segments.length > 1) {
+      let infoHtml = `<h4 style="margin-top: 10px; font-weight: 600; color: var(--primary-color);">COURSE SEGMENTS</h4>`;
       infoHtml += `<div class="course-segments-list" style="margin-top: 10px; display: flex; flex-direction: column; gap: 8px;">`;
       activeRoute.segments.forEach((seg, idx) => {
         const distVal = ((seg.endDist - seg.startDist) * (units === "imperial" ? 1 / 1609.344 : 1 / 1000)).toFixed(2);
@@ -2903,59 +2990,41 @@ function processGpxContent(text, filename) {
         `;
       });
       infoHtml += `</div>`;
+      courseInfoText.innerHTML = infoHtml;
+      courseInfoBtn.classList.remove("hidden");
+    } else {
+      courseInfoText.textContent = "No description available.";
+      courseInfoBtn.classList.add("hidden");
     }
-    courseInfoText.innerHTML = infoHtml;
-    courseInfoBtn.classList.remove("hidden");
-  } else if (activeRoute.segments && activeRoute.segments.length > 1) {
-    let infoHtml = `<h4 style="margin-top: 10px; font-weight: 600; color: var(--primary-color);">COURSE SEGMENTS</h4>`;
-    infoHtml += `<div class="course-segments-list" style="margin-top: 10px; display: flex; flex-direction: column; gap: 8px;">`;
-    activeRoute.segments.forEach((seg, idx) => {
-      const distVal = ((seg.endDist - seg.startDist) * (units === "imperial" ? 1 / 1609.344 : 1 / 1000)).toFixed(2);
-      const distUnit = units === "imperial" ? "mi" : "km";
-      infoHtml += `
-        <div class="segment-info-item" style="padding: 8px 12px; border-radius: 6px; border: 1px solid rgba(255,255,255,0.05); background: rgba(255,255,255,0.02);">
-          <div style="font-weight: 600; font-size: 13px; color: var(--primary-color); display: flex; justify-content: space-between;">
-            <span>${idx + 1}. ${escapeHtml(seg.name)}</span>
-            <span>${distVal} ${distUnit}</span>
-          </div>
-          ${seg.desc ? `<div style="font-size: 12px; margin-top: 4px; color: rgba(255,255,255,0.6);">${escapeHtml(seg.desc)}</div>` : ''}
-        </div>
-      `;
-    });
-    infoHtml += `</div>`;
-    courseInfoText.innerHTML = infoHtml;
-    courseInfoBtn.classList.remove("hidden");
-  } else {
-    courseInfoText.textContent = "No description available.";
-    courseInfoBtn.classList.add("hidden");
   }
 
-  // Clear chatbot logs
-  chatMessages.innerHTML = `
-    <div class="message assistant">
-      <p>Imported "<strong>${activeRoute.name}</strong>" successfully. Paste race details or ask me to configure aid stations.</p>
-    </div>
-  `;
+  if (chatMessages) {
+    chatMessages.innerHTML = `
+      <div class="message assistant">
+        <p>Imported "<strong>${activeRoute.name}</strong>" successfully. Paste race details or ask me to configure aid stations.</p>
+      </div>
+    `;
+  }
 
-  // Make overlays visible
-  cardStats.classList.remove("hidden");
+  if (cardStats) cardStats.classList.remove("hidden");
   if (toggleStatsBtn) toggleStatsBtn.classList.add("hidden");
-  cardWarnings.classList.remove("hidden");
+  if (cardWarnings) cardWarnings.classList.remove("hidden");
   if (toggleWarningsBtn) toggleWarningsBtn.classList.add("hidden");
-  cardWeather.classList.remove("hidden");
+  if (cardWeather) cardWeather.classList.remove("hidden");
   if (toggleWeatherBtn) toggleWeatherBtn.classList.add("hidden");
-  updateWeatherShiftedState();
-  
-  if (activeRoute.trackpoints.length > 0) {
+  if (typeof updateWeatherShiftedState === "function") updateWeatherShiftedState();
+
+  if (activeRoute && activeRoute.trackpoints && activeRoute.trackpoints.length > 0) {
     const startPt = activeRoute.trackpoints[0];
-    triggerWeatherWeather(startPt.lat, startPt.lon, true);
+    if (startPt && typeof triggerWeatherWeather === "function") {
+      triggerWeatherWeather(startPt.lat, startPt.lon, true);
+    }
   }
 
-  cardElevationScrubber.classList.remove("hidden");
-  hudMetrics.classList.remove("hidden");
+  if (cardElevationScrubber) cardElevationScrubber.classList.remove("hidden");
+  if (hudMetrics) hudMetrics.classList.remove("hidden");
 
-  // Show/hide time HUD column based on presence of actual timestamps in the GPX
-  const hasTime = activeRoute.trackpoints.length > 0 && !!activeRoute.trackpoints[0].time;
+  const hasTime = activeRoute && activeRoute.trackpoints && activeRoute.trackpoints.length > 0 && !!activeRoute.trackpoints[0].time;
   if (hudMetricTime) {
     if (hasTime) {
       hudMetricTime.classList.remove("hidden");
@@ -2963,45 +3032,46 @@ function processGpxContent(text, filename) {
       hudMetricTime.classList.add("hidden");
     }
   }
-  if (cardGeminiChat) {
-    cardGeminiChat.classList.remove("hidden");
-  }
+  if (cardGeminiChat) cardGeminiChat.classList.remove("hidden");
   const toggleChatBtn = document.getElementById("toggle-chat-btn");
-  if (toggleChatBtn) {
-    toggleChatBtn.classList.remove("hidden");
+  if (toggleChatBtn) toggleChatBtn.classList.remove("hidden");
+
+  if (elevationChart) {
+    try {
+      elevationChart.units = units;
+      elevationChart.setRoute(activeRoute);
+    } catch(e) { console.warn("ElevationChart setRoute error:", e); }
   }
 
-  // Sync components
-  elevationChart.units = units;
-  elevationChart.setRoute(activeRoute);
-
-  if (apiKeyMaps && mapController.map) {
-    mapController.drawRoute(activeRoute, climbColorsCheckbox.checked);
-    mapController.syncToTrackpoint(0, true);
+  if (apiKeyMaps && mapController && mapController.map) {
+    try {
+      mapController.drawRoute(activeRoute, climbColorsCheckbox ? climbColorsCheckbox.checked : false);
+      mapController.syncToTrackpoint(0, true);
+    } catch(e) { console.warn("MapController drawRoute error:", e); }
   }
 
-  elevationChart.progressIndex = 0;
-  elevationChart.hoverIdx = -1;
-  elevationChart.draw();
+  if (elevationChart) {
+    try {
+      elevationChart.progressIndex = 0;
+      elevationChart.hoverIdx = -1;
+      elevationChart.draw();
+    } catch(e) { console.warn("ElevationChart draw error:", e); }
+  }
 
-  updateRouteStatsUI(activeRoute);
-  renderWarningsUI(activeRoute);
+  if (typeof updateRouteStatsUI === "function") updateRouteStatsUI(activeRoute);
+  if (typeof renderWarningsUI === "function") renderWarningsUI(activeRoute);
   if (activeRoute && activeRoute.executionPlan && (!activeRoute.executionPlan.sectors || activeRoute.executionPlan.sectors.length === 0)) {
     activeRoute.executionPlan.sectors = autoSegmentCourse(activeRoute);
   }
   if (typeof renderRunnerSectorsUI === "function") renderRunnerSectorsUI();
 
-  updateUnitLabels();
-  updateHUD(0);
-  if (clearWarningsHighlightBtn) {
-    clearWarningsHighlightBtn.classList.add("hidden");
-  }
-  
-  // Render sidebar waypoints outline list
-  renderEditWaypointList();
+  if (typeof updateUnitLabels === "function") updateUnitLabels();
+  if (typeof updateHUD === "function") updateHUD(0);
+  if (clearWarningsHighlightBtn) clearWarningsHighlightBtn.classList.add("hidden");
 
-  // Save to recently played list
-  addRecentCourse(activeRoute.name, text);
+  if (typeof renderEditWaypointList === "function") renderEditWaypointList();
+
+  if (typeof addRecentCourse === "function") addRecentCourse(activeRoute ? activeRoute.name : filename, text);
 
   showToast(`Loaded ${filename}`);
 }
@@ -3402,7 +3472,22 @@ function setupEventListeners() {
   if (studioTabChat) studioTabChat.addEventListener("click", () => activateStudioTab(studioTabChat, cardGeminiChat));
 
   // Day Architect Preset & Solver controls
+  const renderRunnerProfilesDropdown = (selectedId) => {
+    if (!runnerProfileSelect) return;
+    const profiles = getRunnerProfiles();
+    const actId = selectedId || (typeof localStorage !== "undefined" ? localStorage.getItem("kokopelli_active_profile_id") : null) || "profile_hawk_pro";
+    runnerProfileSelect.innerHTML = "";
+    profiles.forEach(p => {
+      const opt = document.createElement("option");
+      opt.value = p.id;
+      opt.textContent = p.name;
+      if (p.id === actId) opt.selected = true;
+      runnerProfileSelect.appendChild(opt);
+    });
+  };
+
   if (runnerProfileSelect) {
+    renderRunnerProfilesDropdown();
     runnerProfileSelect.addEventListener("change", (e) => {
       localStorage.setItem("kokopelli_active_profile_id", e.target.value);
       if (activeRoute) {
@@ -3552,6 +3637,7 @@ function setupEventListeners() {
       editingProfileId = null;
       if (profileCreatorTitle) profileCreatorTitle.textContent = "➕ Create Custom Runner Profile";
       if (newProfileName) newProfileName.value = "";
+      if (newProfileDesc) newProfileDesc.value = "";
       runnerProfileCreatorCard.classList.remove("hidden");
     });
 
@@ -3562,7 +3648,11 @@ function setupEventListeners() {
         const activeProf = getActiveRunnerProfile();
         editingProfileId = curId;
         if (profileCreatorTitle) profileCreatorTitle.textContent = "✏️ Edit Runner Profile";
-        if (newProfileName) newProfileName.value = activeProf.name.split(" (")[0] || activeProf.name;
+        if (newProfileName) {
+          newProfileName.value = activeProf.name.split(" (")[0] || activeProf.name;
+          setTimeout(() => newProfileName.focus(), 50);
+        }
+        if (newProfileDesc) newProfileDesc.value = activeProf.description || "";
         if (newPaceClimb && activeProf.basePaces) newPaceClimb.value = activeProf.basePaces.steep || 21.0;
         if (newPaceFlat && activeProf.basePaces) newPaceFlat.value = activeProf.basePaces.flat || 10.5;
         if (newPaceDesc && activeProf.basePaces) newPaceDesc.value = activeProf.basePaces.descent || 9.5;
@@ -3577,6 +3667,7 @@ function setupEventListeners() {
 
     saveProfileCreateBtn.addEventListener("click", () => {
       const name = newProfileName?.value.trim() || "Custom Runner Profile";
+      const descText = newProfileDesc?.value.trim() || "";
       const climb = parseFloat(newPaceClimb?.value) || 21.0;
       const flat = parseFloat(newPaceFlat?.value) || 10.5;
       const desc = parseFloat(newPaceDesc?.value) || 9.5;
@@ -3584,6 +3675,7 @@ function setupEventListeners() {
       const customProfile = {
         id: targetId,
         name: `${name} (${climb}m climb / ${flat}m flat / ${desc}m desc)`,
+        description: descText,
         basePaces: {
           descent: desc,
           flat,
@@ -3597,15 +3689,8 @@ function setupEventListeners() {
       saveRunnerProfile(customProfile);
       runnerProfileCreatorCard.classList.add("hidden");
 
+      renderRunnerProfilesDropdown(targetId);
       if (runnerProfileSelect) {
-        let opt = runnerProfileSelect.querySelector(`option[value="${targetId}"]`);
-        if (!opt) {
-          opt = document.createElement("option");
-          opt.value = targetId;
-          runnerProfileSelect.appendChild(opt);
-        }
-        opt.textContent = customProfile.name;
-        opt.selected = true;
         runnerProfileSelect.dispatchEvent(new Event("change"));
       }
       showToast(editingProfileId ? `Updated profile: ${name}` : `Created runner profile: ${name}`);
@@ -3620,12 +3705,167 @@ function setupEventListeners() {
         return;
       }
       deleteRunnerProfile(curId);
-      const selOpt = runnerProfileSelect.querySelector(`option[value="${curId}"]`);
-      if (selOpt) selOpt.remove();
-      runnerProfileSelect.selectedIndex = 0;
-      runnerProfileSelect.dispatchEvent(new Event("change"));
+      renderRunnerProfilesDropdown();
+      if (runnerProfileSelect) {
+        runnerProfileSelect.dispatchEvent(new Event("change"));
+      }
       showToast("Deleted custom runner profile.");
     });
+
+    if (exportProfilesBtn) {
+      exportProfilesBtn.addEventListener("click", () => {
+        const allProfiles = getRunnerProfiles();
+        const blob = new Blob([JSON.stringify(allProfiles, null, 2)], { type: "application/json" });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement("a");
+        a.href = url;
+        a.download = "kokopelli_runner_profiles.json";
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        URL.revokeObjectURL(url);
+        showToast("Exported all runner profiles to disk.");
+      });
+    }
+
+    if (importProfilesInput) {
+      importProfilesInput.addEventListener("change", (e) => {
+        const file = e.target.files?.[0];
+        if (!file) return;
+        const reader = new FileReader();
+        reader.onload = (evt) => {
+          try {
+            const imported = JSON.parse(evt.target.result);
+            if (Array.isArray(imported) && imported.length > 0) {
+              imported.forEach(p => { if (p && p.id) saveRunnerProfile(p); });
+              renderRunnerSectorsUI();
+              showToast(`Imported ${imported.length} runner profiles successfully!`);
+            }
+          } catch(err) {
+            showToast(`Failed to import profiles: ${err.message}`, true);
+          }
+        };
+        reader.readAsText(file);
+        e.target.value = "";
+      });
+    }
+  }
+
+  // 📐 DIURNAL PACING TRIANGLE Triad Facet Controller
+  if (pacingTriangleCard && solveTriangleBtn) {
+    const locks = Array.from(pacingTriangleCard.querySelectorAll(".tri-facet-lock"));
+    let activeLocked = ["start", "pacing"];
+
+    const syncLocksUI = () => {
+      locks.forEach(chk => {
+        const f = chk.dataset.facet;
+        chk.checked = activeLocked.includes(f);
+        const input = f === "start" ? triStartInput : (f === "finish" ? triFinishInput : null);
+        if (input) {
+          input.disabled = false;
+          input.style.opacity = activeLocked.includes(f) ? "1.0" : "0.55";
+        }
+      });
+      const solved = ["start", "finish", "pacing"].find(f => !activeLocked.includes(f));
+      if (triangleModeBadge) {
+        triangleModeBadge.textContent = `Solving: ${solved === "start" ? "Start Time" : (solved === "finish" ? "Finish Time" : "Pacing Factor")}`;
+      }
+    };
+
+    locks.forEach(chk => {
+      chk.addEventListener("change", () => {
+        const clickedFacet = chk.dataset.facet;
+        if (chk.checked) {
+          if (activeLocked.length >= 2) {
+            const toRemove = activeLocked[0] === clickedFacet ? activeLocked[1] : activeLocked[0];
+            activeLocked = activeLocked.filter(f => f !== toRemove);
+          }
+          if (!activeLocked.includes(clickedFacet)) activeLocked.push(clickedFacet);
+        } else {
+          activeLocked = activeLocked.filter(f => f !== clickedFacet);
+          if (activeLocked.length < 2) {
+            const avail = ["start", "finish", "pacing"].find(f => f !== clickedFacet && !activeLocked.includes(f));
+            if (avail) activeLocked.push(avail);
+          }
+        }
+        syncLocksUI();
+        if (activeRoute) solveTriangleBtn.click();
+      });
+    });
+
+    const activateFacetInput = (facet) => {
+      if (!activeLocked.includes(facet)) {
+        if (activeLocked.length >= 2) {
+          const toRemove = activeLocked[0] === facet ? activeLocked[1] : activeLocked[0];
+          activeLocked = activeLocked.filter(f => f !== toRemove);
+        }
+        activeLocked.push(facet);
+        syncLocksUI();
+        if (activeRoute) solveTriangleBtn.click();
+      }
+    };
+
+    ["start", "finish", "pacing"].forEach(facet => {
+      const card = document.getElementById(`facet-card-${facet}`);
+      if (card) {
+        card.addEventListener("click", (e) => {
+          if (e.target.classList.contains("tri-facet-lock")) return;
+          activateFacetInput(facet);
+          const input = facet === "start" ? triStartInput : (facet === "finish" ? triFinishInput : null);
+          if (input) setTimeout(() => input.focus(), 10);
+        });
+      }
+    });
+
+    if (triStartInput) {
+      triStartInput.addEventListener("focus", () => activateFacetInput("start"));
+      triStartInput.addEventListener("input", () => { activateFacetInput("start"); if (activeRoute) solveTriangleBtn.click(); });
+      triStartInput.addEventListener("change", () => { activateFacetInput("start"); if (activeRoute) solveTriangleBtn.click(); });
+    }
+    if (triFinishInput) {
+      triFinishInput.addEventListener("focus", () => activateFacetInput("finish"));
+      triFinishInput.addEventListener("input", () => { activateFacetInput("finish"); if (activeRoute) solveTriangleBtn.click(); });
+      triFinishInput.addEventListener("change", () => { activateFacetInput("finish"); if (activeRoute) solveTriangleBtn.click(); });
+    }
+
+    solveTriangleBtn.addEventListener("click", () => {
+      if (!activeRoute) {
+        showToast("Import a route first to solve Pacing Triangle.", true);
+        return;
+      }
+      try {
+        const startMs = triStartInput?.value ? new Date(triStartInput.value).getTime() : Date.now();
+        const finishMs = triFinishInput?.value ? new Date(triFinishInput.value).getTime() : (startMs + 12 * 3600 * 1000);
+        const solved = solvePacingTriangle(activeLocked, startMs, finishMs, activeRoute, units);
+        if (solved) {
+          if (triStartInput && !activeLocked.includes("start")) {
+            triStartInput.value = new Date(solved.startMs).toISOString().slice(0, 16);
+          }
+          if (triFinishInput && !activeLocked.includes("finish")) {
+            triFinishInput.value = new Date(solved.finishMs).toISOString().slice(0, 16);
+          }
+          if (pacingScalingLabel) {
+            pacingScalingLabel.textContent = `Factor: ${solved.proportionalFactor}x`;
+            pacingScalingLabel.style.color = solved.proportionalFactor > 1.2 ? "#ef4444" : (solved.proportionalFactor < 0.8 ? "#3b82f6" : "#34d399");
+          }
+          if (weatherPlanStartInput && solved.startMs) {
+            weatherPlanStartInput.value = new Date(solved.startMs).toISOString().slice(0, 16);
+          }
+          if (weatherPlanDurationInput && solved.durationHrs) {
+            weatherPlanDurationInput.value = solved.durationHrs;
+          }
+          renderRunnerSectorsUI();
+          updateRouteStatsUI();
+          showToast(`Solved Pacing Triangle (${triangleModeBadge?.textContent || "Triad"})!`);
+        }
+      } catch (err) {
+        showToast(`Triangle error: ${err.message}`, true);
+      }
+    });
+
+    if (triStartInput && !triStartInput.value) {
+      triStartInput.value = new Date().toISOString().slice(0, 16);
+    }
   }
 
   // POI / Aid Station Previous and Next Cycle Controls
@@ -6071,6 +6311,14 @@ function computeIntelligentPacingAndWeatherPlan(route, opts) {
     }
   };
 
+  const addPoiPickBtn = document.getElementById("add-poi-pick-btn");
+  if (addPoiPickBtn) {
+    addPoiPickBtn.addEventListener("click", () => {
+      isPlacingNewPoi = true;
+      showToast("Click anywhere on the map to pick waypoint location.");
+    });
+  }
+
   if (addPoiStartBtn) {
     addPoiStartBtn.addEventListener("click", () => {
       if (!activeRoute) {
@@ -6164,13 +6412,29 @@ function computeIntelligentPacingAndWeatherPlan(route, opts) {
         return;
       }
 
-      if (!isPlacingNewPoi) return;
-
-      const snapped = snapToRouteSegments(activeRoute, { lat: pos.lat, lng: pos.lng });
-      if (!snapped) {
-        showToast("Could not snap coordinates. Please click closer to the route line.");
+      if (!isPlacingNewPoi || !activeRoute || (addPoiPanel && addPoiPanel.classList.contains("hidden"))) {
         return;
       }
+
+      const lngVal = pos.lng !== undefined ? pos.lng : pos.lon;
+      let snapped = snapToRouteSegments(activeRoute, { lat: pos.lat, lng: lngVal });
+      if (!snapped && activeRoute?.trackpoints?.length > 0) {
+        let minDist = Infinity;
+        let bestIdx = 0;
+        activeRoute.trackpoints.forEach((pt, idx) => {
+          const d = Math.hypot(pt.lat - pos.lat, pt.lon - lngVal);
+          if (d < minDist) { minDist = d; bestIdx = idx; }
+        });
+        const bestPt = activeRoute.trackpoints[bestIdx];
+        snapped = {
+          lat: bestPt.lat,
+          lon: bestPt.lon,
+          ele: bestPt.ele || pos.altitude || 0,
+          dist_m: bestPt.dist_m || 0,
+          closestTrackpointIndex: bestIdx
+        };
+      }
+      if (!snapped) return;
 
       tempPoiData = {
         lat: snapped.lat,
@@ -6199,6 +6463,8 @@ function computeIntelligentPacingAndWeatherPlan(route, opts) {
       if (addPoiDist) {
         addPoiDist.textContent = distText;
       }
+      const nameInput = document.getElementById("add-poi-name");
+      if (nameInput) setTimeout(() => nameInput.focus(), 10);
     };
 
     // Handle temporary marker dragging
@@ -6247,45 +6513,49 @@ function computeIntelligentPacingAndWeatherPlan(route, opts) {
     addPoiSubmitBtn.addEventListener("click", async () => {
       if (!isPlacingNewPoi || !tempPoiData || !activeRoute) return;
 
+      const nameEl = document.getElementById("add-poi-name");
+      const customTitle = nameEl ? nameEl.value.trim() : "";
       const descText = addPoiDesc ? addPoiDesc.value.trim() : "";
-      if (!descText) {
-        showToast("Please provide a description first.");
-        return;
-      }
-
-      if (!apiKeyGemini) {
-        showToast("Please configure Gemini API Key in settings first.");
-        openSettings();
+      if (!customTitle && !descText) {
+        showToast("Please enter a waypoint Name or Description first.", true);
         return;
       }
 
       addPoiSubmitBtn.disabled = true;
-      addPoiSubmitBtn.textContent = "Generating...";
-      showToast("Generating waypoint with Gemini...");
+      addPoiSubmitBtn.textContent = "Saving...";
 
       try {
-        const result = await generateWaypointFromDescription(descText, tempPoiData, apiKeyGemini, geminiModel);
-        
-        // Build new waypoint object
+        let result = null;
+        if (apiKeyGemini && !customTitle) {
+          showToast("Generating waypoint with Gemini...");
+          try {
+            result = await generateWaypointFromDescription(descText, tempPoiData, apiKeyGemini, geminiModel);
+          } catch (err) {
+            console.warn("Gemini generation skipped/failed, using manual fallback:", err);
+          }
+        }
+
         const newWpt = {
           lat: tempPoiData.lat,
           lon: tempPoiData.lon,
           ele: tempPoiData.ele,
-          name: result.name || "New Waypoint",
-          desc: result.notes || descText,
-          sym: result.type === "aid_station" ? "Scenic Area" : "Circle",
+          name: result?.name || customTitle || (descText ? descText.slice(0, 28) : "Turn POI"),
+          desc: result?.notes || descText || customTitle || "Critical clarifying turn on course.",
+          sym: result?.type === "aid_station" ? "Scenic Area" : "Flag, Blue",
           dist_m: tempPoiData.dist_m,
           closestTrackpointIndex: tempPoiData.closestTrackpointIndex,
           extensions: {
             station: {
-              type: result.type || "informational",
-              subtype: result.subtype || null,
-              passes: []
+              type: result?.type || "clarifying_turn",
+              subtype: result?.subtype || "turn",
+              passes: [],
+              photo_url: tempPoiData.photoUrl || null
             }
-          }
+          },
+          link: tempPoiData.photoUrl || null
         };
 
-        if (result.cutoffTime) {
+        if (result?.cutoffTime) {
           newWpt.extensions.station.passes.push({
             num: 1,
             dist_m: tempPoiData.dist_m,
@@ -6332,10 +6602,10 @@ function computeIntelligentPacingAndWeatherPlan(route, opts) {
         // Exit mode and cleanup
         cancelPoiPlacement();
       } catch (err) {
-        console.error("Failed to generate waypoint:", err);
-        showToast("Generation failed: " + err.message);
+        console.error("Failed to save waypoint:", err);
+        showToast("Saving failed: " + err.message);
         addPoiSubmitBtn.disabled = false;
-        addPoiSubmitBtn.textContent = "Generate Waypoint";
+        addPoiSubmitBtn.textContent = "Save Waypoint to Map";
       }
     });
   }
@@ -6835,8 +7105,8 @@ function restoreSessionState() {
       updateRouteStatsUI(activeRoute);
       renderWarningsUI(activeRoute);
       if (typeof renderRunnerSectorsUI === "function") renderRunnerSectorsUI();
-      if (mapController) {
-        mapController.loadRoute(activeRoute);
+      if (mapController && typeof mapController.drawRoute === "function") {
+        mapController.drawRoute(activeRoute, typeof climbColorsCheckbox !== "undefined" && climbColorsCheckbox ? climbColorsCheckbox.checked : false);
       }
 
       if (backup.wizard) {
@@ -6882,12 +7152,151 @@ document.addEventListener("visibilitychange", () => {
 });
 
 // Automatically trigger restore after DOM setup
+let currentPreviewSectorIdx = -1;
+let sectorPreviewInterval = null;
+
+function updateSectorPreviewCard(secIdx) {
+  if (!activeRoute || !activeRoute.executionPlan || !activeRoute.executionPlan.sectors) return;
+  const sectors = activeRoute.executionPlan.sectors;
+  if (secIdx < 0 || secIdx >= sectors.length) return;
+  currentPreviewSectorIdx = secIdx;
+  const sec = sectors[secIdx];
+  const mult = typeof units !== "undefined" && units === "metric" ? 1000 : 1609.344;
+  const uUnit = typeof units !== "undefined" && units === "metric" ? "km" : "mi";
+
+  const nameEl = document.getElementById("preview-sec-name");
+  const distEl = document.getElementById("preview-sec-dist");
+  const climbEl = document.getElementById("preview-sec-climb");
+  const gradeEl = document.getElementById("preview-sec-grade");
+  const paceEl = document.getElementById("preview-sec-pace");
+  const elapsedEl = document.getElementById("preview-sec-elapsed");
+  const timesEl = document.getElementById("preview-sec-times");
+
+  if (nameEl) nameEl.textContent = `${secIdx + 1}. ${sec.name || "Sector " + (secIdx + 1)}`;
+  const distMi = (sec.end_dist_m - sec.start_dist_m) / mult;
+  if (distEl) distEl.textContent = `${distMi.toFixed(2)} ${uUnit}`;
+
+  const pts = activeRoute.trackpoints || [];
+  const sPt = pts.find(p => p.dist_m >= sec.start_dist_m) || pts[0];
+  const ePt = pts.find(p => p.dist_m >= sec.end_dist_m) || pts[pts.length - 1];
+  const gain = Math.round((ePt.ele - sPt.ele) * (typeof units !== "undefined" && units === "imperial" ? 3.28084 : 1));
+  if (climbEl) climbEl.textContent = `${gain >= 0 ? "+" : ""}${gain} ${typeof units !== "undefined" && units === "imperial" ? "ft" : "m"}`;
+
+  if (gradeEl) gradeEl.textContent = `${(sec.avg_grade || 0).toFixed(1)}%`;
+  if (paceEl) paceEl.textContent = `${sec.target_pace_min} min/${uUnit}`;
+
+  const startTimestamp = activeRoute.executionPlan.startTime ? new Date(activeRoute.executionPlan.startTime).getTime() : Date.now();
+  let cumMinBefore = 0;
+  for (let i = 0; i < secIdx; i++) {
+    const s = sectors[i];
+    const d = (s.end_dist_m - s.start_dist_m) / mult;
+    cumMinBefore += d * (s.target_pace_min || 10);
+    if (s.name && s.name.startsWith("➔")) cumMinBefore += 15;
+  }
+  const secMin = distMi * (sec.target_pace_min || 10);
+  const cumMinAfter = cumMinBefore + secMin;
+
+  const fmtHrs = (m) => `${Math.floor(m/60)}h ${Math.round(m%60)}m`;
+  if (elapsedEl) elapsedEl.textContent = `${fmtHrs(cumMinAfter)} (${Math.round(secMin)}m sec)`;
+
+  const fmtTime = (ms) => new Date(ms).toTimeString().slice(0, 5);
+  const startSecMs = startTimestamp + cumMinBefore * 60 * 1000;
+  const endSecMs = startTimestamp + cumMinAfter * 60 * 1000;
+  if (timesEl) timesEl.textContent = `${fmtTime(startSecMs)} ➔ ${fmtTime(endSecMs)}`;
+
+  const badgeCol = sec.terrain === "descend" ? "#34d399" : (sec.terrain === "flat" ? "#60a5fa" : "#fb923c");
+  if (typeof mapController !== "undefined" && mapController) {
+    mapController.highlightWarning({
+      startDist: sec.start_dist_m,
+      endDist: sec.end_dist_m,
+      colorHex: badgeCol
+    });
+    const clearBtn = document.getElementById("clear-warnings-highlight-btn");
+    if (clearBtn) clearBtn.classList.remove("hidden");
+
+    const midDist = (sec.start_dist_m + sec.end_dist_m) / 2;
+    const midIdx = pts.findIndex(p => p.dist_m >= midDist);
+    if (typeof mapController.syncToTrackpoint === "function") {
+      mapController.syncToTrackpoint(midIdx !== -1 ? midIdx : 0, true);
+    }
+  }
+
+  const listEl = document.getElementById("runner-sectors-list");
+  if (listEl) {
+    const items = listEl.querySelectorAll(".runner-sector-item");
+    items.forEach((it, i) => {
+      it.style.borderColor = i === secIdx ? badgeCol : "rgba(255,255,255,0.08)";
+      if (i === secIdx && typeof it.scrollIntoView === "function") {
+        it.scrollIntoView({ behavior: "smooth", block: "nearest" });
+      }
+    });
+  }
+}
+
+function initSectorPreviewControls() {
+  const prevBtn = document.getElementById("preview-sector-prev");
+  const playBtn = document.getElementById("preview-sector-play");
+  const nextBtn = document.getElementById("preview-sector-next");
+
+  if (prevBtn && !prevBtn._hasPreviewListener) {
+    prevBtn._hasPreviewListener = true;
+    prevBtn.addEventListener("click", () => {
+      if (sectorPreviewInterval) { clearInterval(sectorPreviewInterval); sectorPreviewInterval = null; if (playBtn) playBtn.textContent = "▶️ Auto"; }
+      const sectors = activeRoute?.executionPlan?.sectors || [];
+      if (sectors.length === 0) return;
+      const nextIdx = currentPreviewSectorIdx <= 0 ? sectors.length - 1 : currentPreviewSectorIdx - 1;
+      updateSectorPreviewCard(nextIdx);
+    });
+  }
+
+  if (nextBtn && !nextBtn._hasPreviewListener) {
+    nextBtn._hasPreviewListener = true;
+    nextBtn.addEventListener("click", () => {
+      if (sectorPreviewInterval) { clearInterval(sectorPreviewInterval); sectorPreviewInterval = null; if (playBtn) playBtn.textContent = "▶️ Auto"; }
+      const sectors = activeRoute?.executionPlan?.sectors || [];
+      if (sectors.length === 0) return;
+      const nextIdx = currentPreviewSectorIdx >= sectors.length - 1 ? 0 : currentPreviewSectorIdx + 1;
+      updateSectorPreviewCard(nextIdx);
+    });
+  }
+
+  if (playBtn && !playBtn._hasPreviewListener) {
+    playBtn._hasPreviewListener = true;
+    playBtn.addEventListener("click", () => {
+      const sectors = activeRoute?.executionPlan?.sectors || [];
+      if (sectors.length === 0) return;
+      if (sectorPreviewInterval) {
+        clearInterval(sectorPreviewInterval);
+        sectorPreviewInterval = null;
+        playBtn.textContent = "▶️ Auto";
+        showToast("Paused Sector Preview loop.");
+      } else {
+        playBtn.textContent = "⏸️ Stop";
+        showToast("Auto-playing Sector Preview (3.5s per sector)...");
+        if (currentPreviewSectorIdx < 0) updateSectorPreviewCard(0);
+        sectorPreviewInterval = setInterval(() => {
+          if (!activeRoute?.executionPlan?.sectors || activeRoute.executionPlan.sectors.length === 0) {
+            clearInterval(sectorPreviewInterval);
+            sectorPreviewInterval = null;
+            playBtn.textContent = "▶️ Auto";
+            return;
+          }
+          const nextIdx = currentPreviewSectorIdx >= activeRoute.executionPlan.sectors.length - 1 ? 0 : currentPreviewSectorIdx + 1;
+          updateSectorPreviewCard(nextIdx);
+        }, 3500);
+      }
+    });
+  }
+}
+
 setTimeout(restoreSessionState, 500);
+setTimeout(initSectorPreviewControls, 600);
 
 function renderRunnerSectorsUI() {
   const listEl = document.getElementById("runner-sectors-list");
   if (!listEl) return;
   listEl.innerHTML = "";
+  initSectorPreviewControls();
   if (!activeRoute || !activeRoute.executionPlan || !activeRoute.executionPlan.sectors || activeRoute.executionPlan.sectors.length === 0) {
     listEl.innerHTML = `<span style="font-size: 10px; color: var(--text-muted); text-align: center; font-style: italic; padding: 6px 0;">No pacing sectors loaded. Click 'Auto Segment Course'.</span>`;
     return;
@@ -6916,19 +7325,7 @@ function renderRunnerSectorsUI() {
     `;
 
     item.addEventListener("click", () => {
-      const allItems = listEl.querySelectorAll(".runner-sector-item");
-      allItems.forEach(i => i.style.borderColor = "rgba(255,255,255,0.08)");
-      item.style.borderColor = badgeCol;
-
-      if (typeof mapController !== "undefined" && mapController) {
-        mapController.highlightWarning({
-          startDist: sec.start_dist_m,
-          endDist: sec.end_dist_m,
-          colorHex: badgeCol
-        });
-        const clearBtn = document.getElementById("clear-warnings-highlight-btn");
-        if (clearBtn) clearBtn.classList.remove("hidden");
-      }
+      updateSectorPreviewCard(idx);
     });
 
     listEl.appendChild(item);
