@@ -7067,12 +7067,151 @@ document.addEventListener("visibilitychange", () => {
 });
 
 // Automatically trigger restore after DOM setup
+let currentPreviewSectorIdx = -1;
+let sectorPreviewInterval = null;
+
+function updateSectorPreviewCard(secIdx) {
+  if (!activeRoute || !activeRoute.executionPlan || !activeRoute.executionPlan.sectors) return;
+  const sectors = activeRoute.executionPlan.sectors;
+  if (secIdx < 0 || secIdx >= sectors.length) return;
+  currentPreviewSectorIdx = secIdx;
+  const sec = sectors[secIdx];
+  const mult = typeof units !== "undefined" && units === "metric" ? 1000 : 1609.344;
+  const uUnit = typeof units !== "undefined" && units === "metric" ? "km" : "mi";
+
+  const nameEl = document.getElementById("preview-sec-name");
+  const distEl = document.getElementById("preview-sec-dist");
+  const climbEl = document.getElementById("preview-sec-climb");
+  const gradeEl = document.getElementById("preview-sec-grade");
+  const paceEl = document.getElementById("preview-sec-pace");
+  const elapsedEl = document.getElementById("preview-sec-elapsed");
+  const timesEl = document.getElementById("preview-sec-times");
+
+  if (nameEl) nameEl.textContent = `${secIdx + 1}. ${sec.name || "Sector " + (secIdx + 1)}`;
+  const distMi = (sec.end_dist_m - sec.start_dist_m) / mult;
+  if (distEl) distEl.textContent = `${distMi.toFixed(2)} ${uUnit}`;
+
+  const pts = activeRoute.trackpoints || [];
+  const sPt = pts.find(p => p.dist_m >= sec.start_dist_m) || pts[0];
+  const ePt = pts.find(p => p.dist_m >= sec.end_dist_m) || pts[pts.length - 1];
+  const gain = Math.round((ePt.ele - sPt.ele) * (typeof units !== "undefined" && units === "imperial" ? 3.28084 : 1));
+  if (climbEl) climbEl.textContent = `${gain >= 0 ? "+" : ""}${gain} ${typeof units !== "undefined" && units === "imperial" ? "ft" : "m"}`;
+
+  if (gradeEl) gradeEl.textContent = `${(sec.avg_grade || 0).toFixed(1)}%`;
+  if (paceEl) paceEl.textContent = `${sec.target_pace_min} min/${uUnit}`;
+
+  const startTimestamp = activeRoute.executionPlan.startTime ? new Date(activeRoute.executionPlan.startTime).getTime() : Date.now();
+  let cumMinBefore = 0;
+  for (let i = 0; i < secIdx; i++) {
+    const s = sectors[i];
+    const d = (s.end_dist_m - s.start_dist_m) / mult;
+    cumMinBefore += d * (s.target_pace_min || 10);
+    if (s.name && s.name.startsWith("➔")) cumMinBefore += 15;
+  }
+  const secMin = distMi * (sec.target_pace_min || 10);
+  const cumMinAfter = cumMinBefore + secMin;
+
+  const fmtHrs = (m) => `${Math.floor(m/60)}h ${Math.round(m%60)}m`;
+  if (elapsedEl) elapsedEl.textContent = `${fmtHrs(cumMinAfter)} (${Math.round(secMin)}m sec)`;
+
+  const fmtTime = (ms) => new Date(ms).toTimeString().slice(0, 5);
+  const startSecMs = startTimestamp + cumMinBefore * 60 * 1000;
+  const endSecMs = startTimestamp + cumMinAfter * 60 * 1000;
+  if (timesEl) timesEl.textContent = `${fmtTime(startSecMs)} ➔ ${fmtTime(endSecMs)}`;
+
+  const badgeCol = sec.terrain === "descend" ? "#34d399" : (sec.terrain === "flat" ? "#60a5fa" : "#fb923c");
+  if (typeof mapController !== "undefined" && mapController) {
+    mapController.highlightWarning({
+      startDist: sec.start_dist_m,
+      endDist: sec.end_dist_m,
+      colorHex: badgeCol
+    });
+    const clearBtn = document.getElementById("clear-warnings-highlight-btn");
+    if (clearBtn) clearBtn.classList.remove("hidden");
+
+    const midDist = (sec.start_dist_m + sec.end_dist_m) / 2;
+    const midIdx = pts.findIndex(p => p.dist_m >= midDist);
+    if (typeof mapController.syncToTrackpoint === "function") {
+      mapController.syncToTrackpoint(midIdx !== -1 ? midIdx : 0, true);
+    }
+  }
+
+  const listEl = document.getElementById("runner-sectors-list");
+  if (listEl) {
+    const items = listEl.querySelectorAll(".runner-sector-item");
+    items.forEach((it, i) => {
+      it.style.borderColor = i === secIdx ? badgeCol : "rgba(255,255,255,0.08)";
+      if (i === secIdx && typeof it.scrollIntoView === "function") {
+        it.scrollIntoView({ behavior: "smooth", block: "nearest" });
+      }
+    });
+  }
+}
+
+function initSectorPreviewControls() {
+  const prevBtn = document.getElementById("preview-sector-prev");
+  const playBtn = document.getElementById("preview-sector-play");
+  const nextBtn = document.getElementById("preview-sector-next");
+
+  if (prevBtn && !prevBtn._hasPreviewListener) {
+    prevBtn._hasPreviewListener = true;
+    prevBtn.addEventListener("click", () => {
+      if (sectorPreviewInterval) { clearInterval(sectorPreviewInterval); sectorPreviewInterval = null; if (playBtn) playBtn.textContent = "▶️ Auto"; }
+      const sectors = activeRoute?.executionPlan?.sectors || [];
+      if (sectors.length === 0) return;
+      const nextIdx = currentPreviewSectorIdx <= 0 ? sectors.length - 1 : currentPreviewSectorIdx - 1;
+      updateSectorPreviewCard(nextIdx);
+    });
+  }
+
+  if (nextBtn && !nextBtn._hasPreviewListener) {
+    nextBtn._hasPreviewListener = true;
+    nextBtn.addEventListener("click", () => {
+      if (sectorPreviewInterval) { clearInterval(sectorPreviewInterval); sectorPreviewInterval = null; if (playBtn) playBtn.textContent = "▶️ Auto"; }
+      const sectors = activeRoute?.executionPlan?.sectors || [];
+      if (sectors.length === 0) return;
+      const nextIdx = currentPreviewSectorIdx >= sectors.length - 1 ? 0 : currentPreviewSectorIdx + 1;
+      updateSectorPreviewCard(nextIdx);
+    });
+  }
+
+  if (playBtn && !playBtn._hasPreviewListener) {
+    playBtn._hasPreviewListener = true;
+    playBtn.addEventListener("click", () => {
+      const sectors = activeRoute?.executionPlan?.sectors || [];
+      if (sectors.length === 0) return;
+      if (sectorPreviewInterval) {
+        clearInterval(sectorPreviewInterval);
+        sectorPreviewInterval = null;
+        playBtn.textContent = "▶️ Auto";
+        showToast("Paused Sector Preview loop.");
+      } else {
+        playBtn.textContent = "⏸️ Stop";
+        showToast("Auto-playing Sector Preview (3.5s per sector)...");
+        if (currentPreviewSectorIdx < 0) updateSectorPreviewCard(0);
+        sectorPreviewInterval = setInterval(() => {
+          if (!activeRoute?.executionPlan?.sectors || activeRoute.executionPlan.sectors.length === 0) {
+            clearInterval(sectorPreviewInterval);
+            sectorPreviewInterval = null;
+            playBtn.textContent = "▶️ Auto";
+            return;
+          }
+          const nextIdx = currentPreviewSectorIdx >= activeRoute.executionPlan.sectors.length - 1 ? 0 : currentPreviewSectorIdx + 1;
+          updateSectorPreviewCard(nextIdx);
+        }, 3500);
+      }
+    });
+  }
+}
+
 setTimeout(restoreSessionState, 500);
+setTimeout(initSectorPreviewControls, 600);
 
 function renderRunnerSectorsUI() {
   const listEl = document.getElementById("runner-sectors-list");
   if (!listEl) return;
   listEl.innerHTML = "";
+  initSectorPreviewControls();
   if (!activeRoute || !activeRoute.executionPlan || !activeRoute.executionPlan.sectors || activeRoute.executionPlan.sectors.length === 0) {
     listEl.innerHTML = `<span style="font-size: 10px; color: var(--text-muted); text-align: center; font-style: italic; padding: 6px 0;">No pacing sectors loaded. Click 'Auto Segment Course'.</span>`;
     return;
@@ -7101,19 +7240,7 @@ function renderRunnerSectorsUI() {
     `;
 
     item.addEventListener("click", () => {
-      const allItems = listEl.querySelectorAll(".runner-sector-item");
-      allItems.forEach(i => i.style.borderColor = "rgba(255,255,255,0.08)");
-      item.style.borderColor = badgeCol;
-
-      if (typeof mapController !== "undefined" && mapController) {
-        mapController.highlightWarning({
-          startDist: sec.start_dist_m,
-          endDist: sec.end_dist_m,
-          colorHex: badgeCol
-        });
-        const clearBtn = document.getElementById("clear-warnings-highlight-btn");
-        if (clearBtn) clearBtn.classList.remove("hidden");
-      }
+      updateSectorPreviewCard(idx);
     });
 
     listEl.appendChild(item);

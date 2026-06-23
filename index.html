@@ -392,6 +392,30 @@
             <div id="runner-sectors-list" style="max-height: 180px; overflow-y: auto; display: flex; flex-direction: column; gap: 4px;">
               <span style="font-size: 10px; color: var(--text-muted); text-align: center; font-style: italic; padding: 6px 0;">Load a course to view pacing sectors.</span>
             </div>
+
+            <!-- SECTOR PREVIEW / TELEMETRY CARD -->
+            <div id="sector-preview-card" style="background: rgba(0,0,0,0.5); border: 1px solid rgba(255,255,255,0.15); padding: 8px; border-radius: 6px; display: flex; flex-direction: column; gap: 6px; margin-top: 2px;">
+              <div style="display: flex; justify-content: space-between; align-items: center;">
+                <span style="font-size: 10px; font-weight: bold; color: #38bdf8;">🔭 SECTOR PREVIEW & TELEMETRY</span>
+                <div style="display: flex; gap: 4px;">
+                  <button id="preview-sector-prev" class="btn btn-sm btn-secondary" style="font-size: 10px; padding: 2px 8px;" title="Step Backward">⏮️ Prev</button>
+                  <button id="preview-sector-play" class="btn btn-sm btn-primary" style="font-size: 10px; padding: 2px 8px;" title="Auto Preview Sectors">▶️ Auto</button>
+                  <button id="preview-sector-next" class="btn btn-sm btn-secondary" style="font-size: 10px; padding: 2px 8px;" title="Step Forward">⏭️ Next</button>
+                </div>
+              </div>
+              
+              <div id="preview-sec-body" style="background: rgba(255,255,255,0.03); border: 1px solid rgba(255,255,255,0.05); padding: 6px; border-radius: 4px; display: flex; flex-direction: column; gap: 4px;">
+                <div style="font-size: 11px; font-weight: bold; color: #fff;" id="preview-sec-name">Select a sector or press Auto</div>
+                <div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 4px; font-size: 9px; color: #cbd5e1;">
+                  <div>📏 Dist: <strong id="preview-sec-dist" style="color:#fff;">--</strong></div>
+                  <div>⛰️ Climb: <strong id="preview-sec-climb" style="color:#fff;">--</strong></div>
+                  <div>📐 Grade: <strong id="preview-sec-grade" style="color:#fff;">--</strong></div>
+                  <div>⚡ Pace: <strong id="preview-sec-pace" style="color:#fff;">--</strong></div>
+                  <div>⏱️ Elapsed: <strong id="preview-sec-elapsed" style="color:#fff;">--</strong></div>
+                  <div>🟢🏁 Times: <strong id="preview-sec-times" style="color:#fff;">--</strong></div>
+                </div>
+              </div>
+            </div>
           </div>
         </div>
 
