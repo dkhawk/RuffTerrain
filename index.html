@@ -308,7 +308,10 @@
           <div style="display: flex; flex-direction: column; gap: 6px;">
             <div style="display: flex; justify-content: space-between; align-items: center;">
               <span style="font-size: 10px; color: var(--text-muted); font-weight: bold;">✂️ COURSE PACING SECTORS</span>
-              <button id="auto-slice-course-btn" class="btn btn-sm btn-primary" style="font-size: 9px; padding: 2px 8px;">Auto Segment Course</button>
+              <div style="display: flex; gap: 4px;">
+                <button id="add-split-marker-btn" class="btn btn-sm btn-secondary" style="font-size: 9px; padding: 2px 6px;">+ Add Marker</button>
+                <button id="auto-slice-course-btn" class="btn btn-sm btn-primary" style="font-size: 9px; padding: 2px 6px;">Auto Segment</button>
+              </div>
             </div>
             <div id="runner-sectors-list" style="max-height: 180px; overflow-y: auto; display: flex; flex-direction: column; gap: 4px;">
               <span style="font-size: 10px; color: var(--text-muted); text-align: center; font-style: italic; padding: 6px 0;">Load a course to view pacing sectors.</span>

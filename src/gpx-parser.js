@@ -1996,6 +1996,12 @@ export function autoSegmentCourse(route) {
     }
   });
 
+  if (route.executionPlan && route.executionPlan.customSplits) {
+    route.executionPlan.customSplits.forEach(d => {
+      if (d > 50 && d < totalDist - 50) splits.add(Math.round(d));
+    });
+  }
+
   let currMode = classifyGradient(pts[0].grade || 0).key;
   let modeStartDist = 0;
   for (let i = 1; i < pts.length; i++) {

@@ -124,6 +124,7 @@ const deadlineInputBox = document.getElementById("deadline-input-box");
 const deadlineClockInput = document.getElementById("deadline-clock-input");
 const solveDeadlineBtn = document.getElementById("solve-deadline-btn");
 const autoSliceCourseBtn = document.getElementById("auto-slice-course-btn");
+const addSplitMarkerBtn = document.getElementById("add-split-marker-btn");
 const runnerSectorsList = document.getElementById("runner-sectors-list");
 const studioTabPoi = document.getElementById("studio-tab-poi");
 const studioTabChat = document.getElementById("studio-tab-chat");
@@ -3434,6 +3435,20 @@ function setupEventListeners() {
   if (autoSliceCourseBtn) {
     autoSliceCourseBtn.addEventListener("click", () => {
       if (activeRoute) {
+        activeRoute.executionPlan.sectors = autoSegmentCourse(activeRoute);
+        if (typeof renderRunnerSectorsUI === "function") renderRunnerSectorsUI();
+      }
+    });
+  }
+
+  if (addSplitMarkerBtn) {
+    addSplitMarkerBtn.addEventListener("click", () => {
+      if (!activeRoute || !activeRoute.trackpoints || activeRoute.trackpoints.length === 0) return;
+      if (!activeRoute.executionPlan) activeRoute.executionPlan = { sectors: [], customSplits: [] };
+      if (!activeRoute.executionPlan.customSplits) activeRoute.executionPlan.customSplits = [];
+      const pt = activeRoute.trackpoints[playbackIndex || 0] || activeRoute.trackpoints[0];
+      if (pt && pt.dist_m > 50) {
+        activeRoute.executionPlan.customSplits.push(pt.dist_m);
         activeRoute.executionPlan.sectors = autoSegmentCourse(activeRoute);
         if (typeof renderRunnerSectorsUI === "function") renderRunnerSectorsUI();
       }
