@@ -162,12 +162,14 @@ export class Map3DController {
     this.Marker3DInteractiveElement = Marker3DInteractiveElement;
 
     this.cameraTilt = 45;
+    const showPlacemarks = this.showPlacemarks !== false;
     this.map = new Map3DElement({
       center: { lat: center.lat, lng: center.lng, altitude: center.altitude + 2000 },
       range: this.cameraRange,
       tilt: this.cameraTilt,
       heading: 235,
-      mode: "HYBRID"
+      mode: showPlacemarks ? "HYBRID" : "SATELLITE",
+      defaultLabelsDisabled: !showPlacemarks
     });
 
     this.map.style.width = "100%";
@@ -488,6 +490,14 @@ export class Map3DController {
    */
   togglePlacemarks(show) {
     this.showPlacemarks = show;
+    if (this.map) {
+      if ("defaultLabelsDisabled" in this.map) {
+        this.map.defaultLabelsDisabled = !show;
+      }
+      if ("mode" in this.map) {
+        this.map.mode = show ? "HYBRID" : "SATELLITE";
+      }
+    }
     this.markers.forEach(marker => {
       if (show) {
         if (!marker.parentNode && this.map) this.map.append(marker);
