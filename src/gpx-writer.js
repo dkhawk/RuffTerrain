@@ -167,7 +167,7 @@ export function writeGPX(route) {
   });
 
   // Trackpoints
-  if (route.segments && route.segments.length > 0) {
+  if (route.segments && route.segments.length > 1) {
     route.segments.forEach((seg) => {
       xml += '  <trk>\n';
       xml += `    <name>${escapeXml(seg.name)}</name>\n`;
@@ -188,12 +188,18 @@ export function writeGPX(route) {
     });
   } else {
     xml += '  <trk>\n';
-    xml += `    <name>${escapeXml(route.name)}</name>\n`;
+    const trkName = (route.segments && route.segments[0]?.name) || route.name;
+    xml += `    <name>${escapeXml(trkName)}</name>\n`;
+    if (route.segments && route.segments[0]?.desc) {
+      xml += `    <desc>${escapeXml(route.segments[0].desc)}</desc>\n`;
+    }
     xml += '    <trkseg>\n';
     route.trackpoints.forEach((pt) => {
-      xml += `      <trkpt lat="${pt.lat}" lon="${pt.lon}">\n`;
-      xml += `        <ele>${pt.ele.toFixed(2)}</ele>\n`;
-      xml += '      </trkpt>\n';
+      if (pt) {
+        xml += `      <trkpt lat="${pt.lat}" lon="${pt.lon}">\n`;
+        xml += `        <ele>${pt.ele.toFixed(2)}</ele>\n`;
+        xml += '      </trkpt>\n';
+      }
     });
     xml += '    </trkseg>\n';
     xml += '  </trk>\n';

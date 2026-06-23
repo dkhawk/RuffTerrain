@@ -181,6 +181,13 @@ export function recalculateRouteMetrics(route) {
   route.maxElevation = maxElevation === -Infinity ? 0 : maxElevation;
   route.avgSpacing = pts.length > 0 ? (totalDistance / pts.length) : 0;
 
+  if (route.segments && route.segments.length === 1) {
+    route.segments[0].startIndex = 0;
+    route.segments[0].endIndex = pts.length - 1;
+    route.segments[0].startDist = 0;
+    route.segments[0].endDist = totalDistance;
+  }
+
   // Re-snap waypoints
   route.waypoints.forEach((wpt) => {
     const snapped = snapToRouteSegments(route, { lat: wpt.lat, lng: wpt.lon });
