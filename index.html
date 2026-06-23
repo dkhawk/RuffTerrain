@@ -471,6 +471,14 @@
           </header>
 
           <div class="poi-body" id="poi-body-container" style="margin-top: 10px;">
+            <div id="poi-photo-display" style="margin-bottom: 10px; border-radius: 8px; border: 1px solid rgba(255,255,255,0.1); text-align: center; background: rgba(0,0,0,0.3); padding: 8px;">
+              <img id="poi-photo-img" src="" alt="Waypoint photo" class="hidden" style="max-width: 100%; max-height: 200px; object-fit: contain; display: block; margin: 0 auto 6px auto; border-radius:4px;" />
+              <div style="display:flex; justify-content:space-between; align-items:center; gap:8px;">
+                <label for="poi-dialog-photo-upload" class="btn btn-sm btn-secondary" style="font-size:10px; cursor:pointer; margin:0;">📷 Attach / Update Photo</label>
+                <input type="file" id="poi-dialog-photo-upload" accept="image/*" class="hidden" />
+                <span id="poi-photo-label" style="font-size:9px; color:var(--text-muted); overflow:hidden; text-overflow:ellipsis; white-space:nowrap; max-width:180px;">No photo attached</span>
+              </div>
+            </div>
             <div class="poi-detail-grid">
               <div class="poi-timeline-list">
                 <h4 style="font-size: 11px;">Waypoint Passes:</h4>
@@ -918,6 +926,12 @@
       <div style="display: flex; flex-direction: column; gap: 4px;">
         <label for="add-poi-desc" style="font-size: 10px; color: var(--text-muted); font-weight: bold; text-transform: uppercase;">Station Details / Description</label>
         <textarea id="add-poi-desc" placeholder="e.g. 'Water station called Twin Lakes, includes 10 gallons of water, snacks, no medical, cutoff is 2:00 PM'" rows="3" style="width: 100%; background: rgba(0,0,0,0.2); border: 1px solid rgba(255,255,255,0.1); color: var(--text-color); font-family: var(--font-ui); font-size: 12px; border-radius: 6px; padding: 8px; box-sizing: border-box; resize: none; outline: none;"></textarea>
+      </div>
+
+      <div style="display: flex; flex-direction: column; gap: 4px;">
+        <label for="add-poi-photo-input" style="font-size: 10px; color: var(--text-muted); font-weight: bold; text-transform: uppercase;">Attach Photo / Picture (Optional)</label>
+        <input type="file" id="add-poi-photo-input" accept="image/*" style="font-size: 11px; color: var(--text-muted); background: rgba(0,0,0,0.2); border: 1px dashed rgba(255,255,255,0.15); border-radius: 6px; padding: 6px;" />
+        <div id="add-poi-photo-preview" class="hidden" style="max-height: 80px; overflow: hidden; border-radius: 4px; margin-top: 4px; border: 1px solid rgba(255,255,255,0.1); text-align: center;"><img id="add-poi-photo-preview-img" src="" alt="Preview" style="max-height:80px; max-width:100%; object-fit:contain;"/></div>
       </div>
 
       <div style="display: flex; gap: 8px; margin-top: 4px;">

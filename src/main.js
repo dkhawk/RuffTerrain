@@ -2373,6 +2373,48 @@ async function showPoiDetailDialog(wpt, index, referenceDist = null, startCollap
     poiTimelinePassesList.appendChild(li);
   }
 
+  // Handle attached photo display & update in waypoint details dialog
+  const photoImgEl = document.getElementById("poi-photo-img");
+  const photoUploadEl = document.getElementById("poi-dialog-photo-upload");
+  const photoLabelEl = document.getElementById("poi-photo-label");
+  const attachedUrl = wpt.extensions?.station?.photo_url || wpt.link || null;
+
+  if (photoImgEl && photoLabelEl) {
+    if (attachedUrl) {
+      photoImgEl.src = attachedUrl;
+      photoImgEl.classList.remove("hidden");
+      photoLabelEl.textContent = "Photo attached";
+    } else {
+      photoImgEl.src = "";
+      photoImgEl.classList.add("hidden");
+      photoLabelEl.textContent = "No photo attached";
+    }
+  }
+
+  if (photoUploadEl && !photoUploadEl._hasDialogPhotoListener) {
+    photoUploadEl._hasDialogPhotoListener = true;
+    photoUploadEl.addEventListener("change", (e) => {
+      const file = e.target.files?.[0];
+      if (!file || !activeDialogWpt) return;
+      const reader = new FileReader();
+      reader.onload = (evt) => {
+        const url = evt.target?.result;
+        if (!activeDialogWpt.extensions) activeDialogWpt.extensions = {};
+        if (!activeDialogWpt.extensions.station) activeDialogWpt.extensions.station = { type: "informational" };
+        activeDialogWpt.extensions.station.photo_url = url;
+        activeDialogWpt.link = url;
+        if (photoImgEl && photoLabelEl) {
+          photoImgEl.src = url;
+          photoImgEl.classList.remove("hidden");
+          photoLabelEl.textContent = file.name;
+        }
+        saveActiveRouteState();
+        showToast("Saved photo attachment to waypoint!");
+      };
+      reader.readAsDataURL(file);
+    });
+  }
+
   // Service icons mapping (restrooms, aid, water, sleep, etc.)
   poiServicesIconsRow.innerHTML = "";
   const station = wpt.extensions?.station;
@@ -6473,9 +6515,11 @@ function computeIntelligentPacingAndWeatherPlan(route, opts) {
             station: {
               type: result?.type || "clarifying_turn",
               subtype: result?.subtype || "turn",
-              passes: []
+              passes: [],
+              photo_url: tempPoiData.photoUrl || null
             }
-          }
+          },
+          link: tempPoiData.photoUrl || null
         };
 
         if (result?.cutoffTime) {

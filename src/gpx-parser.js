@@ -503,9 +503,15 @@ export function parseGPX(gpxText, units = "imperial", desertThresholdMiles = 8.0
         };
       }
 
+      let photo_url = null;
+      const photoUrlMatch = stationInner.match(/<(?:ca:)?photo_url>([^<]+)<\/(?:ca:)?photo_url>/) || inner.match(/<link[^>]+href="([^"]+)"/);
+      if (photoUrlMatch) {
+        photo_url = photoUrlMatch[1];
+      }
+
       customExtension = {
         station: {
-          id, type, subtype, passes, accessibility, services, navigation_alert
+          id, type, subtype, passes, accessibility, services, navigation_alert, photo_url
         }
       };
     }
@@ -1808,6 +1814,10 @@ export function serializeGPX(route) {
           xml += ` ${k}="${escapeXml(String(v))}"`;
         });
         xml += `/>\n`;
+      }
+
+      if (station.photo_url) {
+        xml += `        <ca:photo_url>${escapeXml(station.photo_url)}</ca:photo_url>\n`;
       }
 
       xml += `      </ca:station>\n`;

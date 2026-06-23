@@ -155,6 +155,10 @@ export function writeGPX(route) {
         xml += navTag;
       }
 
+      if (station.photo_url) {
+        xml += `        <ca:photo_url>${escapeXml(station.photo_url)}</ca:photo_url>\n`;
+      }
+
       xml += '      </ca:station>\n';
       xml += '    </extensions>\n';
     }

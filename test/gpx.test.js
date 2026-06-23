@@ -663,5 +663,26 @@ describe("GPX Parser & Writer Tests", () => {
     assert.ok(Array.isArray(segs));
   });
 
+  test("GPX Parser and Writer preserve waypoint photo_url extensions", () => {
+    const photoGpx = `<?xml version="1.0" encoding="UTF-8"?>
+<gpx version="1.1" creator="Kokopelli">
+  <wpt lat="39.5" lon="-106.0">
+    <name>Turn Marker</name>
+    <extensions>
+      <ca:station type="informational" id="wpt-turn">
+        <ca:photo_url>data:image/png;base64,iVBORw0KGgo=</ca:photo_url>
+      </ca:station>
+    </extensions>
+  </wpt>
+  <trk><name>Track 1</name><trkseg><trkpt lat="39.5" lon="-106.0"><ele>2800</ele></trkpt></trkseg></trk>
+</gpx>`;
+    const route = parseGPX(photoGpx, "imperial");
+    assert.ok(route.waypoints[0].extensions?.station?.photo_url);
+    assert.strictEqual(route.waypoints[0].extensions.station.photo_url, "data:image/png;base64,iVBORw0KGgo=");
+
+    const outXml = writeGPX(route);
+    assert.ok(outXml.includes("<ca:photo_url>data:image/png;base64,iVBORw0KGgo=</ca:photo_url>"));
+  });
+
 });
 
