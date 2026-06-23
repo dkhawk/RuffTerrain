@@ -1859,7 +1859,7 @@ function startPlayback() {
   }
   playbackDistance = pts[Math.floor(playbackIndex)]?.dist_m || 0;
 
-  if (playbackDistance >= activeRoute.totalDistance) {
+  if (playbackDistance >= activeRoute.totalDistance - 1 && !lastPausedPoiId) {
     playbackDistance = 0;
     playbackIndex = 0;
   }
@@ -1915,8 +1915,8 @@ function startPlayback() {
         for (const pass of passes) {
           const passDist = pass.dist_m;
           const passKey = `${wpt.id}-pass-${pass.num}`;
-          if (passDist >= Math.min(prevDist, playbackDistance) && 
-              passDist <= Math.max(prevDist, playbackDistance) && 
+          if (passDist >= Math.min(prevDist, playbackDistance) - 0.5 && 
+              passDist <= Math.max(prevDist, playbackDistance) + 0.5 && 
               passKey !== lastPausedPoiId) {
             reachedPoi = wpt;
             crossedPass = pass;
@@ -1925,8 +1925,8 @@ function startPlayback() {
         }
       } else {
         // Single-pass / standard waypoint: check base dist_m
-        if (wpt.dist_m >= Math.min(prevDist, playbackDistance) && 
-            wpt.dist_m <= Math.max(prevDist, playbackDistance) && 
+        if (wpt.dist_m >= Math.min(prevDist, playbackDistance) - 0.5 && 
+            wpt.dist_m <= Math.max(prevDist, playbackDistance) + 0.5 && 
             wpt.id !== lastPausedPoiId) {
           reachedPoi = wpt;
           break;
