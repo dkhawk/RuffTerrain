@@ -467,7 +467,7 @@ export class Map3DController {
     const cursorIdx = Math.min(Math.max(0, this.currentTrackpointIndex || 0), trackpoints.length - 1);
     const cursorPt = trackpoints[cursorIdx] || trackpoints[0];
     this.currentTrackMarker = new this.Marker3DElement({
-      position: { lat: cursorPt.lat, lng: cursorPt.lon, altitude: 15 },
+      position: { lat: cursorPt.lat, lng: cursorPt.lng !== undefined ? cursorPt.lng : cursorPt.lon, altitude: cursorPt.ele || 15 },
       altitudeMode: "RELATIVE_TO_GROUND",
       extruded: true,
       drawsWhenOccluded: true
@@ -723,7 +723,7 @@ export class Map3DController {
     this.removeTemporaryMarker();
 
     this.tempMarker = new this.Marker3DInteractiveElement({
-      position: { lat: pos.lat, lng: pos.lng, altitude: 10 },
+      position: { lat: pos.lat, lng: pos.lng !== undefined ? pos.lng : pos.lon, altitude: pos.altitude || pos.ele || 10 },
       altitudeMode: "RELATIVE_TO_GROUND",
       extruded: true,
       drawsWhenOccluded: true
