@@ -6349,7 +6349,11 @@ function computeIntelligentPacingAndWeatherPlan(route, opts) {
         return;
       }
 
-      if (!isPlacingNewPoi) return;
+      if (!isPlacingNewPoi) {
+        if (!activeRoute) return;
+        isPlacingNewPoi = true;
+        if (addPoiPanel) addPoiPanel.classList.remove("hidden");
+      }
 
       const snapped = snapToRouteSegments(activeRoute, { lat: pos.lat, lng: pos.lng });
       if (!snapped) {
@@ -6384,6 +6388,8 @@ function computeIntelligentPacingAndWeatherPlan(route, opts) {
       if (addPoiDist) {
         addPoiDist.textContent = distText;
       }
+      const nameInput = document.getElementById("add-poi-name");
+      if (nameInput) setTimeout(() => nameInput.focus(), 10);
     };
 
     // Handle temporary marker dragging
@@ -6432,45 +6438,47 @@ function computeIntelligentPacingAndWeatherPlan(route, opts) {
     addPoiSubmitBtn.addEventListener("click", async () => {
       if (!isPlacingNewPoi || !tempPoiData || !activeRoute) return;
 
+      const nameEl = document.getElementById("add-poi-name");
+      const customTitle = nameEl ? nameEl.value.trim() : "";
       const descText = addPoiDesc ? addPoiDesc.value.trim() : "";
-      if (!descText) {
-        showToast("Please provide a description first.");
-        return;
-      }
-
-      if (!apiKeyGemini) {
-        showToast("Please configure Gemini API Key in settings first.");
-        openSettings();
+      if (!customTitle && !descText) {
+        showToast("Please enter a waypoint Name or Description first.", true);
         return;
       }
 
       addPoiSubmitBtn.disabled = true;
-      addPoiSubmitBtn.textContent = "Generating...";
-      showToast("Generating waypoint with Gemini...");
+      addPoiSubmitBtn.textContent = "Saving...";
 
       try {
-        const result = await generateWaypointFromDescription(descText, tempPoiData, apiKeyGemini, geminiModel);
-        
-        // Build new waypoint object
+        let result = null;
+        if (apiKeyGemini && !customTitle) {
+          showToast("Generating waypoint with Gemini...");
+          try {
+            result = await generateWaypointFromDescription(descText, tempPoiData, apiKeyGemini, geminiModel);
+          } catch (err) {
+            console.warn("Gemini generation skipped/failed, using manual fallback:", err);
+          }
+        }
+
         const newWpt = {
           lat: tempPoiData.lat,
           lon: tempPoiData.lon,
           ele: tempPoiData.ele,
-          name: result.name || "New Waypoint",
-          desc: result.notes || descText,
-          sym: result.type === "aid_station" ? "Scenic Area" : "Circle",
+          name: result?.name || customTitle || (descText ? descText.slice(0, 28) : "Turn POI"),
+          desc: result?.notes || descText || customTitle || "Critical clarifying turn on course.",
+          sym: result?.type === "aid_station" ? "Scenic Area" : "Flag, Blue",
           dist_m: tempPoiData.dist_m,
           closestTrackpointIndex: tempPoiData.closestTrackpointIndex,
           extensions: {
             station: {
-              type: result.type || "informational",
-              subtype: result.subtype || null,
+              type: result?.type || "clarifying_turn",
+              subtype: result?.subtype || "turn",
               passes: []
             }
           }
         };
 
-        if (result.cutoffTime) {
+        if (result?.cutoffTime) {
           newWpt.extensions.station.passes.push({
             num: 1,
             dist_m: tempPoiData.dist_m,
@@ -6517,10 +6525,10 @@ function computeIntelligentPacingAndWeatherPlan(route, opts) {
         // Exit mode and cleanup
         cancelPoiPlacement();
       } catch (err) {
-        console.error("Failed to generate waypoint:", err);
-        showToast("Generation failed: " + err.message);
+        console.error("Failed to save waypoint:", err);
+        showToast("Saving failed: " + err.message);
         addPoiSubmitBtn.disabled = false;
-        addPoiSubmitBtn.textContent = "Generate Waypoint";
+        addPoiSubmitBtn.textContent = "Save Waypoint to Map";
       }
     });
   }

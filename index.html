@@ -911,13 +911,18 @@
       </div>
       
       <div style="display: flex; flex-direction: column; gap: 4px;">
+        <label for="add-poi-name" style="font-size: 10px; color: var(--text-muted); font-weight: bold; text-transform: uppercase;">Waypoint Name / Title</label>
+        <input type="text" id="add-poi-name" placeholder="e.g. 'Critical Turn Left at Fork'" style="width: 100%; background: rgba(0,0,0,0.2); border: 1px solid rgba(255,255,255,0.1); color: var(--text-color); font-size: 12px; border-radius: 6px; padding: 8px; box-sizing: border-box; outline: none;" />
+      </div>
+
+      <div style="display: flex; flex-direction: column; gap: 4px;">
         <label for="add-poi-desc" style="font-size: 10px; color: var(--text-muted); font-weight: bold; text-transform: uppercase;">Station Details / Description</label>
         <textarea id="add-poi-desc" placeholder="e.g. 'Water station called Twin Lakes, includes 10 gallons of water, snacks, no medical, cutoff is 2:00 PM'" rows="3" style="width: 100%; background: rgba(0,0,0,0.2); border: 1px solid rgba(255,255,255,0.1); color: var(--text-color); font-family: var(--font-ui); font-size: 12px; border-radius: 6px; padding: 8px; box-sizing: border-box; resize: none; outline: none;"></textarea>
       </div>
 
       <div style="display: flex; gap: 8px; margin-top: 4px;">
         <button id="add-poi-cancel-btn" class="btn btn-secondary" style="flex: 1; font-size: 12px; height: 32px; padding: 0;">Cancel</button>
-        <button id="add-poi-submit-btn" class="btn btn-primary" style="flex: 1; font-size: 12px; height: 32px; padding: 0;" disabled>Generate Waypoint</button>
+        <button id="add-poi-submit-btn" class="btn btn-primary" style="flex: 1; font-size: 12px; height: 32px; padding: 0;" disabled>Save Waypoint to Map</button>
       </div>
     </section>
 
