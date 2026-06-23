@@ -1,6 +1,6 @@
 import { test, describe } from "node:test";
 import assert from "node:assert";
-import { parseGPX, getMetricsForPoint, classifyGradient, computeSectorGradient, calculateWarnings, autoSegmentCourse, solveBackwardPacing, saveRunnerProfile, deleteRunnerProfile, getRunnerProfiles } from "../src/gpx-parser.js";
+import { parseGPX, getMetricsForPoint, classifyGradient, computeSectorGradient, calculateWarnings, autoSegmentCourse, solveBackwardPacing, saveRunnerProfile, deleteRunnerProfile, getRunnerProfiles, solvePacingTriangle } from "../src/gpx-parser.js";
 import { writeGPX } from "../src/gpx-writer.js";
 import { getWeatherConditionStyle, getElapsedHoursAtDistance, getWeatherWindowDetails } from "../src/fetch-weather.js";
 import { parseCalibrationTrack, deriveFatigueDecayLambda, buildEmpiricalProfile } from "../src/empirical-calibration.js";
@@ -601,6 +601,36 @@ describe("GPX Parser & Writer Tests", () => {
     deleteRunnerProfile("profile_test_crud");
     const profilesAfterDelete = getRunnerProfiles();
     assert.ok(!profilesAfterDelete.some(p => p.id === "profile_test_crud"));
+  });
+
+  test("Diurnal Pacing Triangle deterministically solves finish, start, or proportional terrain pacing", () => {
+    const mockRoute = {
+      totalDistance: 10000,
+      trackpoints: [
+        { dist_m: 0, ele: 0, grade: 0 },
+        { dist_m: 5000, ele: 0, grade: 0 },
+        { dist_m: 10000, ele: 0, grade: -5 }
+      ],
+      executionPlan: { sectors: [] }
+    };
+
+    const now = Date.now();
+    const res1 = solvePacingTriangle(["start", "pacing"], now, null, mockRoute, "metric");
+    assert.ok(res1);
+    assert.ok(res1.finishMs > now);
+    assert.strictEqual(res1.proportionalFactor, 1.0);
+
+    const finish = now + 10 * 3600 * 1000;
+    const res2 = solvePacingTriangle(["finish", "pacing"], null, finish, mockRoute, "metric");
+    assert.ok(res2);
+    assert.ok(res2.startMs < finish);
+
+    const start3 = now;
+    const finish3 = now + 2.0 * 3600 * 1000;
+    const res3 = solvePacingTriangle(["start", "finish"], start3, finish3, mockRoute, "metric");
+    assert.ok(res3);
+    assert.strictEqual(res3.durationHrs, 2.0);
+    assert.ok(res3.proportionalFactor > 0);
   });
 
 });

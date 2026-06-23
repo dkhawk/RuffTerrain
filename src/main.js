@@ -24,7 +24,7 @@
  * The preview controller iterates through trackpoint bearings to control camera panning and triggers contextual auto-pauses when approaching points of interest.
  */
 
-import { parseGPX, parseKML, reconcileCourse, getMetricsForPoint, calculateWarnings, haversine, snapToRouteSegments, recalculateRouteMetrics, classifyGradient, computeSectorGradient, autoSegmentCourse, solveBackwardPacing, saveRunnerProfile, deleteRunnerProfile } from "./gpx-parser.js";
+import { parseGPX, parseKML, reconcileCourse, getMetricsForPoint, calculateWarnings, haversine, snapToRouteSegments, recalculateRouteMetrics, classifyGradient, computeSectorGradient, autoSegmentCourse, solveBackwardPacing, saveRunnerProfile, deleteRunnerProfile, solvePacingTriangle } from "./gpx-parser.js";
 import { writeGPX } from "./gpx-writer.js";
 import { correctRouteElevations } from "./fetch-elevation.js";
 import { sendToGemini, fetchAvailableModels, generateWaypointFromDescription } from "./gemini-client.js";
@@ -124,6 +124,13 @@ const pacingModeBackward = document.getElementById("pacing-mode-backward");
 const deadlineInputBox = document.getElementById("deadline-input-box");
 const deadlineClockInput = document.getElementById("deadline-clock-input");
 const solveDeadlineBtn = document.getElementById("solve-deadline-btn");
+const pacingTriangleCard = document.getElementById("pacing-triangle-card");
+const triangleModeBadge = document.getElementById("triangle-mode-badge");
+const triStartInput = document.getElementById("tri-start-input");
+const triFinishInput = document.getElementById("tri-finish-input");
+const triPacingSummary = document.getElementById("tri-pacing-summary");
+const pacingScalingLabel = document.getElementById("pacing-scaling-label");
+const solveTriangleBtn = document.getElementById("solve-triangle-btn");
 const autoSliceCourseBtn = document.getElementById("auto-slice-course-btn");
 const addSplitMarkerBtn = document.getElementById("add-split-marker-btn");
 const runnerSectorsList = document.getElementById("runner-sectors-list");
@@ -3626,6 +3633,84 @@ function setupEventListeners() {
       runnerProfileSelect.dispatchEvent(new Event("change"));
       showToast("Deleted custom runner profile.");
     });
+  }
+
+  // 📐 DIURNAL PACING TRIANGLE Triad Facet Controller
+  if (pacingTriangleCard && solveTriangleBtn) {
+    const locks = Array.from(pacingTriangleCard.querySelectorAll(".tri-facet-lock"));
+    let activeLocked = ["start", "pacing"];
+
+    const syncLocksUI = () => {
+      locks.forEach(chk => {
+        const f = chk.dataset.facet;
+        chk.checked = activeLocked.includes(f);
+        const input = f === "start" ? triStartInput : (f === "finish" ? triFinishInput : null);
+        if (input) input.disabled = !activeLocked.includes(f);
+      });
+      const solved = ["start", "finish", "pacing"].find(f => !activeLocked.includes(f));
+      if (triangleModeBadge) {
+        triangleModeBadge.textContent = `Solving: ${solved === "start" ? "Start Time" : (solved === "finish" ? "Finish Time" : "Pacing Factor")}`;
+      }
+    };
+
+    locks.forEach(chk => {
+      chk.addEventListener("change", () => {
+        const clickedFacet = chk.dataset.facet;
+        if (chk.checked) {
+          if (activeLocked.length >= 2) {
+            const toRemove = activeLocked[0] === clickedFacet ? activeLocked[1] : activeLocked[0];
+            activeLocked = activeLocked.filter(f => f !== toRemove);
+          }
+          if (!activeLocked.includes(clickedFacet)) activeLocked.push(clickedFacet);
+        } else {
+          activeLocked = activeLocked.filter(f => f !== clickedFacet);
+          if (activeLocked.length < 2) {
+            const avail = ["start", "finish", "pacing"].find(f => f !== clickedFacet && !activeLocked.includes(f));
+            if (avail) activeLocked.push(avail);
+          }
+        }
+        syncLocksUI();
+      });
+    });
+
+    solveTriangleBtn.addEventListener("click", () => {
+      if (!activeRoute) {
+        showToast("Import a route first to solve Pacing Triangle.", true);
+        return;
+      }
+      try {
+        const startMs = triStartInput?.value ? new Date(triStartInput.value).getTime() : Date.now();
+        const finishMs = triFinishInput?.value ? new Date(triFinishInput.value).getTime() : (startMs + 12 * 3600 * 1000);
+        const solved = solvePacingTriangle(activeLocked, startMs, finishMs, activeRoute, units);
+        if (solved) {
+          if (triStartInput && !activeLocked.includes("start")) {
+            triStartInput.value = new Date(solved.startMs).toISOString().slice(0, 16);
+          }
+          if (triFinishInput && !activeLocked.includes("finish")) {
+            triFinishInput.value = new Date(solved.finishMs).toISOString().slice(0, 16);
+          }
+          if (pacingScalingLabel) {
+            pacingScalingLabel.textContent = `Factor: ${solved.proportionalFactor}x`;
+            pacingScalingLabel.style.color = solved.proportionalFactor > 1.2 ? "#ef4444" : (solved.proportionalFactor < 0.8 ? "#3b82f6" : "#34d399");
+          }
+          if (weatherPlanStartInput && solved.startMs) {
+            weatherPlanStartInput.value = new Date(solved.startMs).toISOString().slice(0, 16);
+          }
+          if (weatherPlanDurationInput && solved.durationHrs) {
+            weatherPlanDurationInput.value = solved.durationHrs;
+          }
+          renderRunnerSectorsUI();
+          updateRouteStatsUI();
+          showToast(`Solved Pacing Triangle (${triangleModeBadge?.textContent || "Triad"})!`);
+        }
+      } catch (err) {
+        showToast(`Triangle error: ${err.message}`, true);
+      }
+    });
+
+    if (triStartInput && !triStartInput.value) {
+      triStartInput.value = new Date().toISOString().slice(0, 16);
+    }
   }
 
   // POI / Aid Station Previous and Next Cycle Controls
