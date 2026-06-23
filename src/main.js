@@ -3412,7 +3412,22 @@ function setupEventListeners() {
   if (studioTabChat) studioTabChat.addEventListener("click", () => activateStudioTab(studioTabChat, cardGeminiChat));
 
   // Day Architect Preset & Solver controls
+  const renderRunnerProfilesDropdown = (selectedId) => {
+    if (!runnerProfileSelect) return;
+    const profiles = getRunnerProfiles();
+    const actId = selectedId || (typeof localStorage !== "undefined" ? localStorage.getItem("kokopelli_active_profile_id") : null) || "profile_hawk_pro";
+    runnerProfileSelect.innerHTML = "";
+    profiles.forEach(p => {
+      const opt = document.createElement("option");
+      opt.value = p.id;
+      opt.textContent = p.name;
+      if (p.id === actId) opt.selected = true;
+      runnerProfileSelect.appendChild(opt);
+    });
+  };
+
   if (runnerProfileSelect) {
+    renderRunnerProfilesDropdown();
     runnerProfileSelect.addEventListener("change", (e) => {
       localStorage.setItem("kokopelli_active_profile_id", e.target.value);
       if (activeRoute) {
@@ -3573,7 +3588,10 @@ function setupEventListeners() {
         const activeProf = getActiveRunnerProfile();
         editingProfileId = curId;
         if (profileCreatorTitle) profileCreatorTitle.textContent = "✏️ Edit Runner Profile";
-        if (newProfileName) newProfileName.value = activeProf.name.split(" (")[0] || activeProf.name;
+        if (newProfileName) {
+          newProfileName.value = activeProf.name.split(" (")[0] || activeProf.name;
+          setTimeout(() => newProfileName.focus(), 50);
+        }
         if (newProfileDesc) newProfileDesc.value = activeProf.description || "";
         if (newPaceClimb && activeProf.basePaces) newPaceClimb.value = activeProf.basePaces.steep || 21.0;
         if (newPaceFlat && activeProf.basePaces) newPaceFlat.value = activeProf.basePaces.flat || 10.5;
@@ -3611,15 +3629,8 @@ function setupEventListeners() {
       saveRunnerProfile(customProfile);
       runnerProfileCreatorCard.classList.add("hidden");
 
+      renderRunnerProfilesDropdown(targetId);
       if (runnerProfileSelect) {
-        let opt = runnerProfileSelect.querySelector(`option[value="${targetId}"]`);
-        if (!opt) {
-          opt = document.createElement("option");
-          opt.value = targetId;
-          runnerProfileSelect.appendChild(opt);
-        }
-        opt.textContent = customProfile.name;
-        opt.selected = true;
         runnerProfileSelect.dispatchEvent(new Event("change"));
       }
       showToast(editingProfileId ? `Updated profile: ${name}` : `Created runner profile: ${name}`);
@@ -3634,10 +3645,10 @@ function setupEventListeners() {
         return;
       }
       deleteRunnerProfile(curId);
-      const selOpt = runnerProfileSelect.querySelector(`option[value="${curId}"]`);
-      if (selOpt) selOpt.remove();
-      runnerProfileSelect.selectedIndex = 0;
-      runnerProfileSelect.dispatchEvent(new Event("change"));
+      renderRunnerProfilesDropdown();
+      if (runnerProfileSelect) {
+        runnerProfileSelect.dispatchEvent(new Event("change"));
+      }
       showToast("Deleted custom runner profile.");
     });
 
