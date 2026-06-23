@@ -6397,11 +6397,25 @@ function computeIntelligentPacingAndWeatherPlan(route, opts) {
         if (addPoiPanel) addPoiPanel.classList.remove("hidden");
       }
 
-      const snapped = snapToRouteSegments(activeRoute, { lat: pos.lat, lng: pos.lng });
-      if (!snapped) {
-        showToast("Could not snap coordinates. Please click closer to the route line.");
-        return;
+      const lngVal = pos.lng !== undefined ? pos.lng : pos.lon;
+      let snapped = snapToRouteSegments(activeRoute, { lat: pos.lat, lng: lngVal });
+      if (!snapped && activeRoute?.trackpoints?.length > 0) {
+        let minDist = Infinity;
+        let bestIdx = 0;
+        activeRoute.trackpoints.forEach((pt, idx) => {
+          const d = Math.hypot(pt.lat - pos.lat, pt.lon - lngVal);
+          if (d < minDist) { minDist = d; bestIdx = idx; }
+        });
+        const bestPt = activeRoute.trackpoints[bestIdx];
+        snapped = {
+          lat: bestPt.lat,
+          lon: bestPt.lon,
+          ele: bestPt.ele || pos.altitude || 0,
+          dist_m: bestPt.dist_m || 0,
+          closestTrackpointIndex: bestIdx
+        };
       }
+      if (!snapped) return;
 
       tempPoiData = {
         lat: snapped.lat,
