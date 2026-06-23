@@ -1950,6 +1950,8 @@ export const GOAL_PRESETS = {
   fun_day_out: { label: "🥾 Easy / Fun Day Out", mult: 1.25, restMult: 1.5 }
 };
 
+let activeProfilesList = null;
+
 export function getRunnerProfiles() {
   if (typeof localStorage !== "undefined") {
     try {
@@ -1957,7 +1959,10 @@ export function getRunnerProfiles() {
       if (Array.isArray(stored) && stored.length > 0) return stored;
     } catch(e) {}
   }
-  return DEFAULT_RUNNER_PROFILES;
+  if (!activeProfilesList) {
+    activeProfilesList = DEFAULT_RUNNER_PROFILES.map(p => ({ ...p, basePaces: { ...p.basePaces } }));
+  }
+  return activeProfilesList;
 }
 
 export function getActiveRunnerProfile() {
@@ -1982,6 +1987,25 @@ export function saveRunnerProfile(newProfile) {
   if (typeof localStorage !== "undefined") {
     localStorage.setItem("kokopelli_runner_profiles", JSON.stringify(profiles));
     localStorage.setItem("kokopelli_active_profile_id", newProfile.id);
+  } else {
+    activeProfilesList = profiles;
+  }
+}
+
+export function deleteRunnerProfile(profileId) {
+  if (!profileId) return;
+  let profiles = getRunnerProfiles().filter(p => p.id !== profileId);
+  if (profiles.length === 0) {
+    profiles = DEFAULT_RUNNER_PROFILES.map(p => ({ ...p, basePaces: { ...p.basePaces } }));
+  }
+  if (typeof localStorage !== "undefined") {
+    localStorage.setItem("kokopelli_runner_profiles", JSON.stringify(profiles));
+    const curActive = localStorage.getItem("kokopelli_active_profile_id");
+    if (curActive === profileId || !profiles.find(p => p.id === curActive)) {
+      localStorage.setItem("kokopelli_active_profile_id", profiles[0].id);
+    }
+  } else {
+    activeProfilesList = profiles;
   }
 }
 

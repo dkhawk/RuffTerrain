@@ -271,11 +271,42 @@
           </div>
 
           <div style="display: flex; flex-direction: column; gap: 4px;">
-            <label style="font-size: 10px; color: var(--text-muted); font-weight: bold;">RUNNER PROFILE</label>
+            <div style="display: flex; justify-content: space-between; align-items: center;">
+              <label style="font-size: 10px; color: var(--text-muted); font-weight: bold; margin: 0;">RUNNER PROFILE</label>
+              <div style="display: flex; gap: 4px;">
+                <button id="add-runner-profile-btn" class="btn btn-sm btn-secondary" style="font-size: 9px; padding: 2px 6px;">+ New Profile</button>
+                <button id="delete-runner-profile-btn" class="btn btn-sm btn-secondary" style="font-size: 9px; padding: 2px 6px; color: #ef4444; border-color: rgba(239,68,68,0.3);">🗑️ Delete</button>
+              </div>
+            </div>
             <select id="runner-profile-select" style="background: rgba(0,0,0,0.4); border: 1px solid rgba(255,255,255,0.2); color: #fff; padding: 6px 10px; border-radius: 6px; font-size: 12px;">
               <option value="profile_hawk_pro">Dan Hawk (Mountain Ultra Pro - 20m climb / 10m flat / 9m desc)</option>
               <option value="profile_casual">Casual Adventurer (25m climb / 12m flat / 11m desc)</option>
             </select>
+
+            <div id="runner-profile-creator-card" class="hidden" style="background: rgba(0,0,0,0.5); border: 1px solid #60a5fa; padding: 8px; border-radius: 6px; display: flex; flex-direction: column; gap: 6px; margin-top: 4px;">
+              <span style="font-size: 10px; font-weight: bold; color: #60a5fa;">➕ Create Custom Runner Profile</span>
+              <input type="text" id="new-profile-name" placeholder="Profile Name e.g. Alex Mountain Pacer" style="background:rgba(0,0,0,0.4); border:1px solid rgba(255,255,255,0.2); color:#fff; padding:4px 6px; border-radius:4px; font-size:11px;" />
+              
+              <div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 4px;">
+                <div>
+                  <label style="font-size:8px; color:var(--text-muted); display:block;">Climb Pace</label>
+                  <input type="number" id="new-pace-climb" step="0.5" value="21.0" style="width:100%; background:rgba(0,0,0,0.4); border:1px solid rgba(255,255,255,0.2); color:#fff; padding:2px 4px; border-radius:3px; font-size:10px;" />
+                </div>
+                <div>
+                  <label style="font-size:8px; color:var(--text-muted); display:block;">Flat Pace</label>
+                  <input type="number" id="new-pace-flat" step="0.5" value="10.5" style="width:100%; background:rgba(0,0,0,0.4); border:1px solid rgba(255,255,255,0.2); color:#fff; padding:2px 4px; border-radius:3px; font-size:10px;" />
+                </div>
+                <div>
+                  <label style="font-size:8px; color:var(--text-muted); display:block;">Desc Pace</label>
+                  <input type="number" id="new-pace-desc" step="0.5" value="9.5" style="width:100%; background:rgba(0,0,0,0.4); border:1px solid rgba(255,255,255,0.2); color:#fff; padding:2px 4px; border-radius:3px; font-size:10px;" />
+                </div>
+              </div>
+
+              <div style="display: flex; gap: 4px; justify-content: flex-end; margin-top: 2px;">
+                <button id="cancel-profile-create-btn" class="btn btn-sm btn-secondary" style="font-size:9px; padding:2px 6px;">Cancel</button>
+                <button id="save-profile-create-btn" class="btn btn-sm btn-primary" style="font-size:9px; padding:2px 8px; background:#60a5fa; color:#000; font-weight:bold;">Save Profile</button>
+              </div>
+            </div>
           </div>
 
           <div style="display: flex; flex-direction: column; gap: 4px;">
