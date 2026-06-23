@@ -188,8 +188,13 @@ export class Map3DController {
         this.onCameraChange({
           heading: this.map.heading,
           tilt: this.map.tilt,
-          range: this.map.range
         });
+      }
+    });
+
+    this.map.addEventListener("gmp-click", (e) => {
+      if (this.onMapClick && e.position && !this.mapClickListener) {
+        this.onMapClick(e.position);
       }
     });
 
@@ -446,29 +451,16 @@ export class Map3DController {
     }
     
     this.mapClickListener = (e) => {
-      console.log("[map-3d] MAP CLICK LISTENER INTERCEPTED EVENT. Target:", e.target?.tagName, "Type:", e.type);
-      // If they clicked the temporary placement marker, ignore it
-      if (this.tempMarker && (this.tempMarker === e.target || this.tempMarker.contains(e.target))) {
-        return;
-      }
-
-      // Find if the target is a marker
+      if (this.tempMarker && (this.tempMarker === e.target || this.tempMarker.contains(e.target))) return;
       const clickedMarker = this.markers.find(m => m === e.target || m.contains(e.target));
       if (clickedMarker && clickedMarker.waypoint) {
-        console.log("[map-3d] FOUND CLICKED MARKER VIA MAP LISTENER:", clickedMarker.waypoint.name);
-        const event = new CustomEvent("waypoint-click", { detail: clickedMarker.waypoint });
-        window.dispatchEvent(event);
-      } else {
-        console.log("[map-3d] BACKGROUND MAP CLICK DETECTED.");
-        // Map background click
-        const pos = e.position || e.detail?.position || e.latLng || e.detail?.latLng || this.map?.center || this.map?.camera?.center || { lat: 39.5, lng: -106.0, altitude: 0 };
-        if (pos && this.onMapClick) {
-          this.onMapClick(pos);
-        }
+        const evt = new CustomEvent("waypoint-click", { detail: clickedMarker.waypoint });
+        window.dispatchEvent(evt);
+      } else if (e.position) {
+        if (this.onMapClick) this.onMapClick(e.position);
       }
     };
 
-    this.map.addEventListener("click", this.mapClickListener);
     this.map.addEventListener("gmp-click", this.mapClickListener);
 
     // Create scrubbing tracker cursor at the last known trackpoint progress index
