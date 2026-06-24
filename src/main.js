@@ -155,7 +155,16 @@ const saveProfileCreateBtn = document.getElementById("save-profile-create-btn");
 const studioTabPoi = document.getElementById("studio-tab-poi");
 const studioTabChat = document.getElementById("studio-tab-chat");
 const studioTabPlan = document.getElementById("studio-tab-plan");
+const studioTabWeather = document.getElementById("studio-tab-weather");
+const studioTabWarnings = document.getElementById("studio-tab-warnings");
 const studioViewPlan = document.getElementById("studio-view-plan");
+const studioViewWeather = document.getElementById("studio-view-weather");
+const studioViewWarnings = document.getElementById("studio-view-warnings");
+const toggleCompassBtn = document.getElementById("toggle-compass-btn");
+const toggleVuMetersBtn = document.getElementById("toggle-vu-meters-btn");
+const closeCompassBtn = document.getElementById("close-compass-btn");
+const closeVuMetersBtn = document.getElementById("close-vu-meters-btn");
+const verticalVuMetersPanel = document.getElementById("vertical-vu-meters-panel");
 
 // Planner form controls
 const togglePlannerBtn = document.getElementById("toggle-planner-btn");
@@ -3452,8 +3461,11 @@ function setupEventListeners() {
     });
   }
 
-  const allStudioTabs = [studioTabEdit, studioTabRunner, studioTabPoi, studioTabPlan, studioTabChat];
-  const allStudioViews = [studioViewEdit, studioViewRunner, poiDetailDialog, studioViewPlan, cardGeminiChat];
+  // Why maintain a consolidated studio view array?
+  // Combining Edit Course, Runner Profiles, Waypoint Details, Race Planner, Weather Forecast,
+  // and Safety Alerts into single unified studio tab views avoids overlapping desktop floating dialogs.
+  const allStudioTabs = [studioTabEdit, studioTabRunner, studioTabPoi, studioTabPlan, studioTabWeather, studioTabWarnings, studioTabChat];
+  const allStudioViews = [studioViewEdit, studioViewRunner, poiDetailDialog, studioViewPlan, studioViewWeather, studioViewWarnings, cardGeminiChat];
 
   const activateStudioTab = (tab, view) => {
     allStudioTabs.forEach(t => t && t.classList.remove("active"));
@@ -3469,6 +3481,8 @@ function setupEventListeners() {
   });
   if (studioTabPoi) studioTabPoi.addEventListener("click", () => activateStudioTab(studioTabPoi, poiDetailDialog));
   if (studioTabPlan) studioTabPlan.addEventListener("click", () => activateStudioTab(studioTabPlan, studioViewPlan));
+  if (studioTabWeather) studioTabWeather.addEventListener("click", () => activateStudioTab(studioTabWeather, studioViewWeather));
+  if (studioTabWarnings) studioTabWarnings.addEventListener("click", () => activateStudioTab(studioTabWarnings, studioViewWarnings));
   if (studioTabChat) studioTabChat.addEventListener("click", () => activateStudioTab(studioTabChat, cardGeminiChat));
 
   // Day Architect Preset & Solver controls
@@ -5123,43 +5137,54 @@ function computeIntelligentPacingAndWeatherPlan(route, opts) {
   }
 
   // Warnings Toggle
+  // Warnings Toggle (opens Course Architect & Studio dialog -> Alerts tab)
   if (toggleWarningsBtn) {
     toggleWarningsBtn.addEventListener("click", () => {
-      cardWarnings.classList.remove("hidden");
-      toggleWarningsBtn.classList.add("hidden");
-      updateWeatherShiftedState();
-    });
-  }
-  if (closeWarningsBtn) {
-    closeWarningsBtn.addEventListener("click", () => {
-      cardWarnings.classList.add("hidden");
-      toggleWarningsBtn.classList.remove("hidden");
-      updateWeatherShiftedState();
+      if (cardImporter) cardImporter.classList.remove("hidden");
+      if (studioTabWarnings && studioViewWarnings) {
+        allStudioTabs?.forEach(t => t && t.classList.remove("active"));
+        allStudioViews?.forEach(v => v && v.classList.add("hidden"));
+        studioTabWarnings.classList.add("active");
+        studioViewWarnings.classList.remove("hidden");
+      }
     });
   }
 
-  // Weather Toggle
+  // Weather Toggle (opens Course Architect & Studio dialog -> Weather tab)
   if (toggleWeatherBtn) {
     toggleWeatherBtn.addEventListener("click", () => {
-      cardWeather.classList.remove("hidden");
-      toggleWeatherBtn.classList.add("hidden");
-      updateWeatherShiftedState();
+      if (cardImporter) cardImporter.classList.remove("hidden");
+      if (studioTabWeather && studioViewWeather) {
+        allStudioTabs?.forEach(t => t && t.classList.remove("active"));
+        allStudioViews?.forEach(v => v && v.classList.add("hidden"));
+        studioTabWeather.classList.add("active");
+        studioViewWeather.classList.remove("hidden");
+      }
       
       // Force initial weather update on open
       if (activeRoute && activeRoute.trackpoints.length > 0) {
         const pt = activeRoute.trackpoints[playbackIndex || 0];
-        if (pt) {
+        if (pt && typeof triggerWeatherWeather === "function") {
           triggerWeatherWeather(pt.lat, pt.lon, true);
         }
       }
     });
   }
-  if (closeWeatherBtn) {
-    closeWeatherBtn.addEventListener("click", () => {
-      cardWeather.classList.add("hidden");
-      toggleWeatherBtn.classList.remove("hidden");
-      updateWeatherShiftedState();
-    });
+
+  // Why add dismissible spatial compass and vertical VU meter toggles?
+  // Runners want full control over floating viewport HUD overlays. Clicking the top HUD buttons
+  // or overlay close buttons toggles visibility cleanly without losing state.
+  if (toggleCompassBtn && whiskeyCompass) {
+    toggleCompassBtn.addEventListener("click", () => whiskeyCompass.classList.toggle("hidden"));
+  }
+  if (closeCompassBtn && whiskeyCompass) {
+    closeCompassBtn.addEventListener("click", () => whiskeyCompass.classList.add("hidden"));
+  }
+  if (toggleVuMetersBtn && verticalVuMetersPanel) {
+    toggleVuMetersBtn.addEventListener("click", () => verticalVuMetersPanel.classList.toggle("hidden"));
+  }
+  if (closeVuMetersBtn && verticalVuMetersPanel) {
+    closeVuMetersBtn.addEventListener("click", () => verticalVuMetersPanel.classList.add("hidden"));
   }
 
   if (weatherPlanStartInput) {

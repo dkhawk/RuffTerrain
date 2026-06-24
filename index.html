@@ -88,6 +88,8 @@
         <button id="toggle-stats-btn" class="settings-gear-btn hidden" title="Course Stats Panel">📊</button>
         <button id="toggle-weather-btn" class="settings-gear-btn hidden" title="Weather Forecast">🌤️</button>
         <kbd id="hud-weather-kbd-indicator" style="display:none;"></kbd>
+        <button id="toggle-compass-btn" class="settings-gear-btn" title="Toggle Spatial Whiskey Compass (🧭)">🧭</button>
+        <button id="toggle-vu-meters-btn" class="settings-gear-btn" title="Toggle Vertical Gradient & Pace VU Meters (🎚️)">🎚️</button>
         <button id="keyboard-shortcuts-btn" class="settings-gear-btn" title="Keyboard Shortcuts (⌨️)">⌨️</button>
         <button id="reset-boulder-btn" class="settings-gear-btn" title="Clear Course and Reset to Boulder">🔄</button>
         <button id="global-settings-btn" class="settings-gear-btn" title="Config Settings">⚙️</button>
@@ -128,7 +130,6 @@
       </div>
     </div>
 
-
     <!-- Full-screen 3D Map Container -->
     <main id="map-viewport">
       <div id="map-canvas">
@@ -145,6 +146,7 @@
 
     <!-- Premium Spatial Glassmorphic Whiskey Compass Gauge -->
     <div id="whiskey-compass" class="whiskey-compass-gauge hidden">
+      <button id="close-compass-btn" style="position: absolute; top: 2px; right: 2px; background: rgba(0,0,0,0.6); border: 1px solid rgba(255,255,255,0.2); color: #fff; width: 18px; height: 18px; border-radius: 50%; font-size: 11px; display: flex; align-items: center; justify-content: center; cursor: pointer; z-index: 110; pointer-events: auto;">&times;</button>
       <!-- Glass glare effect -->
       <div class="compass-glass"></div>
       <!-- Lubber Line (Vertical Red line marker at the center front) -->
@@ -171,6 +173,26 @@
       <div id="compass-degrees" class="compass-digital-readout">045°</div>
     </div>
 
+    <!-- Dedicated Vertical Retro VU Meters Floating on the Side of the Map (beneath compass) -->
+    <aside id="vertical-vu-meters-panel" class="glass-card" style="position: absolute; top: 212px; right: 24px; width: 72px; z-index: 35; display: flex; flex-direction: column; gap: 12px; padding: 16px 10px 12px 10px; border-radius: 12px; background: rgba(15, 23, 42, 0.85); border: 1px solid rgba(255, 255, 255, 0.08); backdrop-filter: blur(12px); box-shadow: 0 8px 32px rgba(0, 0, 0, 0.5); transition: right 0.3s ease;">
+      <button id="close-vu-meters-btn" style="position: absolute; top: 3px; right: 3px; background: rgba(0,0,0,0.6); border: 1px solid rgba(255,255,255,0.2); color: #fff; width: 16px; height: 16px; border-radius: 50%; font-size: 10px; display: flex; align-items: center; justify-content: center; cursor: pointer; z-index: 40; line-height: 1;">&times;</button>
+      <!-- 1. Vertical Terrain Gradient Column (Top) -->
+      <div style="display: flex; flex-direction: column; align-items: center; width: 100%;">
+        <span style="font-size: 9px; font-weight: 800; font-family: var(--font-mono, monospace); color: #94a3b8; letter-spacing: 0.5px;">GRADE</span>
+        <span id="vertical-grade-readout" style="font-size: 11px; font-weight: 800; font-family: var(--font-mono, monospace); color: #3b82f6; margin: 3px 0 5px 0; text-align: center;">■ 0.0%</span>
+        <canvas id="vertical-grade-canvas" style="width: 100%; height: 110px; display: block; border-radius: 4px; background: rgba(0,0,0,0.4);"></canvas>
+        <span style="font-size: 8px; font-family: var(--font-mono, monospace); color: #64748b; margin-top: 3px;">0% CTR</span>
+      </div>
+      <hr style="width: 100%; border: 0; border-top: 1px solid rgba(255,255,255,0.08); margin: 0;" />
+      <!-- 2. Vertical Target Pace Column (Bottom) -->
+      <div style="display: flex; flex-direction: column; align-items: center; width: 100%;">
+        <span style="font-size: 9px; font-weight: 800; font-family: var(--font-mono, monospace); color: #94a3b8; letter-spacing: 0.5px;">PACE</span>
+        <span id="vertical-pace-readout" style="font-size: 11px; font-weight: 800; font-family: var(--font-mono, monospace); color: #10b981; margin: 3px 0 5px 0; text-align: center;">10:00</span>
+        <canvas id="vertical-pace-canvas" style="width: 100%; height: 110px; display: block; border-radius: 4px; background: rgba(0,0,0,0.4);"></canvas>
+        <span id="vertical-pace-units-lbl" style="font-size: 8px; font-family: var(--font-mono, monospace); color: #64748b; margin-top: 3px;">/MI</span>
+      </div>
+    </aside>
+
     <!-- LEFT SIDEBAR OVERLAYS -->
 
     <!-- Card 1: Edit Course Panel (Top Left) -->
@@ -193,6 +215,8 @@
           <button id="studio-tab-runner" class="btn btn-sm btn-secondary" style="font-size: 10px; padding: 4px 8px; border-radius: 12px; background: rgba(245, 158, 11, 0.15); color: #fbbf24; border: 1px solid #f59e0b;">🏃 Runner & Pacing</button>
           <button id="studio-tab-poi" class="btn btn-sm btn-secondary" style="font-size: 10px; padding: 4px 8px; border-radius: 12px;">📍 Waypoint Details</button>
           <button id="studio-tab-plan" class="btn btn-sm btn-secondary" style="font-size: 10px; padding: 4px 8px; border-radius: 12px; background: rgba(59, 130, 246, 0.15); color: #60a5fa; border: 1px solid #3b82f6;">⏱️ Race Planner</button>
+          <button id="studio-tab-weather" class="btn btn-sm btn-secondary" style="font-size: 10px; padding: 4px 8px; border-radius: 12px; background: rgba(234, 179, 8, 0.15); color: #facc15; border: 1px solid #eab308;">🌤️ Weather</button>
+          <button id="studio-tab-warnings" class="btn btn-sm btn-secondary" style="font-size: 10px; padding: 4px 8px; border-radius: 12px; background: rgba(239, 68, 68, 0.15); color: #f87171; border: 1px solid #ef4444;">⚠️ Alerts</button>
           <button id="studio-tab-chat" class="btn btn-sm btn-secondary" style="font-size: 10px; padding: 4px 8px; border-radius: 12px; background: rgba(16, 185, 129, 0.15); color: #34d399; border: 1px solid #10b981;">✨ Gemini Chat</button>
         </div>
       </header>
@@ -714,6 +738,103 @@
             </div>
           </div>
         </div>
+
+        <!-- VIEW 6: Weather Forecast Studio View (`#studio-view-weather`) -->
+        <div id="studio-view-weather" class="hidden" style="display: flex; flex-direction: column; gap: 8px;">
+          <div style="display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid rgba(255,255,255,0.1); padding-bottom: 6px;">
+            <div style="display: flex; align-items: center; gap: 6px;">
+              <span style="font-size: 14px;">🌤️</span>
+              <div>
+                <h3 style="margin: 0; font-size: 12px;">Course Weather Forecast</h3>
+                <p id="weather-location-subtitle" class="subtitle" style="margin: 0; font-size: 9px; color: var(--text-muted);">Current Location</p>
+                <p id="weather-projected-time" class="subtitle" style="margin: 2px 0 0 0; font-size: 9px; font-weight: 600; color: #10b981;"></p>
+              </div>
+            </div>
+          </div>
+          <!-- Weather & Pace Synchronization Controls -->
+          <div class="weather-plan-config" style="padding: 8px; background: rgba(0, 0, 0, 0.25); border: 1px solid rgba(255, 255, 255, 0.08); border-radius: 6px; font-size: 11px;">
+            <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 6px;">
+              <span style="color: var(--text-muted); font-weight: 500;">START TIME:</span>
+              <input type="datetime-local" id="weather-plan-start" style="background: rgba(255,255,255,0.1); border: 1px solid rgba(255,255,255,0.2); color: #fff; border-radius: 4px; padding: 2px 6px; font-size: 10px; outline: none; cursor: pointer;" />
+            </div>
+            <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px;">
+              <span style="color: var(--text-muted); font-weight: 500;">EST. DURATION:</span>
+              <div style="display: flex; align-items: center; gap: 4px;">
+                <input type="number" id="weather-plan-duration" min="0.5" max="100" step="0.5" value="4.0" style="background: rgba(255,255,255,0.1); border: 1px solid rgba(255,255,255,0.2); color: #fff; border-radius: 4px; padding: 2px 6px; width: 50px; text-align: right; font-size: 10px; outline: none;" />
+                <span style="color: var(--text-muted);">hrs</span>
+              </div>
+            </div>
+            <button id="fetch-weather-btn" class="btn btn-primary" style="width: 100%; padding: 6px; font-size: 11px; font-weight: bold; background: #10b981; border: none; border-radius: 4px; color: #fff; cursor: pointer;">⚡ Fetch Forecast</button>
+          </div>
+          <!-- Pending State -->
+          <div id="weather-pending-state" style="text-align: center; padding: 16px 10px; font-size: 11px; color: var(--text-secondary); background: rgba(255,255,255,0.02); border: 1px dashed rgba(255,255,255,0.1); border-radius: 8px;">
+            <p style="margin: 0 0 6px 0; font-weight: 600; color: #60a5fa;">Start Date/Time Required</p>
+            <p style="margin: 0; line-height: 1.4;">Specify start date & time above, then click <strong>Fetch Forecast</strong> to retrieve weather details.</p>
+          </div>
+          <!-- Loader state -->
+          <div id="weather-loader" class="weather-loader hidden" style="display: flex; align-items: center; justify-content: center; gap: 8px; padding: 20px 0; font-size: 12px; color: var(--text-muted);">
+            <span class="spinner"></span> <span>Loading forecast...</span>
+          </div>
+          <!-- Error state -->
+          <div id="weather-error" class="weather-error hidden" style="text-align: center; color: #ef4444; padding: 20px 0; font-size: 12px;">
+            Failed to load weather forecast.
+          </div>
+          <!-- Loaded state -->
+          <div id="weather-content" class="weather-content">
+            <div class="weather-current-summary" style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 12px; padding-bottom: 12px; border-bottom: 1px solid rgba(255, 255, 255, 0.08);">
+              <div style="display: flex; flex-direction: column;">
+                <span id="weather-current-temp" style="font-size: 28px; font-weight: bold; font-family: var(--font-display);">--°C</span>
+                <span id="weather-current-feels" style="font-size: 11px; color: var(--text-muted);">Feels like --°C</span>
+              </div>
+              <div style="text-align: right; display: flex; flex-direction: column; align-items: flex-end;">
+                <span id="weather-current-emoji" style="font-size: 36px; line-height: 1;">🌡️</span>
+                <span id="weather-current-desc" style="font-size: 12px; font-weight: 500;">No Data</span>
+              </div>
+            </div>
+            <div class="weather-details-grid" style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-bottom: 12px; font-size: 11px;">
+              <div class="weather-detail-item">
+                <span class="lbl" style="color: var(--text-muted);">💨 WIND:</span>
+                <span id="weather-current-wind" class="val" style="font-weight: 500;">--</span>
+              </div>
+              <div class="weather-detail-item">
+                <span class="lbl" style="color: var(--text-muted);">💧 HUMIDITY:</span>
+                <span id="weather-current-humidity" class="val" style="font-weight: 500;">--%</span>
+              </div>
+              <div class="weather-detail-item">
+                <span class="lbl" style="color: var(--text-muted);">🌧️ RAIN PROB:</span>
+                <span id="weather-current-precip" class="val" style="font-weight: 500;">--%</span>
+              </div>
+              <div class="weather-detail-item">
+                <span class="lbl" style="color: var(--text-muted);">☁️ CLOUD COVER:</span>
+                <span id="weather-current-clouds" class="val" style="font-weight: 500;">--%</span>
+              </div>
+            </div>
+            <div id="weather-all-stations-section" class="hidden" style="margin-bottom: 12px; border-top: 1px solid rgba(255, 255, 255, 0.08); padding-top: 10px;">
+              <h4 style="margin: 0 0 6px 0; font-size: 10px; text-transform: uppercase; color: var(--text-muted); letter-spacing: 0.5px;">Aid Station Forecasts:</h4>
+              <div id="weather-all-stations-list" style="display: flex; flex-direction: column; gap: 6px; max-height: 150px; overflow-y: auto; margin-bottom: 6px;"></div>
+            </div>
+            <div class="weather-forecast-timeline">
+              <h4 style="margin: 0 0 6px 0; font-size: 10px; text-transform: uppercase; color: var(--text-muted); letter-spacing: 0.5px;">Hourly Forecast:</h4>
+              <div id="weather-forecast-hours-list" style="display: flex; flex-direction: column; gap: 6px; max-height: 140px; overflow-y: auto;"></div>
+            </div>
+          </div>
+        </div>
+
+        <!-- VIEW 7: Safety Alerts Studio View (`#studio-view-warnings`) -->
+        <div id="studio-view-warnings" class="hidden" style="display: flex; flex-direction: column; gap: 8px;">
+          <div style="display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid rgba(255,255,255,0.1); padding-bottom: 6px;">
+            <div style="display: flex; align-items: center; gap: 6px;">
+              <h3 style="margin: 0; font-size: 12px;">⚠️ Course Safety Alerts</h3>
+              <span id="warnings-count" class="badge">0</span>
+            </div>
+            <div style="display: flex; gap: 6px;">
+              <button id="regenerate-warnings-btn" class="btn btn-sm btn-secondary" title="Regenerate alerts" style="font-size: 9px; padding: 2px 6px;">↺ Refresh</button>
+              <button id="clear-warnings-highlight-btn" class="btn btn-sm btn-secondary hidden" title="Clear alert highlight" style="font-size: 9px; padding: 2px 6px;">🧹 Clear Map</button>
+            </div>
+          </div>
+          <div id="warnings-list" class="warnings-list" style="display: flex; flex-direction: column; gap: 6px; max-height: 320px; overflow-y: auto;"></div>
+        </div>
+
       </div>
     </section>
 
@@ -767,115 +888,6 @@
         </div>
 
 
-      </div>
-    </section>
-
-    <!-- Card 4: Safety Alerts (Middle Right) -->
-    <section id="card-warnings" class="glass-card panel-middle-right hidden">
-      <header class="card-header" style="display: flex; justify-content: space-between; align-items: center;">
-        <div style="display: flex; align-items: center; gap: 0.5rem;">
-          <h3 style="margin: 0;">Alerts</h3>
-          <span id="warnings-count" class="badge">0</span>
-          <button id="regenerate-warnings-btn" class="icon-btn" title="Regenerate all alerts" style="background: none; border: none; cursor: pointer; color: var(--text-muted); font-size: 14px;">↺</button>
-          <button id="clear-warnings-highlight-btn" class="icon-btn hidden" title="Clear alert highlight from map" style="background: none; border: none; cursor: pointer; color: var(--text-muted); font-size: 14px;">🧹</button>
-        </div>
-        <button id="close-warnings-btn" class="close-card-btn" title="Hide Alerts Panel">&times;</button>
-      </header>
-      <div class="card-body scrollable">
-        <div id="warnings-list" class="warnings-list">
-          <!-- Warnings populated dynamically -->
-        </div>
-      </div>
-    </section>
-
-    <!-- Card 6: Weather Forecast Panel (Right Side, under compass or replacing stats) -->
-    <section id="card-weather" class="glass-card panel-weather hidden">
-      <header class="card-header" style="display: flex; justify-content: space-between; align-items: center;">
-        <div style="display: flex; align-items: center; gap: 0.5rem;">
-          <span class="icon">🌤️</span>
-          <div>
-            <h3 style="margin: 0; font-size: 13px;">Weather Forecast</h3>
-            <p id="weather-location-subtitle" class="subtitle" style="margin: 0; font-size: 10px; color: var(--text-muted);">Current Location</p>
-            <p id="weather-projected-time" class="subtitle" style="margin: 2px 0 0 0; font-size: 10px; font-weight: 600; color: #10b981;"></p>
-          </div>
-        </div>
-        <button id="close-weather-btn" class="close-card-btn" title="Hide Weather Panel">&times;</button>
-      </header>
-      <div class="card-body">
-        <!-- Weather & Pace Synchronization Controls -->
-        <div class="weather-plan-config" style="margin-bottom: 12px; padding: 8px; background: rgba(0, 0, 0, 0.25); border: 1px solid rgba(255, 255, 255, 0.08); border-radius: 6px; font-size: 11px;">
-          <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 6px;">
-            <span style="color: var(--text-muted); font-weight: 500;">START TIME:</span>
-            <input type="datetime-local" id="weather-plan-start" style="background: rgba(255,255,255,0.1); border: 1px solid rgba(255,255,255,0.2); color: #fff; border-radius: 4px; padding: 2px 6px; font-size: 10px; outline: none; cursor: pointer;" />
-          </div>
-          <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px;">
-            <span style="color: var(--text-muted); font-weight: 500;">EST. DURATION:</span>
-            <div style="display: flex; align-items: center; gap: 4px;">
-              <input type="number" id="weather-plan-duration" min="0.5" max="100" step="0.5" value="4.0" style="background: rgba(255,255,255,0.1); border: 1px solid rgba(255,255,255,0.2); color: #fff; border-radius: 4px; padding: 2px 6px; width: 50px; text-align: right; font-size: 10px; outline: none;" />
-              <span style="color: var(--text-muted);">hrs</span>
-            </div>
-          </div>
-          <button id="fetch-weather-btn" class="btn btn-primary" style="width: 100%; padding: 6px; font-size: 11px; font-weight: bold; background: #10b981; border: none; border-radius: 4px; color: #fff; cursor: pointer;">⚡ Fetch Forecast</button>
-        </div>
-        <!-- Pending State -->
-        <div id="weather-pending-state" style="text-align: center; padding: 20px 10px; font-size: 11px; color: var(--text-secondary); background: rgba(255,255,255,0.02); border: 1px dashed rgba(255,255,255,0.1); border-radius: 8px; margin-bottom: 12px;">
-          <p style="margin: 0 0 6px 0; font-weight: 600; color: #60a5fa;">Start Date/Time Required</p>
-          <p style="margin: 0; line-height: 1.4;">Specify start date & time above, then click <strong>Fetch Forecast</strong> to retrieve weather details.</p>
-        </div>
-        <!-- Loader state -->
-        <div id="weather-loader" class="weather-loader hidden" style="display: flex; align-items: center; justify-content: center; gap: 8px; padding: 20px 0; font-size: 12px; color: var(--text-muted);">
-          <span class="spinner"></span> <span>Loading forecast...</span>
-        </div>
-        <!-- Error state -->
-        <div id="weather-error" class="weather-error hidden" style="text-align: center; color: #ef4444; padding: 20px 0; font-size: 12px;">
-          Failed to load weather forecast.
-        </div>
-        <!-- Loaded state -->
-        <div id="weather-content" class="weather-content">
-          <div class="weather-current-summary" style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 12px; padding-bottom: 12px; border-bottom: 1px solid rgba(255, 255, 255, 0.08);">
-            <div style="display: flex; flex-direction: column;">
-              <span id="weather-current-temp" style="font-size: 28px; font-weight: bold; font-family: var(--font-display);">--°C</span>
-              <span id="weather-current-feels" style="font-size: 11px; color: var(--text-muted);">Feels like --°C</span>
-            </div>
-            <div style="text-align: right; display: flex; flex-direction: column; align-items: flex-end;">
-              <span id="weather-current-emoji" style="font-size: 36px; line-height: 1;">🌡️</span>
-              <span id="weather-current-desc" style="font-size: 12px; font-weight: 500;">No Data</span>
-            </div>
-          </div>
-          
-          <div class="weather-details-grid" style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-bottom: 12px; font-size: 11px;">
-            <div class="weather-detail-item">
-              <span class="lbl" style="color: var(--text-muted);">💨 WIND:</span>
-              <span id="weather-current-wind" class="val" style="font-weight: 500;">--</span>
-            </div>
-            <div class="weather-detail-item">
-              <span class="lbl" style="color: var(--text-muted);">💧 HUMIDITY:</span>
-              <span id="weather-current-humidity" class="val" style="font-weight: 500;">--%</span>
-            </div>
-            <div class="weather-detail-item">
-              <span class="lbl" style="color: var(--text-muted);">🌧️ RAIN PROB:</span>
-              <span id="weather-current-precip" class="val" style="font-weight: 500;">--%</span>
-            </div>
-            <div class="weather-detail-item">
-              <span class="lbl" style="color: var(--text-muted);">☁️ CLOUD COVER:</span>
-              <span id="weather-current-clouds" class="val" style="font-weight: 500;">--%</span>
-            </div>
-          </div>
-
-          <div id="weather-all-stations-section" class="hidden" style="margin-bottom: 12px; border-top: 1px solid rgba(255, 255, 255, 0.08); padding-top: 10px;">
-            <h4 style="margin: 0 0 6px 0; font-size: 10px; text-transform: uppercase; color: var(--text-muted); letter-spacing: 0.5px;">Aid Station Forecasts:</h4>
-            <div id="weather-all-stations-list" style="display: flex; flex-direction: column; gap: 6px; max-height: 150px; overflow-y: auto; margin-bottom: 6px;">
-              <!-- Comparative weather per aid station populated dynamically -->
-            </div>
-          </div>
-
-          <div class="weather-forecast-timeline">
-            <h4 style="margin: 0 0 6px 0; font-size: 10px; text-transform: uppercase; color: var(--text-muted); letter-spacing: 0.5px;">Hourly Forecast:</h4>
-            <div id="weather-forecast-hours-list" style="display: flex; flex-direction: column; gap: 6px; max-height: 140px; overflow-y: auto;">
-              <!-- Hours forecast populated dynamically -->
-            </div>
-          </div>
-        </div>
       </div>
     </section>
 
@@ -1029,7 +1041,6 @@
           </div>
         </div>
       </header>
-      
       <div class="chart-container">
         <canvas id="elevation-canvas"></canvas>
       </div>
