@@ -181,6 +181,7 @@ const planSteepDescent = document.getElementById("plan-steep-descent");
 const planDegradationSlider = document.getElementById("plan-degradation-slider");
 const planDegradationVal = document.getElementById("plan-degradation-val");
 const generateRacePlanBtn = document.getElementById("generate-race-plan-btn");
+const syncAgentPlanBtn = document.getElementById("sync-agent-plan-btn");
 const plannerOutputContainer = document.getElementById("planner-output-container");
 const planTotalTimeDisp = document.getElementById("plan-total-time-disp");
 const planAvgPaceDisp = document.getElementById("plan-avg-pace-disp");
@@ -5288,6 +5289,132 @@ function computeIntelligentPacingAndWeatherPlan(route, opts) {
           onExecutionPlanChanged();
         }
       });
+    });
+  }
+
+  if (syncAgentPlanBtn) {
+    syncAgentPlanBtn.addEventListener("click", async () => {
+      if (!activeRoute) {
+        showToast("Please load a GPX/KML course first!");
+        return;
+      }
+      syncAgentPlanBtn.disabled = true;
+      syncAgentPlanBtn.textContent = "Syncing...";
+      try {
+        const response = await fetch("/data/pacing_plan.json");
+        if (!response.ok) {
+          throw new Error("Pacing plan file not found. Ensure you have run the runner_agent.py simulation first.");
+        }
+        const plan = await response.json();
+        
+        const outputListEl = planSegmentsList;
+        const totalTimeEl = planTotalTimeDisp;
+        const avgPaceEl = planAvgPaceDisp;
+        
+        if (outputListEl) outputListEl.innerHTML = "";
+        
+        const generatedSectors = [];
+        
+        const formatClock = (hrs) => {
+          const h24 = Math.floor((hrs + 24) % 24);
+          const m = Math.floor((hrs % 1) * 60);
+          const hh = h24 < 10 ? "0" + h24 : h24;
+          const mm = m < 10 ? "0" + m : m;
+          return `${hh}:${mm}`;
+        };
+        
+        const parseHrs = (timeStr) => {
+          const parts = (timeStr || "06:00").split(":");
+          return parseFloat(parts[0]) + parseFloat(parts[1] || "0") / 60;
+        };
+        
+        const startHrs = parseHrs(plan.start_time || "06:00");
+        const elapsedHrs = plan.summary_finish_times_hrs.steady;
+        
+        plan.sectors.forEach((sec, idx) => {
+          const card = document.createElement("div");
+          card.style.background = "rgba(15, 23, 42, 0.65)";
+          card.style.border = "1px solid rgba(255, 255, 255, 0.12)";
+          card.style.padding = "10px 14px";
+          card.style.borderRadius = "10px";
+          card.style.display = "flex";
+          card.style.flexDirection = "column";
+          card.style.gap = "8px";
+          card.style.boxShadow = "0 4px 12px rgba(0, 0, 0, 0.3)";
+          
+          let terrainCol = "#38bdf8";
+          let terrainBg = "rgba(56,189,248,0.2)";
+          let terrainLabel = "Flat / Rolling ➔";
+          if (sec.terrain === "climb") {
+            terrainLabel = sec.avg_grade > 8 ? "Steep Ascent ↗↗" : "Ascent ↗";
+            terrainCol = sec.avg_grade > 8 ? "#f43f5e" : "#fb7185";
+            terrainBg = sec.avg_grade > 8 ? "rgba(244,63,94,0.25)" : "rgba(251,113,133,0.2)";
+          } else if (sec.terrain === "descend") {
+            terrainLabel = sec.avg_grade < -12 ? "Steep Descent ↘↘" : "Descent ↘";
+            terrainCol = sec.avg_grade < -12 ? "#f59e0b" : "#34d399";
+            terrainBg = sec.avg_grade < -12 ? "rgba(245,158,11,0.25)" : "rgba(52,211,153,0.2)";
+          }
+          
+          const startHrsClock = startHrs + (idx > 0 ? plan.sectors[idx - 1].steady_elapsed_hrs : 0);
+          const endHrsClock = startHrs + sec.steady_elapsed_hrs;
+          const finalTimeRangeStr = `${formatClock(startHrsClock)} - ${formatClock(endHrsClock)}`;
+          
+          const speedMph = 60 / sec.steady_pace_min_mi;
+          
+          card.innerHTML = `
+            <div style="display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid rgba(255,255,255,0.08); padding-bottom: 6px;">
+              <span style="font-size: 13px; font-weight: 800; color: #10b981;">${sec.name}</span>
+              <span style="font-size: 10px; padding: 2px 8px; border-radius: 12px; background: ${terrainBg}; color: ${terrainCol}; font-weight: 700;">${terrainLabel}</span>
+            </div>
+            
+            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 6px; font-size: 11px; color: var(--text-secondary);">
+              <div>📏 Dist: <strong style="color:#fff;">${sec.distance_mi.toFixed(1)} mi</strong> (${sec.avg_grade > 0 ? "+"+sec.avg_grade.toFixed(1) : sec.avg_grade.toFixed(1)}% grade)</div>
+              <div>🤖 Strategy: <strong style="color:#60a5fa; font-size:10px;">${sec.strategy}</strong></div>
+            </div>
+            
+            <div style="display: flex; justify-content: space-between; align-items: center; font-size: 11px; padding-top: 2px;">
+              <span>Arrive: <strong style="color:#fff;">${formatClock(endHrsClock)}</strong> (+${sec.steady_elapsed_hrs.toFixed(2)}h total)</span>
+              <span>Simulated Pace: <strong style="color:#34d399; font-size: 12px;">${Math.floor(sec.steady_pace_min_mi)}:${Math.floor((sec.steady_pace_min_mi%1)*60).toString().padStart(2,"0")} /mi</strong> (${speedMph.toFixed(1)} mph)</span>
+            </div>
+          `;
+          
+          if (outputListEl) outputListEl.appendChild(card);
+          
+          generatedSectors.push({
+            start_dist_m: sec.start_dist_m || 0,
+            end_dist_m: sec.end_dist_m || 0,
+            name: sec.name,
+            time_window: finalTimeRangeStr,
+            weather_summary: "Simulated Agent Pacing Strategy",
+            target_pace_min: sec.steady_pace_min_mi,
+            subsegments: [],
+            strategy: sec.strategy
+          });
+        });
+        
+        if (totalTimeEl) totalTimeEl.textContent = `${elapsedHrs.toFixed(2)} Hrs`;
+        if (avgPaceEl) {
+          const avgPace = (elapsedHrs * 60) / (activeRoute.totalDistance / 1609.34);
+          avgPaceEl.textContent = `${Math.floor(avgPace)}:${Math.floor((avgPace%1)*60).toString().padStart(2,"0")} min/mi`;
+        }
+        
+        activeRoute.executionPlan = {
+          startTime: plan.start_time,
+          targetDurationHrs: elapsedHrs,
+          sectors: generatedSectors
+        };
+        
+        if (plannerOutputContainer) plannerOutputContainer.classList.remove("hidden");
+        showToast("🔄 Synced with Agent Pacing Plan!");
+        onExecutionPlanChanged();
+        
+      } catch (err) {
+        showToast(err.message);
+        console.error(err);
+      } finally {
+        syncAgentPlanBtn.disabled = false;
+        syncAgentPlanBtn.textContent = "🔄 Sync Agent Pacing Plan";
+      }
     });
   }
 
