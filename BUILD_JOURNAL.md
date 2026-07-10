@@ -1135,5 +1135,30 @@ This journal records all design decisions, architecture patterns, development st
     *   Updated `index.html` stacking sidebar VU meters vertically, removed `.gradient-visualizers-group`, and restored missing `</header>` tag before `.chart-container`.
     *   Ran `node --test test/gpx.test.js` verifying 25/25 unit tests passing and validated production client bundle (`npm run build`).
 
+---
+
+### 🚀 Session 89: Unification of Race Planning into Master Standalone Strategy Modal
+*   **Goal**: Unify the duplicate race planning areas (Course Studio Race Planner tab vs. standalone Race Execution Strategy modal) by consolidating all parameters and split generator controls into the standalone Strategy Modal.
+*   **Decisions & Rationale (*The Why*)**:
+    *   **Consolidated Standalone Strategy Modal (`#strategy-overlay`)**: Having two separate race planning UIs (`#studio-view-plan` inside the Course Studio dialog and `#strategy-overlay` standalone modal) caused user confusion and fragmented state. Following user feedback, consolidated all Race Planner controls—including Event Start Time, Sun Tracking (Sunrise 🌅 & Sunset 🌙), benchmark goals, steep descent handling (`#plan-steep-descent`), heat/night degradation factor (`#plan-degradation-slider`), and split generation outputs (`#planner-output-container`)—directly into the AI Race Wizard tab of `#strategy-overlay` ([index.html:L1155-L1215](file:///Users/dkhawk/Projects/RuffTerrain/feature-gradient-bars/index.html#L1155-L1215)).
+    *   **Removal of Course Studio Race Planner Tab**: Deleted the redundant `⏱️ Race Planner` tab (`#studio-tab-plan`) and view (`#studio-view-plan`) from the Course Architect & Studio dialog ([index.html:L215-L220](file:///Users/dkhawk/Projects/RuffTerrain/feature-gradient-bars/index.html#L215-L220)).
+    *   **Authoritative HUD Gear Routing**: Removed the redundant `#toggle-strategy-btn` HUD button and routed `#toggle-planner-btn` (⏱️) to open `#strategy-overlay` directly ([main.js:L3420-L3432](file:///Users/dkhawk/Projects/RuffTerrain/feature-gradient-bars/src/main.js#L3420-L3432)).
+*   **Key Actions & Verification**:
+    *   Updated `index.html` consolidating race planner inputs/outputs into `#strategy-overlay` and removed `#studio-view-plan`.
+    *   Updated `src/main.js` routing `togglePlannerBtn` to open `#strategy-overlay`.
+    *   Ran `node --test test/gpx.test.js` verifying 25/25 unit tests passing and validated production client bundle (`npm run build`).
+
+---
+
+### 🚀 Session 90: Resolved Blank Content in Course Studio Weather & Safety Alerts Tabs
+*   **Goal**: Fix the bug where switching to the Weather Forecast tab (`🌤️ Weather`) or Course Safety Alerts tab (`⚠️ Alerts`) inside the Course Architect & Studio dialog resulted in empty/blank containers.
+*   **Decisions & Rationale (*The Why*)**:
+    *   **Authoritative DOM Reference Realignment**: When Weather Forecast and Safety Alerts were consolidated into tabs inside Card 1 (Course Architect & Studio), the container DOM IDs became `studio-view-weather` and `studio-view-warnings`. However, `cardWeather` and `cardWarnings` in `src/main.js` were still initialized looking for `card-weather` and `card-warnings`. Because these evaluated to `null`, visibility checks during background weather retrieval exited early, leaving `#weather-content` hidden forever. Updated `cardWeather` and `cardWarnings` to point to `studio-view-weather` and `studio-view-warnings` ([main.js:L238-L324](file:///Users/dkhawk/Projects/RuffTerrain/feature-gradient-bars/src/main.js#L238-L324)).
+    *   **Unconditional Loader & Content State Synchronization**: Gating `weatherContent.classList.remove("hidden")` on whether the weather tab was currently visible prevented background forecast updates from populating the DOM when other tabs (like Edit Course or Runner Profiles) were active. Removed panel visibility checks from weather success/error callbacks so the DOM state unconditionally updates whenever new weather data arrives.
+    *   **On-Demand Tab Activation Rendering**: Attached event listeners to `studioTabWeather` and `studioTabWarnings` so clicking either tab explicitly triggers `triggerWeatherWeather(...)` or `renderWarningsUI(activeRoute)` on demand ([main.js:L3485-L3498](file:///Users/dkhawk/Projects/RuffTerrain/feature-gradient-bars/src/main.js#L3485-L3498)).
+*   **Key Actions & Verification**:
+    *   Updated `src/main.js` realigning DOM element ID constants and unconditioned loader/content visibility toggling.
+    *   Ran `node --test test/gpx.test.js` verifying 25/25 unit tests passing and validated production client bundle (`npm run build`).
+
 
 

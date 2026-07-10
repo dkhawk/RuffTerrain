@@ -214,7 +214,6 @@
           <button id="studio-tab-edit" class="btn btn-sm btn-secondary active" style="font-size: 10px; padding: 4px 8px; border-radius: 12px;">📁 Edit Course</button>
           <button id="studio-tab-runner" class="btn btn-sm btn-secondary" style="font-size: 10px; padding: 4px 8px; border-radius: 12px; background: rgba(245, 158, 11, 0.15); color: #fbbf24; border: 1px solid #f59e0b;">🏃 Runner & Pacing</button>
           <button id="studio-tab-poi" class="btn btn-sm btn-secondary" style="font-size: 10px; padding: 4px 8px; border-radius: 12px;">📍 Waypoint Details</button>
-          <button id="studio-tab-plan" class="btn btn-sm btn-secondary" style="font-size: 10px; padding: 4px 8px; border-radius: 12px; background: rgba(59, 130, 246, 0.15); color: #60a5fa; border: 1px solid #3b82f6;">⏱️ Race Planner</button>
           <button id="studio-tab-weather" class="btn btn-sm btn-secondary" style="font-size: 10px; padding: 4px 8px; border-radius: 12px; background: rgba(234, 179, 8, 0.15); color: #facc15; border: 1px solid #eab308;">🌤️ Weather</button>
           <button id="studio-tab-warnings" class="btn btn-sm btn-secondary" style="font-size: 10px; padding: 4px 8px; border-radius: 12px; background: rgba(239, 68, 68, 0.15); color: #f87171; border: 1px solid #ef4444;">⚠️ Alerts</button>
           <button id="studio-tab-chat" class="btn btn-sm btn-secondary" style="font-size: 10px; padding: 4px 8px; border-radius: 12px; background: rgba(16, 185, 129, 0.15); color: #34d399; border: 1px solid #10b981;">✨ Gemini Chat</button>
@@ -616,128 +615,6 @@
               </div>
             </div>
           </div>
-
-        <!-- VIEW 4: AI Race Planner & Pacing Generator (`#studio-view-plan`) -->
-        <div id="studio-view-plan" class="plan-body hidden" style="display: flex; flex-direction: column; gap: 10px;">
-          <!-- WIZARD STEP 1: Runner Profile & Race Parameters -->
-          <div id="planner-wizard-form" style="display: flex; flex-direction: column; gap: 10px;">
-            <div class="edit-section-header" style="font-weight: bold; font-size: 11px; text-transform: uppercase; color: var(--text-muted); display: flex; justify-content: space-between; align-items: center;">
-              <span>👤 Runner Profile & Race Parameters</span>
-              <button id="ai-interview-trigger" class="btn btn-sm btn-secondary" style="background: rgba(16, 185, 129, 0.2); color: #34d399; border: 1px solid #10b981; font-size: 9px; padding: 2px 6px;">💬 AI Interview Mode</button>
-            </div>
-
-            <!-- Race Schedule & Sun Tracking -->
-            <div style="background: rgba(0,0,0,0.25); border: 1px solid rgba(255,255,255,0.08); padding: 8px 10px; border-radius: 8px; display: flex; flex-direction: column; gap: 8px;">
-              <span style="font-size: 10px; font-weight: bold; color: var(--accent-light); text-transform: uppercase; letter-spacing: 0.5px;">⏰ Schedule & Sun Tracking</span>
-              
-              <div style="display: flex; gap: 8px; align-items: center;">
-                <div style="display: flex; flex-direction: column; flex: 1;">
-                  <span style="font-size: 9px; color: var(--text-muted);">Start Time:</span>
-                  <input type="time" id="plan-start-time" value="06:00" style="background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.15); color: var(--text-color); font-size: 11px; padding: 4px 6px; border-radius: 4px; outline: none;" />
-                </div>
-                <div style="display: flex; flex-direction: column; flex: 1;">
-                  <span style="font-size: 9px; color: var(--text-muted);">Sunrise 🌅:</span>
-                  <input type="time" id="plan-sunrise-time" value="05:45" style="background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.15); color: var(--text-color); font-size: 11px; padding: 4px 6px; border-radius: 4px; outline: none;" />
-                </div>
-                <div style="display: flex; flex-direction: column; flex: 1;">
-                  <span style="font-size: 9px; color: var(--text-muted);">Sunset 🌙:</span>
-                  <input type="time" id="plan-sunset-time" value="20:30" style="background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.15); color: var(--text-color); font-size: 11px; padding: 4px 6px; border-radius: 4px; outline: none;" />
-                </div>
-              </div>
-            </div>
-
-            <!-- Current Fitness & Target Goal -->
-            <div style="background: rgba(0,0,0,0.25); border: 1px solid rgba(255,255,255,0.08); padding: 8px 10px; border-radius: 8px; display: flex; flex-direction: column; gap: 8px;">
-              <span style="font-size: 10px; font-weight: bold; color: var(--accent-light); text-transform: uppercase; letter-spacing: 0.5px;">❤️ Current Fitness & Target Goal</span>
-              
-              <div style="display: flex; flex-direction: column; gap: 4px;">
-                <span style="font-size: 9px; color: var(--text-muted);">Fitness / Recovery State:</span>
-                <select id="plan-fitness-level" style="background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.15); color: var(--text-color); font-size: 11px; padding: 6px; border-radius: 4px; outline: none;">
-                  <option value="surgery_recovery">Post-Surgery / Injury Recovery (~2 mph ascent / ~4 mph descent)</option>
-                  <option value="intermediate">Solid Endurance (Steady 3 mph climb / 6 mph descent)</option>
-                  <option value="elite">Peak Race Fitness (Competitive push / heat adapted)</option>
-                </select>
-              </div>
-
-              <div style="display: flex; gap: 8px; align-items: center;">
-                <div style="display: flex; flex-direction: column; flex: 1;">
-                  <span style="font-size: 9px; color: var(--text-muted);">Target Goal Time (Hrs):</span>
-                  <input type="number" id="plan-goal-hrs" placeholder="e.g. 5.5" step="0.25" style="background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.15); color: var(--text-color); font-size: 11px; padding: 4px 6px; border-radius: 4px; outline: none;" />
-                </div>
-                <div style="display: flex; flex-direction: column; flex: 2;">
-                  <span style="font-size: 9px; color: var(--text-muted);">Recent Result / Benchmark:</span>
-                  <input type="text" id="plan-recent-result" placeholder="e.g. 18M Bighorn / 50K in 6h" style="background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.15); color: var(--text-color); font-size: 11px; padding: 4px 6px; border-radius: 4px; outline: none;" />
-                </div>
-              </div>
-            </div>
-
-            <!-- Terrain Pacing Abilities & Steep Descent Confirmation -->
-            <div style="background: rgba(0,0,0,0.25); border: 1px solid rgba(255,255,255,0.08); padding: 8px 10px; border-radius: 8px; display: flex; flex-direction: column; gap: 8px;">
-              <span style="font-size: 10px; font-weight: bold; color: var(--accent-light); text-transform: uppercase; letter-spacing: 0.5px;">⛰️ Terrain Pacing & Descent Confirmation</span>
-              
-              <div style="display: flex; gap: 8px;">
-                <div style="display: flex; flex-direction: column; flex: 1;">
-                  <span style="font-size: 9px; color: var(--text-muted);">Climb Pace (mph):</span>
-                  <input type="number" id="plan-pace-climb" value="2.0" step="0.1" style="background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.15); color: var(--text-color); font-size: 11px; padding: 4px 6px; border-radius: 4px;" />
-                </div>
-                <div style="display: flex; flex-direction: column; flex: 1;">
-                  <span style="font-size: 9px; color: var(--text-muted);">Flat Pace (mph):</span>
-                  <input type="number" id="plan-pace-flat" value="4.5" step="0.1" style="background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.15); color: var(--text-color); font-size: 11px; padding: 4px 6px; border-radius: 4px;" />
-                </div>
-                <div style="display: flex; flex-direction: column; flex: 1;">
-                  <span style="font-size: 9px; color: var(--text-muted);">Descent (mph):</span>
-                  <input type="number" id="plan-pace-desc" value="4.0" step="0.1" style="background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.15); color: var(--text-color); font-size: 11px; padding: 4px 6px; border-radius: 4px;" />
-                </div>
-              </div>
-
-              <!-- Steep Descent Question -->
-              <div style="display: flex; flex-direction: column; gap: 4px; border-top: 1px solid rgba(255,255,255,0.08); padding-top: 6px;">
-                <span style="font-size: 9px; font-weight: bold; color: var(--text-secondary);">⚠️ Steep Descent (&gt;15% Drop) Handling:</span>
-                <select id="plan-steep-descent" style="background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.15); color: var(--text-color); font-size: 10px; padding: 4px; border-radius: 4px;">
-                  <option value="cautious">Cautious / Slow Down Quad Saver (-25% descent speed)</option>
-                  <option value="normal">Normal Jog (Maintain descent speed)</option>
-                  <option value="aggressive">Aggressive Bomber (+15% descent speed)</option>
-                </select>
-              </div>
-
-              <!-- Heat & Night Degradation Slider -->
-              <div style="display: flex; flex-direction: column; gap: 4px; border-top: 1px solid rgba(255,255,255,0.08); padding-top: 6px;">
-                <div style="display: flex; justify-content: space-between; align-items: center;">
-                  <span style="font-size: 9px; color: var(--text-muted);">Heat &amp; Night Degradation Factor:</span>
-                  <span id="plan-degradation-val" style="font-size: 10px; font-weight: bold; color: #f59e0b;">-15% pace</span>
-                </div>
-                <input type="range" id="plan-degradation-slider" min="0" max="40" value="15" style="width: 100%; accent-color: #f59e0b;" />
-              </div>
-            </div>
-
-            <button id="generate-race-plan-btn" class="btn btn-primary w-100" style="font-size: 12px; height: 36px; font-weight: bold; background: linear-gradient(135deg, #3b82f6, #2563eb);">
-              <span>⚡ Predict &amp; Generate Segmented Plan</span>
-            </button>
-          </div>
-
-          <!-- WIZARD STEP 2: Generated Segmented Plan Output (`#planner-output-container`) -->
-          <div id="planner-output-container" class="hidden" style="display: flex; flex-direction: column; gap: 8px;">
-            <div style="display: flex; justify-content: space-between; align-items: center; background: rgba(59, 130, 246, 0.15); border: 1px solid rgba(59, 130, 246, 0.3); padding: 8px 12px; border-radius: 8px;">
-              <div>
-                <span style="font-size: 10px; color: var(--text-muted); text-transform: uppercase;">Predicted Duration</span>
-                <h3 id="plan-total-time-disp" style="margin: 0; font-size: 18px; color: #60a5fa;">--:-- Hrs</h3>
-              </div>
-              <div style="text-align: right;">
-                <span style="font-size: 10px; color: var(--text-muted); text-transform: uppercase;">Avg Pace</span>
-                <h4 id="plan-avg-pace-disp" style="margin: 0; font-size: 14px; color: var(--text-color);">--:-- min/mi</h4>
-              </div>
-            </div>
-
-            <div style="display: flex; justify-content: space-between; align-items: center;">
-              <span style="font-size: 10px; font-weight: bold; text-transform: uppercase; color: var(--text-muted);">📍 Aid-to-Aid Terrain Segments</span>
-              <button id="apply-plan-to-hud-btn" class="btn btn-sm btn-primary" style="font-size: 9px; padding: 2px 8px; background: #10b981;">✔️ Apply to HUD</button>
-            </div>
-
-            <div id="plan-segments-list" style="max-height: 280px; overflow-y: auto; display: flex; flex-direction: column; gap: 8px;">
-              <!-- Generated segments render dynamically -->
-            </div>
-          </div>
-        </div>
 
         <!-- VIEW 6: Weather Forecast Studio View (`#studio-view-weather`) -->
         <div id="studio-view-weather" class="hidden" style="display: flex; flex-direction: column; gap: 8px;">
@@ -1278,18 +1155,94 @@
             </div>
           </div>
 
-          <!-- Start Time Auto-Discovery Row -->
-          <div style="display: flex; gap: 12px; align-items: center; background: rgba(0,0,0,0.25); padding: 10px 12px; border-radius: 8px; border: 1px solid rgba(255,255,255,0.08);">
-            <div style="flex: 1; display: flex; flex-direction: column; gap: 4px;">
-              <label style="font-size: 10px; color: var(--text-muted); font-weight: bold;">EVENT START TIME</label>
-              <input type="datetime-local" id="ai-wizard-start" value="2026-06-20T09:00" style="background: rgba(255,255,255,0.1); border: 1px solid rgba(255,255,255,0.2); color: #fff; padding: 6px 10px; border-radius: 6px; font-size: 12px; outline: none;" />
+          <!-- Start Time Auto-Discovery & Sun Tracking Row -->
+          <div style="background: rgba(0,0,0,0.25); padding: 10px 12px; border-radius: 8px; border: 1px solid rgba(255,255,255,0.08); display: flex; flex-direction: column; gap: 10px;">
+            <div style="display: flex; gap: 12px; align-items: center;">
+              <div style="flex: 1; display: flex; flex-direction: column; gap: 4px;">
+                <label style="font-size: 10px; color: var(--text-muted); font-weight: bold;">EVENT START TIME</label>
+                <input type="datetime-local" id="ai-wizard-start" value="2026-06-20T09:00" style="background: rgba(255,255,255,0.1); border: 1px solid rgba(255,255,255,0.2); color: #fff; padding: 6px 10px; border-radius: 6px; font-size: 12px; outline: none;" />
+                <input type="time" id="plan-start-time" value="06:00" style="display:none;" />
+              </div>
+              <button id="ai-search-start-btn" class="btn btn-secondary btn-sm" style="height: 33px; font-size: 11px;">🔍 Search Event Start Time (AI)</button>
             </div>
-            <button id="ai-search-start-btn" class="btn btn-secondary btn-sm" style="height: 33px; font-size: 11px;">🔍 Search Event Start Time (AI)</button>
+            
+            <!-- Sun Tracking & Target Goal -->
+            <div style="display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; border-top: 1px solid rgba(255,255,255,0.08); padding-top: 8px;">
+              <div style="display: flex; flex-direction: column; gap: 2px;">
+                <span style="font-size: 9px; color: var(--text-muted);">Sunrise 🌅:</span>
+                <input type="time" id="plan-sunrise-time" value="05:45" style="background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.15); color: #fff; font-size: 11px; padding: 4px 6px; border-radius: 4px;" />
+              </div>
+              <div style="display: flex; flex-direction: column; gap: 2px;">
+                <span style="font-size: 9px; color: var(--text-muted);">Sunset 🌙:</span>
+                <input type="time" id="plan-sunset-time" value="20:30" style="background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.15); color: #fff; font-size: 11px; padding: 4px 6px; border-radius: 4px;" />
+              </div>
+              <div style="display: flex; flex-direction: column; gap: 2px;">
+                <span style="font-size: 9px; color: var(--text-muted);">Target Hrs 🎯:</span>
+                <input type="number" id="plan-goal-hrs" placeholder="e.g. 12.0" step="0.5" style="background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.15); color: #fff; font-size: 11px; padding: 4px 6px; border-radius: 4px;" />
+              </div>
+              <div style="display: flex; flex-direction: column; gap: 2px;">
+                <span style="font-size: 9px; color: var(--text-muted);">Recent Result:</span>
+                <input type="text" id="plan-recent-result" placeholder="e.g. 50K in 6h" style="background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.15); color: #fff; font-size: 11px; padding: 4px 6px; border-radius: 4px;" />
+              </div>
+            </div>
+
+            <!-- Hidden compatibility pacing inputs wired to speed sliders -->
+            <input type="number" id="plan-pace-climb" value="2.0" step="0.1" style="display:none;" />
+            <input type="number" id="plan-pace-flat" value="3.0" step="0.1" style="display:none;" />
+            <input type="number" id="plan-pace-desc" value="4.0" step="0.1" style="display:none;" />
+            <select id="plan-fitness-level" style="display:none;"><option value="intermediate" selected></option></select>
+
+            <!-- Steep Descent & Heat Degradation -->
+            <div style="display: flex; gap: 12px; align-items: center; border-top: 1px solid rgba(255,255,255,0.08); padding-top: 8px;">
+              <div style="flex: 1; display: flex; flex-direction: column; gap: 4px;">
+                <span style="font-size: 9px; font-weight: bold; color: var(--text-secondary);">⚠️ Steep Descent (&gt;15% Drop) Handling:</span>
+                <select id="plan-steep-descent" style="background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.15); color: #fff; font-size: 10px; padding: 4px; border-radius: 4px;">
+                  <option value="cautious">Cautious / Quad Saver (-25% speed)</option>
+                  <option value="normal" selected>Normal Jog (Maintain speed)</option>
+                  <option value="aggressive">Aggressive Bomber (+15% speed)</option>
+                </select>
+              </div>
+              <div style="flex: 1; display: flex; flex-direction: column; gap: 4px;">
+                <div style="display: flex; justify-content: space-between; align-items: center;">
+                  <span style="font-size: 9px; color: var(--text-muted);">Heat &amp; Night Factor:</span>
+                  <span id="plan-degradation-val" style="font-size: 10px; font-weight: bold; color: #f59e0b;">-15% pace</span>
+                </div>
+                <input type="range" id="plan-degradation-slider" min="0" max="40" value="15" style="width: 100%; accent-color: #f59e0b;" />
+              </div>
+            </div>
           </div>
 
-          <button id="generate-ai-plan-btn" class="btn btn-primary w-100" style="height: 38px; font-size: 13px; font-weight: bold;">
-            <span>✨ Propose Segmented Plan & Enrich Aid Stations</span>
-          </button>
+          <div style="display: flex; gap: 10px;">
+            <button id="generate-race-plan-btn" class="btn btn-secondary flex-1" style="height: 38px; font-size: 12px; font-weight: bold; border: 1px solid #3b82f6; color: #60a5fa;">
+              <span>⚡ Generate Split Plan</span>
+            </button>
+            <button id="generate-ai-plan-btn" class="btn btn-primary flex-2" style="height: 38px; font-size: 12px; font-weight: bold;">
+              <span>✨ AI Enrich Plan &amp; Aid Stations</span>
+            </button>
+          </div>
+
+          <!-- Generated Segmented Plan Output (`#planner-output-container`) -->
+          <div id="planner-output-container" class="hidden" style="display: flex; flex-direction: column; gap: 8px; border-top: 1px solid rgba(255,255,255,0.1); padding-top: 12px;">
+            <div style="display: flex; justify-content: space-between; align-items: center; background: rgba(59, 130, 246, 0.15); border: 1px solid rgba(59, 130, 246, 0.3); padding: 10px 14px; border-radius: 8px;">
+              <div>
+                <span style="font-size: 10px; color: var(--text-muted); text-transform: uppercase;">Predicted Duration</span>
+                <h3 id="plan-total-time-disp" style="margin: 0; font-size: 20px; color: #60a5fa;">--:-- Hrs</h3>
+              </div>
+              <div style="text-align: right;">
+                <span style="font-size: 10px; color: var(--text-muted); text-transform: uppercase;">Avg Pace</span>
+                <h4 id="plan-avg-pace-disp" style="margin: 0; font-size: 16px; color: var(--text-color);">--:-- min/mi</h4>
+              </div>
+            </div>
+
+            <div style="display: flex; justify-content: space-between; align-items: center;">
+              <span style="font-size: 11px; font-weight: bold; text-transform: uppercase; color: var(--text-muted);">📍 Aid-to-Aid Terrain Segments</span>
+              <button id="apply-plan-to-hud-btn" class="btn btn-sm btn-primary" style="font-size: 10px; padding: 4px 10px; background: #10b981;">✔️ Apply to HUD</button>
+            </div>
+
+            <div id="plan-segments-list" style="max-height: 280px; overflow-y: auto; display: flex; flex-direction: column; gap: 8px;">
+              <!-- Generated segments render dynamically -->
+            </div>
+          </div>
         </div>
 
         <!-- TAB 2: Custom Sectors -->

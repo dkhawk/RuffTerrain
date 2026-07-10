@@ -235,7 +235,9 @@ const addPoiSubmitBtn = document.getElementById("add-poi-submit-btn");
 // Cleanup & Waypoint Edit Panel Components
 const editWaypointList = document.getElementById("edit-waypoint-list");
 
-const cardWarnings = document.getElementById("card-warnings");
+// Why point cardWarnings to studio-view-warnings?
+// When Alerts became a tab in the Course Studio dialog, the container element ID became studio-view-warnings.
+const cardWarnings = document.getElementById("studio-view-warnings");
 const warningsCount = document.getElementById("warnings-count");
 const warningsList = document.getElementById("warnings-list");
 const toggleWarningsBtn = document.getElementById("toggle-warnings-btn");
@@ -317,7 +319,9 @@ const toastNotification = document.getElementById("toast-notification");
 
 // Weather Panel & UI
 const toggleWeatherBtn = document.getElementById("toggle-weather-btn");
-const cardWeather = document.getElementById("card-weather");
+// Why point cardWeather to studio-view-weather?
+// When Weather Forecast became a tab in the Course Studio dialog, the container element ID became studio-view-weather.
+const cardWeather = document.getElementById("studio-view-weather");
 const closeWeatherBtn = document.getElementById("close-weather-btn");
 const weatherLoader = document.getElementById("weather-loader");
 const weatherError = document.getElementById("weather-error");
@@ -934,12 +938,12 @@ async function updateWeatherUI(lat, lon) {
   }
   weatherAbortController = new AbortController();
 
-  const isPanelVisible = cardWeather && !cardWeather.classList.contains("hidden");
-  if (isPanelVisible) {
-    if (weatherLoader) weatherLoader.classList.remove("hidden");
-    if (weatherError) weatherError.classList.add("hidden");
-    if (weatherContent) weatherContent.classList.add("hidden");
-  }
+  // Why unconditionally show loader when fetching forecast?
+  // When switching between Course Studio tabs, weather data might be fetched before the tab is opened.
+  // Unconditionally updating loader and content visibility ensures the UI is ready whenever the user opens the tab.
+  if (weatherLoader) weatherLoader.classList.remove("hidden");
+  if (weatherError) weatherError.classList.add("hidden");
+  if (weatherContent) weatherContent.classList.add("hidden");
 
   try {
     const data = await fetchWeatherForecast(lat, lon, 96, apiKeyMaps);
@@ -1199,20 +1203,17 @@ async function updateWeatherUI(lat, lon) {
       }
     }
 
-    if (isPanelVisible) {
-      if (weatherLoader) weatherLoader.classList.add("hidden");
-      if (weatherContent) weatherContent.classList.remove("hidden");
-    }
+    // Unconditionally show weather content when loaded
+    if (weatherLoader) weatherLoader.classList.add("hidden");
+    if (weatherContent) weatherContent.classList.remove("hidden");
   } catch (error) {
     if (error.name !== "AbortError") {
       console.error("Error updating weather UI:", error);
-      if (isPanelVisible) {
-        if (weatherError) {
-          weatherError.textContent = error.message || "Failed to load weather forecast.";
-          weatherError.classList.remove("hidden");
-        }
-        if (weatherLoader) weatherLoader.classList.add("hidden");
+      if (weatherError) {
+        weatherError.textContent = error.message || "Failed to load weather forecast.";
+        weatherError.classList.remove("hidden");
       }
+      if (weatherLoader) weatherLoader.classList.add("hidden");
     }
   }
 }
@@ -3017,10 +3018,12 @@ function processGpxContent(text, filename) {
 
   if (cardStats) cardStats.classList.remove("hidden");
   if (toggleStatsBtn) toggleStatsBtn.classList.add("hidden");
-  if (cardWarnings) cardWarnings.classList.remove("hidden");
-  if (toggleWarningsBtn) toggleWarningsBtn.classList.add("hidden");
-  if (cardWeather) cardWeather.classList.remove("hidden");
-  if (toggleWeatherBtn) toggleWeatherBtn.classList.add("hidden");
+  // Why keep Weather and Warnings tab views hidden on route load?
+  // Since Weather Forecast and Safety Alerts are now tabs inside Card 1 (Course Architect & Studio),
+  // auto-unhiding them when a route loads would simultaneously reveal multiple tab views inside Card 1.
+  // We leave them hidden until the user explicitly selects the Weather or Alerts tab or clicks their HUD icon.
+  if (toggleWarningsBtn) toggleWarningsBtn.classList.remove("hidden");
+  if (toggleWeatherBtn) toggleWeatherBtn.classList.remove("hidden");
   if (typeof updateWeatherShiftedState === "function") updateWeatherShiftedState();
 
   if (activeRoute && activeRoute.trackpoints && activeRoute.trackpoints.length > 0) {
@@ -3420,16 +3423,15 @@ function setupEventListeners() {
   const toggleChatBtn = document.getElementById("toggle-chat-btn");
   const clearChatContextBtn = document.getElementById("clear-chat-context-btn");
 
+  // Why route togglePlannerBtn to strategyOverlay?
+  // The user requested consolidating all race planning and execution strategy controls into the large
+  // standalone Race Execution Strategy modal (`strategyOverlay`) for a wider screen view.
   if (togglePlannerBtn) {
     togglePlannerBtn.addEventListener("click", () => {
-      if (cardImporter) {
-        if (!cardImporter.classList.contains("hidden") && studioTabPlan?.classList.contains("active")) {
-          cardImporter.classList.add("hidden");
-        } else {
-          cardImporter.classList.remove("hidden");
-          if (studioTabPlan) studioTabPlan.click();
-        }
+      if (typeof renderStrategyModal === "function" && activeRoute) {
+        renderStrategyModal(activeRoute);
       }
+      if (strategyOverlay) strategyOverlay.classList.remove("hidden");
     });
   }
 
@@ -3480,9 +3482,24 @@ function setupEventListeners() {
     if (typeof renderRunnerSectorsUI === "function") renderRunnerSectorsUI();
   });
   if (studioTabPoi) studioTabPoi.addEventListener("click", () => activateStudioTab(studioTabPoi, poiDetailDialog));
-  if (studioTabPlan) studioTabPlan.addEventListener("click", () => activateStudioTab(studioTabPlan, studioViewPlan));
-  if (studioTabWeather) studioTabWeather.addEventListener("click", () => activateStudioTab(studioTabWeather, studioViewWeather));
-  if (studioTabWarnings) studioTabWarnings.addEventListener("click", () => activateStudioTab(studioTabWarnings, studioViewWarnings));
+  // Why trigger data refresh when switching to Weather or Alerts tabs?
+  // When consolidated into tabs, weather data and warnings lists need to be populated or refreshed
+  // immediately upon tab activation so the user never sees an empty container.
+  if (studioTabWeather) studioTabWeather.addEventListener("click", () => {
+    activateStudioTab(studioTabWeather, studioViewWeather);
+    if (activeRoute && activeRoute.trackpoints?.length > 0) {
+      const pt = activeRoute.trackpoints[playbackIndex || 0] || activeRoute.trackpoints[0];
+      if (pt && typeof triggerWeatherWeather === "function") {
+        triggerWeatherWeather(pt.lat, pt.lon, true);
+      }
+    }
+  });
+  if (studioTabWarnings) studioTabWarnings.addEventListener("click", () => {
+    activateStudioTab(studioTabWarnings, studioViewWarnings);
+    if (activeRoute && typeof renderWarningsUI === "function") {
+      renderWarningsUI(activeRoute);
+    }
+  });
   if (studioTabChat) studioTabChat.addEventListener("click", () => activateStudioTab(studioTabChat, cardGeminiChat));
 
   // Day Architect Preset & Solver controls
@@ -4053,15 +4070,8 @@ function setupEventListeners() {
     closeWizardModalBtn.addEventListener("click", () => racePlannerWizardModal?.classList.add("hidden"));
   }
 
-  if (togglePlannerBtn) {
-    togglePlannerBtn.addEventListener("click", openWizardModal);
-  }
-  if (toggleStrategyBtn) {
-    toggleStrategyBtn.addEventListener("click", openWizardModal);
-  }
-  if (studioTabPlan) {
-    studioTabPlan.addEventListener("click", openWizardModal);
-  }
+  // Why remove openWizardModal bindings?
+  // All Race Planner functionality is now unified directly inside the master standalone Strategy Modal (`strategyOverlay`).
 
   const updatePaceLabel = (spdInput, lblEl) => {
     if (!spdInput || !lblEl) return;
