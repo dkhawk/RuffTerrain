@@ -2929,9 +2929,125 @@ function loadGpxFile(file) {
 }
 
 /**
+ * Parses and applies a Master Race Planning CSV directly to the active route inside the UI.
+ */
+function applyRacePlanCsvToRoute(route, csvText) {
+  const lines = csvText.split(/\r?\n/);
+  const sectors = [];
+  const checkpoints = [];
+  let currentSection = "";
+
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i].trim();
+    if (line.includes("SECTION 1:")) {
+      currentSection = "checkpoints";
+      i++; // skip header
+      continue;
+    } else if (line.includes("SECTION 2:")) {
+      currentSection = "sectors";
+      i++; // skip header
+      continue;
+    }
+
+    if (!line || line.startsWith("---") || line.startsWith("Check") || line.startsWith("Sector")) continue;
+
+    const cols = line.split(",").map(c => c.trim().replace(/^"|"$/g, ""));
+    if (currentSection === "checkpoints" && cols.length >= 11 && cols[0]) {
+      const distMi = parseFloat(cols[2]) || 0;
+      checkpoints.push({
+        name: cols[0],
+        loop: cols[1],
+        dist_m: distMi * 1609.344,
+        goal_eta: cols[10] || ""
+      });
+    } else if (currentSection === "sectors" && cols.length >= 13 && cols[0]) {
+      const distMi = parseFloat(cols[3]) || 0;
+      const paceStr = cols[8] || "14:00 min/mi";
+      const parts = paceStr.split(" ")[0].split(":");
+      const paceMin = (parseFloat(parts[0]) || 14) + (parseFloat(parts[1]) || 0) / 60.0;
+      sectors.push({
+        name: cols[2] || cols[0],
+        loop: cols[1],
+        dist_mi: distMi,
+        target_pace_min: paceMin,
+        strategy: `Goal 14h Pace: ${paceStr.split(" ")[0]} (${cols[1]})`,
+        terrain: cols[12] || "flat"
+      });
+    }
+  }
+
+  if (sectors.length > 0) {
+    let cumM = 0;
+    const planSectors = sectors.map(s => {
+      const sm = cumM;
+      const em = cumM + s.dist_mi * 1609.344;
+      cumM = em;
+      return {
+        start_dist_m: sm,
+        end_dist_m: em,
+        name: s.name,
+        target_pace_min: s.target_pace_min,
+        strategy: s.strategy,
+        terrain: s.terrain.toLowerCase().includes("climb") ? "climb" : (s.terrain.toLowerCase().includes("desc") ? "descend" : "flat")
+      };
+    });
+    if (!route.executionPlan) route.executionPlan = { startTime: "20:00", targetDurationHrs: 14.0, sectors: [] };
+    route.executionPlan.sectors = planSectors;
+  }
+
+  if (checkpoints.length > 0 && route.waypoints) {
+    route.waypoints.forEach((wpt, wptIdx) => {
+      const wname = (wpt.name || "").trim().toLowerCase();
+      if (!wpt.extensions) wpt.extensions = {};
+      if (!wpt.extensions.station) {
+        wpt.extensions.station = {
+          id: `station-${wptIdx}`,
+          type: wname.includes("finish") ? "finish" : "segmenting",
+          subtype: wname.includes("finish") ? "finish" : "aid_station",
+          passes: []
+        };
+      }
+      wpt.extensions.station.passes = [];
+
+      const matchingCps = checkpoints.filter(cp => {
+        const cpName = cp.name.split(" (")[0].trim().toLowerCase();
+        return wname === cpName || (wname.includes("finish") && cp.name.toLowerCase().includes("finish")) || (wname.includes("marshall mesa") && cp.name.toLowerCase().includes("marshall mesa")) || (wname.includes("doudy") && cp.name.toLowerCase().includes("doudy"));
+      });
+
+      matchingCps.forEach((cp, idx) => {
+        wpt.extensions.station.passes.push({
+          num: String(idx + 1),
+          dist_m: cp.dist_m,
+          label: `${cp.loop} (${cp.name})`,
+          target_arrival: cp.goal_eta
+        });
+      });
+    });
+  }
+}
+
+/**
  * Sets state variables, redraws chart and map overlays, updates stats dashboards.
  */
 function processGpxContent(text, filename) {
+  if (filename.endsWith(".csv")) {
+    if (!activeRoute) {
+      showToast("Please load a base GPX course first before loading a CSV race plan.");
+      return;
+    }
+    try {
+      applyRacePlanCsvToRoute(activeRoute, text);
+      showToast("Applied CSV race plan (" + (activeRoute.executionPlan?.sectors?.length || 0) + " sectors)");
+      if (typeof onExecutionPlanChanged === "function") onExecutionPlanChanged();
+      if (typeof renderLoadedExecutionPlan === "function") renderLoadedExecutionPlan(activeRoute);
+      if (typeof renderEditWaypointList === "function") renderEditWaypointList();
+    } catch (err) {
+      console.error("Error applying CSV race plan:", err);
+      showToast("Failed to apply CSV: " + err.message);
+    }
+    return;
+  }
+
   const isKml = filename.endsWith(".kml") || text.includes("<kml") || text.includes("</kml>");
   activeRoute = isKml ? parseKML(text, units, desertThresholdMiles) : parseGPX(text, units, desertThresholdMiles);
   activeRoute.avgSpacing = activeRoute.trackpoints.length > 0 ? (activeRoute.totalDistance / activeRoute.trackpoints.length) : 0;
@@ -3362,6 +3478,20 @@ function setupEventListeners() {
   if (closeImporterBtn && cardImporter) {
     closeImporterBtn.addEventListener("click", () => {
       cardImporter.classList.add("hidden");
+    });
+  }
+
+  const loadFittyBtn = document.getElementById("load-fitty-btn");
+  if (loadFittyBtn) {
+    loadFittyBtn.addEventListener("click", (e) => {
+      e.preventDefault();
+      fetch("./samples/enhanced_leadiots_fitty_50m.gpx")
+        .then(res => res.text())
+        .then(text => {
+          processGpxContent(text, "enhanced_leadiots_fitty_50m.gpx");
+          showToast("Loaded Ruff Terrain 50M (Fitty)");
+        })
+        .catch(err => showToast("Failed to load: " + err.message));
     });
   }
 

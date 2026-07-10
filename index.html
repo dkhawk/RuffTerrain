@@ -202,14 +202,15 @@
         <div id="studio-view-edit" style="display: flex; flex-direction: column; gap: 8px;">
           <div class="edit-section-header" style="font-weight: bold; font-size: 11px; text-transform: uppercase; color: var(--text-muted); margin-bottom: 2px;">📁 Load Course File</div>
           <div id="drop-zone" class="drop-zone" style="padding: 12px 6px; height: auto; cursor: pointer;">
-            <label for="file-selector" style="display: block; width: 100%; margin: 0; font-size: 11px; cursor: pointer;">Drag & Drop GPX/KML or <strong>browse</strong></label>
-            <input type="file" id="file-selector" accept=".gpx,.kml" style="display: none;" />
+            <label for="file-selector" style="display: block; width: 100%; margin: 0; font-size: 11px; cursor: pointer;">Drag & Drop GPX/KML/CSV or <strong>browse</strong></label>
+            <input type="file" id="file-selector" accept=".gpx,.kml,.csv" style="display: none;" />
           </div>
 
           <div style="display: flex; flex-direction: column; gap: 4px; margin-top: 2px;">
             <span style="font-size: 9px; text-transform: uppercase; color: var(--text-muted); font-weight: bold;">Load Sample Route:</span>
             <div style="display: flex; gap: 4px; flex-wrap: wrap;">
-              <button id="load-bighorn-btn" class="btn btn-sm btn-primary" style="font-size: 9px; padding: 2px 6px;">Bighorn 18 (Recovery)</button>
+              <button id="load-fitty-btn" class="btn btn-sm btn-primary" style="font-size: 9px; padding: 2px 6px;">Ruff Terrain 50M (Fitty)</button>
+              <button id="load-bighorn-btn" class="btn btn-sm btn-secondary" style="font-size: 9px; padding: 2px 6px;">Bighorn 18 (Recovery)</button>
               <button id="load-leadville-btn" class="btn btn-sm btn-secondary" style="font-size: 9px; padding: 2px 6px;">Leadville 52M</button>
               <button id="load-tmb-btn" class="btn btn-sm btn-secondary" style="font-size: 9px; padding: 2px 6px;">TMB Tour</button>
             </div>
