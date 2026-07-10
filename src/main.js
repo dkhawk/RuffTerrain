@@ -1842,8 +1842,17 @@ async function showPreviewPoiBanner(wpt, currentDist) {
 
   previewPoiBanner.classList.remove("hidden");
 
+  const disableAidPauseCheckbox = document.getElementById("disable-aid-pause-checkbox");
+  const disablePause = disableAidPauseCheckbox && disableAidPauseCheckbox.checked;
   const pauseSecs = (settingsPauseTime && !isNaN(parseInt(settingsPauseTime.value))) ? parseInt(settingsPauseTime.value) : 5;
-  if (pauseSecs > 0) {
+
+  if (disablePause) {
+    // Show pop up HUD without stopping playback! Automatically dismiss after 3.5 seconds.
+    if (autoResumeTimeout) clearTimeout(autoResumeTimeout);
+    autoResumeTimeout = setTimeout(() => {
+      if (previewPoiBanner) previewPoiBanner.classList.add("hidden");
+    }, 3500);
+  } else if (pauseSecs > 0) {
     pausePlayback();
     if (autoResumeTimeout) clearTimeout(autoResumeTimeout);
     autoResumeTimeout = setTimeout(() => {
@@ -2775,13 +2784,46 @@ function renderRecentCoursesList() {
 function renderEditWaypointList() {
   if (!editWaypointList) return;
 
-  if (!activeRoute || activeRoute.waypoints.length === 0) {
+  if (!activeRoute || !activeRoute.waypoints || activeRoute.waypoints.length === 0) {
     editWaypointList.innerHTML = `<span style="font-size: 10px; color: var(--text-muted); text-align: center; font-style: italic; padding: 6px 0; display: block; width: 100%;">No waypoints loaded.</span>`;
     return;
   }
 
+  // Build flattened list of check point arrivals across all loops
+  const flatList = [];
+  activeRoute.waypoints.forEach((wpt, wptIndex) => {
+    const passes = wpt.extensions?.station?.passes || [];
+    if (passes.length > 0) {
+      passes.forEach((pass) => {
+        flatList.push({
+          wpt,
+          wptIndex,
+          passNum: pass.num,
+          dist_m: pass.dist_m,
+          label: pass.label,
+          target_arrival: pass.target_arrival,
+          displayName: `${pass.label || wpt.name}`
+        });
+      });
+    } else {
+      flatList.push({
+        wpt,
+        wptIndex,
+        passNum: null,
+        dist_m: wpt.dist_m,
+        label: null,
+        target_arrival: null,
+        displayName: wpt.name
+      });
+    }
+  });
+
+  // Sort chronologically by distance
+  flatList.sort((a, b) => a.dist_m - b.dist_m);
+
   editWaypointList.innerHTML = "";
-  activeRoute.waypoints.forEach((wpt, index) => {
+  flatList.forEach((itemObj) => {
+    const { wpt, wptIndex, passNum, dist_m, displayName, target_arrival } = itemObj;
     const item = document.createElement("div");
     item.style.display = "flex";
     item.style.alignItems = "center";
@@ -2810,22 +2852,30 @@ function renderEditWaypointList() {
     nameSpan.style.overflow = "hidden";
     nameSpan.style.textOverflow = "ellipsis";
     const distVal = units === "imperial" 
-      ? `${(wpt.dist_m / 1609.34).toFixed(1)} mi` 
-      : `${(wpt.dist_m / 1000).toFixed(1)} km`;
-    const planDuration = getPlanDurationHrs();
-    const elapsedHrs = getElapsedHoursAtDistance(activeRoute, wpt.dist_m, planDuration);
-    const planStartMs = getPlanStartMs();
-    const targetMs = planStartMs + elapsedHrs * 3600 * 1000;
-    const targetDate = new Date(targetMs);
-    const etaDayStr = targetDate.toLocaleDateString([], { weekday: 'short' });
-    const etaTimeStr = targetDate.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-    nameSpan.textContent = `${wpt.name} (${distVal}, ETA: ${etaDayStr} ${etaTimeStr})`;
+      ? `${(dist_m / 1609.34).toFixed(1)} mi` 
+      : `${(dist_m / 1000).toFixed(1)} km`;
+
+    let etaText = "";
+    if (target_arrival) {
+      etaText = target_arrival;
+    } else {
+      const planDuration = getPlanDurationHrs();
+      const elapsedHrs = getElapsedHoursAtDistance(activeRoute, dist_m, planDuration);
+      const planStartMs = getPlanStartMs();
+      const targetMs = planStartMs + elapsedHrs * 3600 * 1000;
+      const targetDate = new Date(targetMs);
+      const etaDayStr = targetDate.toLocaleDateString([], { weekday: 'short' });
+      const etaTimeStr = targetDate.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+      etaText = `${etaDayStr} ${etaTimeStr}`;
+    }
+
+    nameSpan.textContent = `${displayName} (${distVal}, ETA: ${etaText})`;
     nameSpan.style.cursor = "pointer";
     nameSpan.style.color = "var(--text-color)";
     nameSpan.style.fontWeight = "500";
-    nameSpan.title = "Click to jump to waypoint";
+    nameSpan.title = "Click to jump to this check point / aid station pass";
     nameSpan.addEventListener("click", () => {
-      const event = new CustomEvent("waypoint-click", { detail: wpt });
+      const event = new CustomEvent("waypoint-click", { detail: { wpt, targetDist: dist_m, passNum } });
       window.dispatchEvent(event);
     });
 
@@ -2843,16 +2893,12 @@ function renderEditWaypointList() {
     editBtn.style.padding = "4px";
     editBtn.style.borderRadius = "4px";
     editBtn.style.transition = "background-color 0.15s";
-    editBtn.addEventListener("mouseenter", () => {
-      editBtn.style.background = "rgba(255,255,255,0.1)";
-    });
-    editBtn.addEventListener("mouseleave", () => {
-      editBtn.style.background = "none";
-    });
-    editBtn.title = "Edit location";
+    editBtn.addEventListener("mouseenter", () => editBtn.style.background = "rgba(255,255,255,0.1)");
+    editBtn.addEventListener("mouseleave", () => editBtn.style.background = "none");
+    editBtn.title = "Edit waypoint details";
     editBtn.addEventListener("click", (e) => {
       e.stopPropagation();
-      const event = new CustomEvent("waypoint-click", { detail: wpt });
+      const event = new CustomEvent("waypoint-click", { detail: { wpt, targetDist: dist_m, passNum } });
       window.dispatchEvent(event);
       setTimeout(() => {
         if (poiDialogEditBtn && !isEditingPoiLocation) {
@@ -2871,20 +2917,16 @@ function renderEditWaypointList() {
     delBtn.style.padding = "4px";
     delBtn.style.borderRadius = "4px";
     delBtn.style.transition = "background-color 0.15s";
-    delBtn.addEventListener("mouseenter", () => {
-      delBtn.style.background = "rgba(239,68,68,0.15)";
-    });
-    delBtn.addEventListener("mouseleave", () => {
-      delBtn.style.background = "none";
-    });
-    delBtn.title = "Delete waypoint";
+    delBtn.addEventListener("mouseenter", () => delBtn.style.background = "rgba(239,68,68,0.15)");
+    delBtn.addEventListener("mouseleave", () => delBtn.style.background = "none");
+    delBtn.title = "Delete physical waypoint";
     delBtn.addEventListener("click", (e) => {
       e.stopPropagation();
       if (confirm(`Are you sure you want to delete ${wpt.name}?`)) {
         const prevLat = wpt.lat;
         const prevLon = wpt.lon;
 
-        activeRoute.waypoints.splice(index, 1);
+        activeRoute.waypoints.splice(wptIndex, 1);
         
         // Remove matching detour trackpoint
         const matchIdx = activeRoute.trackpoints.findIndex(
@@ -2896,7 +2938,7 @@ function renderEditWaypointList() {
 
         recalculateRouteMetrics(activeRoute);
         
-        mapController.drawRoute(activeRoute, climbColorsCheckbox.checked);
+        mapController.drawRoute(activeRoute, climbColorsCheckbox?.checked);
         if (elevationChart) elevationChart.setRoute(activeRoute);
         updateRouteStatsUI(activeRoute);
         renderWarningsUI(activeRoute);
@@ -6439,14 +6481,37 @@ function computeIntelligentPacingAndWeatherPlan(route, opts) {
 
   // Listen to waypoint markers clicks from 3D Satellite Map
   window.addEventListener("waypoint-click", (e) => {
-    console.log("[main] WINDOW RECEIVED WAYPOINT-CLICK EVENT:", e.detail?.name, "isEditingPoiLocation:", isEditingPoiLocation);
     if (isEditingPoiLocation) return;
-    const wpt = e.detail;
+    const wpt = e.detail?.wpt || e.detail;
+    if (!wpt) return;
+
+    let targetDist = e.detail?.targetDist !== undefined ? e.detail.targetDist : wpt.dist_m;
+    
+    // If clicked from 3D map marker without explicit targetDist, find closest pass to current playback distance
+    if (e.detail?.targetDist === undefined && wpt.extensions?.station?.passes?.length > 1 && activeRoute) {
+      let minD = Infinity;
+      wpt.extensions.station.passes.forEach(p => {
+        const d = Math.abs(p.dist_m - playbackDistance);
+        if (d < minD) {
+          minD = d;
+          targetDist = p.dist_m;
+        }
+      });
+    }
+
     pausePlayback();
-    playbackIndex = wpt.closestTrackpointIndex !== undefined ? wpt.closestTrackpointIndex : 0;
+    let closestIdx = wpt.closestTrackpointIndex !== undefined ? wpt.closestTrackpointIndex : 0;
+    if (activeRoute && activeRoute.trackpoints && targetDist !== undefined) {
+      let minDiff = Infinity;
+      activeRoute.trackpoints.forEach((pt, idx) => {
+        const d = Math.abs(pt.dist_m - targetDist);
+        if (d < minDiff) { minDiff = d; closestIdx = idx; }
+      });
+    }
+    playbackIndex = closestIdx;
+    playbackDistance = targetDist;
     lastPausedPoiIndex = playbackIndex; // Prevent immediate repeat of trigger
 
-    console.log("[main] DISPATCHING TO SYNC & HUD. playbackIndex:", playbackIndex);
     if (mapController) {
       mapController.syncToTrackpoint(playbackIndex, true);
     }
@@ -6456,8 +6521,7 @@ function computeIntelligentPacingAndWeatherPlan(route, opts) {
     elevationChart.draw();
     
     updateHUD(playbackIndex);
-    console.log("[main] CALLING showPoiDetailDialog FOR WAYPOINT:", wpt?.name);
-    showPoiDetailDialog(wpt, playbackIndex, wpt.dist_m);
+    showPoiDetailDialog(wpt, playbackIndex, targetDist);
   });
 
   // ==========================================
