@@ -510,6 +510,16 @@ export class Map3DController {
    * with lap-specific distinct coloring so overlapping laps are unmistakable.
    */
   updateProgressPolyline(trkptIndex) {
+    // Suppressed: multi-lap progress line rendering disabled for now per user feedback
+    if (this.progressPolyline && this.map) {
+      try {
+        this.map.removeChild(this.progressPolyline);
+      } catch (e) {
+        if (typeof this.progressPolyline.remove === "function") this.progressPolyline.remove();
+      }
+      this.progressPolyline = null;
+    }
+    return;
     if (!this.Polyline3DElement || !this.map || !this.activeRoute || !this.activeRoute.trackpoints) return;
     const pts = this.activeRoute.trackpoints;
     const currentPt = pts[trkptIndex] || pts[0];
