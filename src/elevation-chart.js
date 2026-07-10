@@ -14,6 +14,8 @@
  * limitations under the License.
  */
 
+import { VerticalTerrainVisualizer } from "./gradient-bars.js";
+
 /**
  * Interactive Canvas-based elevation profile chart.
  */
@@ -39,6 +41,12 @@ export class ElevationChart {
     this.padding = { top: 30, right: 20, bottom: 35, left: 65 };
     this.chartWidth = 0;
     this.chartHeight = 0;
+
+    const gCanvas = document.getElementById("vertical-grade-canvas");
+    const pCanvas = document.getElementById("vertical-pace-canvas");
+    const gReadout = document.getElementById("vertical-grade-readout");
+    const pReadout = document.getElementById("vertical-pace-readout");
+    this.terrainVisualizer = new VerticalTerrainVisualizer(gCanvas, pCanvas, gReadout, pReadout);
 
     this.setupListeners();
   }
@@ -620,6 +628,25 @@ export class ElevationChart {
 
       ctx.fillStyle = "var(--primary-color)";
       ctx.fillText(serviceIconsText.trim().substring(0, 30) || "POI Waypoint", cardX + 10, cardY + 76);
+    }
+
+    if (this.terrainVisualizer && this.route && this.route.trackpoints && this.route.trackpoints.length > 0) {
+      const activeIdx = Math.max(0, Math.min(this.route.trackpoints.length - 1, this.progressIndex >= 0 ? this.progressIndex : (this.hoverIdx >= 0 ? this.hoverIdx : 0)));
+      const pt = this.route.trackpoints[activeIdx];
+      const grade = pt ? (pt.grade || 0) : 0;
+      
+      // Why extract target pace?
+      // During camera fly-through playback or scrubber dragging, runners want to see their
+      // authoritative target pace alongside grade. We lookup the active sector by distance
+      // (or fallback to nominal 10.0 min/unit) to keep both vertical side visualizers synchronized.
+      let targetPace = 10.0;
+      if (this.route.executionPlan && this.route.executionPlan.sectors && this.route.executionPlan.sectors.length > 0) {
+        const matchingSec = this.route.executionPlan.sectors.find(s => pt && pt.dist_m >= s.start_dist_m && pt.dist_m <= s.end_dist_m) || this.route.executionPlan.sectors[0];
+        if (matchingSec && matchingSec.target_pace_min) {
+          targetPace = matchingSec.target_pace_min;
+        }
+      }
+      this.terrainVisualizer.update(grade, targetPace, this.units);
     }
   }
 

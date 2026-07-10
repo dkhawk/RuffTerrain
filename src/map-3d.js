@@ -268,6 +268,14 @@ export class Map3DController {
       }
       this.activeWarningPolyline = null;
     }
+    if (this.progressPolyline) {
+      try {
+        this.map.removeChild(this.progressPolyline);
+      } catch (e) {
+        this.progressPolyline.remove();
+      }
+      this.progressPolyline = null;
+    }
     this.activeRoute = null;
   }
 
@@ -467,25 +475,24 @@ export class Map3DController {
     const cursorIdx = Math.min(Math.max(0, this.currentTrackpointIndex || 0), trackpoints.length - 1);
     const cursorPt = trackpoints[cursorIdx] || trackpoints[0];
     this.currentTrackMarker = new this.Marker3DElement({
-      position: { lat: cursorPt.lat, lng: cursorPt.lng !== undefined ? cursorPt.lng : cursorPt.lon, altitude: 5 },
+      position: { lat: cursorPt.lat, lng: cursorPt.lng !== undefined ? cursorPt.lng : cursorPt.lon, altitude: 35 },
       altitudeMode: "RELATIVE_TO_GROUND",
       extruded: true,
       drawsWhenOccluded: true
     });
 
-    const cursorSvg = createSvgDot("#ffeb3b", 24);
+    const cursorSvg = createSvgDot("#ffeb3b", 28);
     const template = document.createElement("template");
     template.content.appendChild(cursorSvg);
-    this.currentTrackMarker.appendChild(template);
-
     this.map.append(this.currentTrackMarker);
+    this.updateProgressPolyline(cursorIdx);
   }
 
   /**
    * Helper to draw a single 3D polyline segment.
    */
   addPolylineSegment(coordinates, strokeColor) {
-    if (!this.Polyline3DElement) return;
+    if (!this.Polyline3DElement || !coordinates || coordinates.length < 2) return;
     const poly = new this.Polyline3DElement({
       strokeColor: strokeColor,
       strokeWidth: 4,
@@ -495,6 +502,93 @@ export class Map3DController {
     poly.originalColor = strokeColor;
     this.map.append(poly);
     this.polylines.push(poly);
+  }
+
+  /**
+   * Updates the wide progress polyline underneath the route up to the current trackpoint.
+   * Handles multi-loop courses cleanly by rendering progress from the start of the current loop,
+   * with lap-specific distinct coloring so overlapping laps are unmistakable.
+   */
+  updateProgressPolyline(trkptIndex) {
+    // Suppressed: multi-lap progress line rendering disabled for now per user feedback
+    if (this.progressPolyline && this.map) {
+      try {
+        this.map.removeChild(this.progressPolyline);
+      } catch (e) {
+        if (typeof this.progressPolyline.remove === "function") this.progressPolyline.remove();
+      }
+      this.progressPolyline = null;
+    }
+    return;
+    if (!this.Polyline3DElement || !this.map || !this.activeRoute || !this.activeRoute.trackpoints) return;
+    const pts = this.activeRoute.trackpoints;
+    const currentPt = pts[trkptIndex] || pts[0];
+    if (!currentPt) return;
+
+    const currentDist = currentPt.dist_m || 0;
+
+    let loopStartIdx = 0;
+    let loopEndIdx = trkptIndex;
+    let loopIndex = 0;
+
+    // Detect multi-loop crossing (e.g. total distance > 30km or explicit passes)
+    if (this.activeRoute.totalDistance > 30000) {
+      // Loop length for Ruff Terrain 50-miler / dirty bismark laps (~24,115 meters or ~14.98 miles)
+      const loopLen = 24115.72;
+      loopIndex = Math.floor(currentDist / (loopLen - 50));
+      const loopStartDist = loopIndex * loopLen;
+
+      for (let i = 0; i <= trkptIndex; i++) {
+        if (pts[i].dist_m >= loopStartDist) {
+          loopStartIdx = i;
+          break;
+        }
+      }
+    }
+
+    // Distinct vibrant progress color per lap to cleanly handle multiple crossings of the same course
+    const loopColors = ["#f59e0b", "#10b981", "#ec4899", "#a855f7", "#3b82f6"];
+    const activeColor = loopColors[loopIndex % loopColors.length];
+
+    // Downsample points for high-performance 3D rendering
+    const step = Math.max(1, Math.floor((loopEndIdx - loopStartIdx) / 120));
+    const pathCoords = [];
+    for (let i = loopStartIdx; i <= loopEndIdx; i += step) {
+      const pt = pts[i];
+      if (pt && typeof pt.lat === "number" && (typeof pt.lon === "number" || typeof pt.lng === "number")) {
+        pathCoords.push({ lat: pt.lat, lng: pt.lon !== undefined ? pt.lon : pt.lng, altitude: 12 });
+      }
+    }
+    if (loopEndIdx > loopStartIdx && pts[loopEndIdx]) {
+      const pt = pts[loopEndIdx];
+      if (pt && typeof pt.lat === "number" && (typeof pt.lon === "number" || typeof pt.lng === "number")) {
+        pathCoords.push({ lat: pt.lat, lng: pt.lon !== undefined ? pt.lon : pt.lng, altitude: 12 });
+      }
+    }
+
+    // Google Maps 3D WebGL requires at least 2 coordinates in a Polyline3DElement path
+    if (pathCoords.length < 2) {
+      if (pathCoords.length === 1) {
+        pathCoords.push(pathCoords[0]);
+      } else {
+        return;
+      }
+    }
+
+    if (!this.progressPolyline) {
+      this.progressPolyline = new this.Polyline3DElement({
+        strokeColor: activeColor,
+        strokeWidth: 14,
+        altitudeMode: "CLAMP_TO_GROUND",
+        path: pathCoords
+      });
+      this.map.append(this.progressPolyline);
+    } else {
+      if (this.progressPolyline.strokeColor !== activeColor) {
+        this.progressPolyline.strokeColor = activeColor;
+      }
+      this.progressPolyline.path = pathCoords;
+    }
   }
 
   /**
@@ -509,9 +603,10 @@ export class Map3DController {
     if (trkptIndex !== null && this.activeRoute && this.activeRoute.trackpoints[trkptIndex]) {
       const pt = this.activeRoute.trackpoints[trkptIndex];
       if (this.currentTrackMarker) {
-        this.currentTrackMarker.position = { lat: pt.lat, lng: pt.lon, altitude: 5 };
+        this.currentTrackMarker.position = { lat: pt.lat, lng: pt.lon, altitude: 35 };
       }
       this.currentTrackpointIndex = trkptIndex;
+      this.updateProgressPolyline(trkptIndex);
     }
   }
 
@@ -526,9 +621,10 @@ export class Map3DController {
     if (!pt) return;
 
     this.currentTrackpointIndex = trkptIndex;
+    this.updateProgressPolyline(trkptIndex);
 
     if (this.currentTrackMarker) {
-      this.currentTrackMarker.position = { lat: pt.lat, lng: pt.lon, altitude: 5 };
+      this.currentTrackMarker.position = { lat: pt.lat, lng: pt.lon, altitude: 35 };
     }
 
     this.currentCameraLat = pt.lat;
@@ -567,8 +663,9 @@ export class Map3DController {
     }
 
     if (this.currentTrackMarker) {
-      this.currentTrackMarker.position = { lat: pt.lat, lng: pt.lon, altitude: 5 };
+      this.currentTrackMarker.position = { lat: pt.lat, lng: pt.lon, altitude: 35 };
     }
+    this.updateProgressPolyline(this.currentTrackpointIndex);
 
     if (this.currentCameraAltitude === 0) {
       this.currentCameraLat = pt.lat;
