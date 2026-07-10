@@ -24,3 +24,9 @@ An Android application designed to demonstrate the integration and features of t
 *   [Google Maps 3D SDK Samples](https://github.com/googlemaps-samples/android-maps3d-samples)
 *   [Android Maps Compose](https://github.com/googlemaps/android-maps-compose)
 *   [Google Maps Android Samples](https://github.com/googlemaps-samples/android-samples)
+
+## Google Maps Link & Formatting Guidelines
+When generating documentation, directories, spreadsheets, or markdown references with Google Maps coordinates (`lat`, `lon`):
+*   **NEVER** use plain centering URLs (`https://www.google.com/maps/@lat,lon,15z`), as they do not drop a visible marker pin or provide one-click navigation.
+*   **Always provide Dropped Pin (Visible Marker) URLs**: `https://www.google.com/maps/search/?api=1&query=lat,lon` (instantly drops a visible red marker pin and opens the side panel where "Directions" is immediately accessible).
+*   **Always provide One-Click Driving Directions URLs**: `https://www.google.com/maps/dir/?api=1&destination=lat,lon&travelmode=driving` (immediately launches Google Maps turn-by-turn driving navigation directly to the checkpoint).
