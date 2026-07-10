@@ -1088,5 +1088,77 @@ This journal records all design decisions, architecture patterns, development st
     *   Synthesized architectural design and mathematical regression specification into persistent reference artifact [empirical_athlete_calibration_spec.md](file:///Users/dkhawk/.gemini/jetski/brain/089bdb6c-3240-45d4-85de-2f7a4871f031/empirical_athlete_calibration_spec.md).
     *   *(No code created or modified per explicit user directive.)*
 
+---
+
+### 🚀 Session 86: Vertical Retro Stereo Volume-Style VU Meters for Gradient & Target Pace
+*   **Goal**: Add better visualization tools on the side of the map with a retro color-coded vertical bar graph representing terrain gradient (indicating zero and negative grades) and a paired vertical bar graph representing target pace, while keeping the bottom elevation profile clean and intact.
+*   **Decisions & Rationale (*The Why*)**:
+    *   **Keep Elevation Profile Intact**: Preserved the bottom elevation profile chart (`.chart-container` / `#elevation-canvas`) untouched so runners retain their full-course macro overview.
+    *   **Vertical Dual VU Meters on Side of Map (`VerticalTerrainVisualizer`)**: Built a dedicated floating glassmorphic sidebar panel (`#vertical-vu-meters-panel`) positioned vertically on the side of the 3D map viewport. Classic 1980s/1990s stereo equalizers and VU volume meters displayed paired left/right channels using vertical stacks of illuminated LED blocks. Here, we pair two vertical Canvas columns:
+        1.  **Vertical Gradient VU Column (`#vertical-grade-canvas`)**:
+            *   **Zero (0%) Center Indicator**: Explicitly marked with a bright white horizontal baseline reference tick and label `0% CTR`.
+            *   **Negative Gradients (Descent)**: When `grade < 0`, vertical LED segments extending *downward* from center illuminate in vibrant Emerald Green (`#10b981`).
+            *   **Positive Gradients (Climb)**: LED segments extending *upward* from center illuminate in Amber (`#f59e0b`), Orange (`#f97316`), Red (`#ef4444`), or Crimson (`#b91c1c`), aligned 1-to-1 with route hazard alerts and 3D map segments.
+        2.  **Vertical Target Pace VU Column (`#vertical-pace-canvas`)**:
+            *   **Why visualize target pace vertically?** Paired directly beside the gradient column, it maps target pacing expectations (`sec.target_pace_min`) across 30 discrete vertical LED blocks from fast cruising paces at the top down to steep mountain power hiking at the bottom.
+            *   **Color Scheme Alignment (`classifyPace`)**: Aligned pacing colors with the alert scheme (Green for fast cruise <= 8 min/mi, Blue for steady <= 11 min/mi, Amber for moderate hike <= 15 min/mi, Orange for steep hike <= 20 min/mi, Red for power hike > 20 min/mi).
+    *   **Synchronized Fly-through & Scrubber Integration**: Hooked `this.terrainVisualizer` into `ElevationChart` ([elevation-chart.js](file:///Users/dkhawk/Projects/RuffTerrain/feature-gradient-bars/src/elevation-chart.js)), ensuring that whenever the camera simulation ticks or the user drags the scrubber, both vertical VU meter columns refresh in lockstep.
+*   **Key Actions & Verification**:
+    *   Created `VerticalTerrainVisualizer` Canvas suite and `classifyPace` helper in `src/gradient-bars.js`.
+    *   Updated `index.html` and `src/elevation-chart.js` to render vertical floating VU meters on the side of the map.
+    *   Added automated unit test suite in `test/gpx.test.js` validating target pace classification and gradient tier alignment.
+    *   Ran `node --test test/gpx.test.js` verifying 25/25 unit tests passing.
+
+---
+
+### 🚀 Session 87: Consolidated Course Studio Tabs & Spatial HUD Overlay Dismiss Toggles
+*   **Goal**: Move the Weather Forecast dialog and Safety Alerts dialog to be tabs in the Course Architect & Studio dialog, reposition the vertical VU meter bar graphs directly beneath the spatial whiskey compass gauge instead of behind it, and make both the compass and VU bar graphs dismissible with top HUD toggle restoration.
+*   **Decisions & Rationale (*The Why*)**:
+    *   **Consolidated Course Studio Architecture**: Having multiple floating desktop dialog panels (`card-warnings` and `card-weather`) appear simultaneously alongside the master Course Studio (`card-importer`) caused visual collisions and overlapping z-index battles. Moved Weather Forecast (`#studio-view-weather`) and Course Safety Alerts (`#studio-view-warnings`) to be dedicated tabs inside the master Course Architect & Studio dialog ([index.html:L217-L218](file:///Users/dkhawk/Projects/RuffTerrain/feature-gradient-bars/index.html#L217-L218)).
+    *   **Vertical VU Repositioning (Beneath Compass)**: The spatial whiskey compass gauge (`#whiskey-compass`) floats at `top: 90px; right: 24px; height: 110px;`. Previously, placing `#vertical-vu-meters-panel` at `top: 76px; right: 16px;` put it directly behind the compass. Repositioned `#vertical-vu-meters-panel` to `top: 212px; right: 24px;` (directly beneath the compass housing), creating a cohesive right-aligned flight instrument column.
+    *   **Dismissible Viewport Controls & HUD Restoration**: Added intuitive close `×` buttons directly on `#whiskey-compass` (`#close-compass-btn`) and `#vertical-vu-meters-panel` (`#close-vu-meters-btn`). To ensure runners can always restore dismissed telemetry gauges anytime, added dedicated quick toggle buttons (`#toggle-compass-btn` 🧭 and `#toggle-vu-meters-btn` 🎚️) directly in the top HUD header ([main.js:L5170-L5183](file:///Users/dkhawk/Projects/RuffTerrain/feature-gradient-bars/src/main.js#L5170-L5183)).
+*   **Key Actions & Verification**:
+    *   Updated `index.html` moving Weather and Alerts sections into Card 1 tabs and repositioned `#vertical-vu-meters-panel`.
+    *   Updated `src/main.js` wiring tab switching and spatial HUD dismiss/restore listeners.
+    *   Ran `node --test test/gpx.test.js` verifying 25/25 unit tests passing and validated production client bundle (`npm run build`).
+
+---
+
+### 🚀 Session 88: Vertical Stacking of Dual Side VU Meters & Restoration of Clean Bottom Elevation Profile Scrubber
+*   **Goal**: Stack the Target Pace and Terrain Grade side bar graphs vertically above each other inside the sidebar gauge container, and restore the clean bottom elevation profile scrubber UI by removing any residual horizontal gradient VU meters and restoring closing header markup.
+*   **Decisions & Rationale (*The Why*)**:
+    *   **Vertical Stacking of Side VU Meters (`#vertical-vu-meters-panel`)**: Previously, the dual vertical Canvas columns for Grade and Pace were placed side-by-side (`flex-direction: row;`). On narrow mobile or resized desktop viewports, side-by-side columns protruded too far into the 3D map canvas. Refactored `#vertical-vu-meters-panel` to stack the columns vertically (`flex-direction: column; width: 72px;`) ([index.html:L177-L194](file:///Users/dkhawk/Projects/RuffTerrain/feature-gradient-bars/index.html#L177-L194)):
+        1.  **Top**: Vertical Terrain Gradient VU Meter (`GRADE`) displaying instantaneous slope.
+        2.  **Bottom**: Vertical Target Pace VU Meter (`PACE`) displaying active sector target pace.
+    *   **Restoration of Clean Bottom Elevation Scrubber & Markup Fix**: Removed the residual `.gradient-visualizers-group` container from inside `#card-elevation-scrubber` ([index.html:L1040-L1045](file:///Users/dkhawk/Projects/RuffTerrain/feature-gradient-bars/index.html#L1040-L1045)). During earlier refactoring, deleting the horizontal bar group inadvertently stripped the closing `</header>` tag before `.chart-container`, causing flexbox layout on the card header to collapse the elevation canvas. Restored the `</header>` tag so the bottom scrubber panel cleanly renders the macro 2D elevation profile chart (`#elevation-canvas`).
+*   **Key Actions & Verification**:
+    *   Updated `index.html` stacking sidebar VU meters vertically, removed `.gradient-visualizers-group`, and restored missing `</header>` tag before `.chart-container`.
+    *   Ran `node --test test/gpx.test.js` verifying 25/25 unit tests passing and validated production client bundle (`npm run build`).
+
+---
+
+### 🚀 Session 89: Unification of Race Planning into Master Standalone Strategy Modal
+*   **Goal**: Unify the duplicate race planning areas (Course Studio Race Planner tab vs. standalone Race Execution Strategy modal) by consolidating all parameters and split generator controls into the standalone Strategy Modal.
+*   **Decisions & Rationale (*The Why*)**:
+    *   **Consolidated Standalone Strategy Modal (`#strategy-overlay`)**: Having two separate race planning UIs (`#studio-view-plan` inside the Course Studio dialog and `#strategy-overlay` standalone modal) caused user confusion and fragmented state. Following user feedback, consolidated all Race Planner controls—including Event Start Time, Sun Tracking (Sunrise 🌅 & Sunset 🌙), benchmark goals, steep descent handling (`#plan-steep-descent`), heat/night degradation factor (`#plan-degradation-slider`), and split generation outputs (`#planner-output-container`)—directly into the AI Race Wizard tab of `#strategy-overlay` ([index.html:L1155-L1215](file:///Users/dkhawk/Projects/RuffTerrain/feature-gradient-bars/index.html#L1155-L1215)).
+    *   **Removal of Course Studio Race Planner Tab**: Deleted the redundant `⏱️ Race Planner` tab (`#studio-tab-plan`) and view (`#studio-view-plan`) from the Course Architect & Studio dialog ([index.html:L215-L220](file:///Users/dkhawk/Projects/RuffTerrain/feature-gradient-bars/index.html#L215-L220)).
+    *   **Authoritative HUD Gear Routing**: Removed the redundant `#toggle-strategy-btn` HUD button and routed `#toggle-planner-btn` (⏱️) to open `#strategy-overlay` directly ([main.js:L3420-L3432](file:///Users/dkhawk/Projects/RuffTerrain/feature-gradient-bars/src/main.js#L3420-L3432)).
+*   **Key Actions & Verification**:
+    *   Updated `index.html` consolidating race planner inputs/outputs into `#strategy-overlay` and removed `#studio-view-plan`.
+    *   Updated `src/main.js` routing `togglePlannerBtn` to open `#strategy-overlay`.
+    *   Ran `node --test test/gpx.test.js` verifying 25/25 unit tests passing and validated production client bundle (`npm run build`).
+
+---
+
+### 🚀 Session 90: Resolved Blank Content in Course Studio Weather & Safety Alerts Tabs
+*   **Goal**: Fix the bug where switching to the Weather Forecast tab (`🌤️ Weather`) or Course Safety Alerts tab (`⚠️ Alerts`) inside the Course Architect & Studio dialog resulted in empty/blank containers.
+*   **Decisions & Rationale (*The Why*)**:
+    *   **Authoritative DOM Reference Realignment**: When Weather Forecast and Safety Alerts were consolidated into tabs inside Card 1 (Course Architect & Studio), the container DOM IDs became `studio-view-weather` and `studio-view-warnings`. However, `cardWeather` and `cardWarnings` in `src/main.js` were still initialized looking for `card-weather` and `card-warnings`. Because these evaluated to `null`, visibility checks during background weather retrieval exited early, leaving `#weather-content` hidden forever. Updated `cardWeather` and `cardWarnings` to point to `studio-view-weather` and `studio-view-warnings` ([main.js:L238-L324](file:///Users/dkhawk/Projects/RuffTerrain/feature-gradient-bars/src/main.js#L238-L324)).
+    *   **Unconditional Loader & Content State Synchronization**: Gating `weatherContent.classList.remove("hidden")` on whether the weather tab was currently visible prevented background forecast updates from populating the DOM when other tabs (like Edit Course or Runner Profiles) were active. Removed panel visibility checks from weather success/error callbacks so the DOM state unconditionally updates whenever new weather data arrives.
+    *   **On-Demand Tab Activation Rendering**: Attached event listeners to `studioTabWeather` and `studioTabWarnings` so clicking either tab explicitly triggers `triggerWeatherWeather(...)` or `renderWarningsUI(activeRoute)` on demand ([main.js:L3485-L3498](file:///Users/dkhawk/Projects/RuffTerrain/feature-gradient-bars/src/main.js#L3485-L3498)).
+*   **Key Actions & Verification**:
+    *   Updated `src/main.js` realigning DOM element ID constants and unconditioned loader/content visibility toggling.
+    *   Ran `node --test test/gpx.test.js` verifying 25/25 unit tests passing and validated production client bundle (`npm run build`).
+
 
 

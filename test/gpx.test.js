@@ -4,6 +4,7 @@ import { parseGPX, getMetricsForPoint, classifyGradient, computeSectorGradient, 
 import { writeGPX } from "../src/gpx-writer.js";
 import { getWeatherConditionStyle, getElapsedHoursAtDistance, getWeatherWindowDetails } from "../src/fetch-weather.js";
 import { parseCalibrationTrack, deriveFatigueDecayLambda, buildEmpiricalProfile } from "../src/empirical-calibration.js";
+import { classifyPace } from "../src/gradient-bars.js";
 
 describe("GPX Parser & Writer Tests", () => {
   
@@ -682,6 +683,41 @@ describe("GPX Parser & Writer Tests", () => {
 
     const outXml = writeGPX(route);
     assert.ok(outXml.includes("<ca:photo_url>data:image/png;base64,iVBORw0KGgo=</ca:photo_url>"));
+  });
+
+  test("Retro stereo volume bar graph indicates zero and negative gradient classification tiers aligned with alert color scheme", () => {
+    // Why test classification tiers?
+    // The retro graphic equalizer / VU volume bar graph maps continuous gradient percentages
+    // to 40 discrete illuminated LED blocks. Verifying negative (descent < -2%), flat/zero (-2%..+2%),
+    // and climb tiers (> +2%) ensures colors align 1-to-1 with route hazard alerts and 3D map segments.
+    const descentTier = classifyGradient(-6.5);
+    assert.strictEqual(descentTier.key, "descent");
+    assert.strictEqual(descentTier.hex, "#10b981"); // Emerald Green
+
+    const zeroTier = classifyGradient(0.0);
+    assert.strictEqual(zeroTier.key, "flat");
+    assert.strictEqual(zeroTier.hex, "#3b82f6"); // Level Blue
+
+    const steepTier = classifyGradient(7.5);
+    assert.strictEqual(steepTier.key, "steep");
+    assert.strictEqual(steepTier.hex, "#f97316"); // Steep Orange
+  });
+
+  test("Target pace classification aligns colors with alert and color-coded segments color scheme", () => {
+    // Why classify pace?
+    // The vertical target pace retro stereo volume bar graph floating on the side of the map
+    // displays pacing severity using the same color tokens as terrain grade and warnings.
+    const fastPace = classifyPace(7.0, "imperial");
+    assert.strictEqual(fastPace.label, "FAST CRUISE");
+    assert.strictEqual(fastPace.hex, "#10b981"); // Emerald Green
+
+    const modHike = classifyPace(13.5, "imperial");
+    assert.strictEqual(modHike.label, "MODERATE HIKE");
+    assert.strictEqual(modHike.hex, "#f59e0b"); // Amber
+
+    const powerHike = classifyPace(22.0, "imperial");
+    assert.strictEqual(powerHike.label, "POWER HIKE");
+    assert.strictEqual(powerHike.hex, "#ef4444"); // Red
   });
 
 });
