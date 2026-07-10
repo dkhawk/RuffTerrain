@@ -38,8 +38,8 @@ import { fetchWeatherForecast, getWeatherConditionStyle, getElapsedHoursAtDistan
 // ==========================================
 
 // Credentials (API keys fallback to environment variables from .env.local)
-let apiKeyMaps = import.meta.env.VITE_GMAPS_API_KEY || localStorage.getItem("gmaps_api_key") || "";
-let apiKeyGemini = localStorage.getItem("gemini_api_key") || import.meta.env.VITE_GEMINI_API_KEY || "";
+let apiKeyMaps = import.meta.env.VITE_GMAPS_API_KEY || import.meta.env.VITE_MAPS_API_KEY || localStorage.getItem("gmaps_api_key") || "";
+let apiKeyGemini = import.meta.env.VITE_GEMINI_API_KEY || localStorage.getItem("gemini_api_key") || "";
 let geminiModel = localStorage.getItem("gemini_model") || "models/gemini-2.0-flash";
 
 // Active Route details parsed from GPX data
@@ -2799,7 +2799,7 @@ function renderEditWaypointList() {
     nameSpan.style.whiteSpace = "nowrap";
     nameSpan.style.overflow = "hidden";
     nameSpan.style.textOverflow = "ellipsis";
-    const distVal = units === "miles" 
+    const distVal = units === "imperial" 
       ? `${(wpt.dist_m / 1609.34).toFixed(1)} mi` 
       : `${(wpt.dist_m / 1000).toFixed(1)} km`;
     const planDuration = getPlanDurationHrs();
@@ -6404,7 +6404,7 @@ function computeIntelligentPacingAndWeatherPlan(route, opts) {
         elevationChart.draw();
         updateHUD(playbackIndex);
 
-        const distStr = units === "miles"
+        const distStr = units === "imperial"
           ? `${(activeDialogWpt.dist_m / 1609.34).toFixed(2)} mi`
           : `${(activeDialogWpt.dist_m / 1000).toFixed(2)} km`;
 
@@ -6453,7 +6453,7 @@ function computeIntelligentPacingAndWeatherPlan(route, opts) {
       }
 
       // Update HUD/panel details
-      const distText = units === "miles" 
+      const distText = units === "imperial" 
         ? `${(tempPoiData.dist_m / 1609.34).toFixed(2)} mi` 
         : `${(tempPoiData.dist_m / 1000).toFixed(2)} km`;
       
@@ -6486,7 +6486,7 @@ function computeIntelligentPacingAndWeatherPlan(route, opts) {
           mapController.tempMarker.position = { lat: snapped.lat, lng: snapped.lon };
         }
 
-        const distText = units === "miles" 
+        const distText = units === "imperial" 
           ? `${(tempPoiData.dist_m / 1609.34).toFixed(2)} mi` 
           : `${(tempPoiData.dist_m / 1000).toFixed(2)} km`;
         
