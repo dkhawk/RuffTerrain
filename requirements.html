@@ -1,0 +1,1377 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>requirements - Premium Markdown Viewer</title>
+    
+    <!-- Google Fonts: Outfit for Headings, Inter for Body -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Outfit:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+    
+    <!-- Prism.js for high-performance syntax highlighting -->
+    <link href="https://cdn.jsdelivr.net/npm/prismjs@1.29.0/themes/prism-tomorrow.min.css" rel="stylesheet">
+    
+    <style>
+        /* ==========================================================================
+           Design System & Global Tokens
+           ========================================================================== */
+        :root {
+            /* Dark Theme Palette (Default) */
+            --bg-primary: #0d0e12;
+            --bg-secondary: #151821;
+            --bg-tertiary: #1a1d28;
+            --border-color: rgba(255, 255, 255, 0.08);
+            --text-primary: #e2e8f0;
+            --text-secondary: #94a3b8;
+            --text-tertiary: #64748b;
+            --accent: #8b5cf6;       /* Indigo-violet core */
+            --accent-glow: rgba(139, 92, 246, 0.15);
+            --accent-secondary: #3b82f6; /* Neon blue secondary */
+            --glass-bg: rgba(21, 24, 33, 0.75);
+            --glass-blur: blur(16px);
+            --shadow-sm: 0 2px 8px rgba(0, 0, 0, 0.3);
+            --shadow-md: 0 8px 24px rgba(0, 0, 0, 0.4);
+            --shadow-lg: 0 16px 48px rgba(0, 0, 0, 0.5);
+            --sidebar-width: 300px;
+            --header-height: 70px;
+            --reading-width: 800px;
+            --code-bg: #1e1e2e;
+            --radius-sm: 6px;
+            --radius-md: 12px;
+            --radius-lg: 18px;
+            --transition-speed: 0.3s;
+        }
+
+        [data-theme="light"] {
+            /* Light Theme Palette */
+            --bg-primary: #f8fafc;
+            --bg-secondary: #ffffff;
+            --bg-tertiary: #f1f5f9;
+            --border-color: rgba(0, 0, 0, 0.08);
+            --text-primary: #0f172a;
+            --text-secondary: #475569;
+            --text-tertiary: #64748b;
+            --accent: #6366f1;
+            --accent-glow: rgba(99, 102, 241, 0.1);
+            --accent-secondary: #2563eb;
+            --glass-bg: rgba(255, 255, 255, 0.85);
+            --glass-blur: blur(16px);
+            --shadow-sm: 0 2px 8px rgba(0, 0, 0, 0.05);
+            --shadow-md: 0 8px 24px rgba(0, 0, 0, 0.08);
+            --shadow-lg: 0 16px 48px rgba(0, 0, 0, 0.12);
+            --code-bg: #f8fafc;
+        }
+
+        /* ==========================================================================
+           Base Styles
+           ========================================================================== */
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+        }
+
+        html {
+            scroll-behavior: smooth;
+            font-size: 16px;
+        }
+
+        body {
+            font-family: 'Inter', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+            background-color: var(--bg-primary);
+            color: var(--text-primary);
+            line-height: 1.7;
+            min-height: 100vh;
+            display: flex;
+            overflow-x: hidden;
+            transition: background-color var(--transition-speed), color var(--transition-speed);
+        }
+
+        a {
+            color: var(--accent);
+            text-decoration: none;
+            transition: color 0.2s ease;
+        }
+
+        a:hover {
+            color: var(--accent-secondary);
+            text-decoration: underline;
+        }
+
+        /* ==========================================================================
+           App Layout & Sidebar
+           ========================================================================== */
+        /* Main Application Container */
+        #app-container {
+            display: flex;
+            width: 100%;
+            min-height: 100vh;
+            position: relative;
+        }
+
+        /* Sticky Left Sidebar */
+        .sidebar {
+            width: var(--sidebar-width);
+            height: 100vh;
+            position: fixed;
+            top: 0;
+            left: 0;
+            background-color: var(--bg-secondary);
+            border-right: 1px solid var(--border-color);
+            display: flex;
+            flex-direction: column;
+            padding: 24px;
+            z-index: 100;
+            transition: transform var(--transition-speed) cubic-bezier(0.4, 0, 0.2, 1), 
+                        background-color var(--transition-speed), 
+                        border-color var(--transition-speed);
+        }
+
+        /* Brand Title inside Sidebar */
+        .brand {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            margin-bottom: 24px;
+        }
+
+        .brand-logo {
+            width: 32px;
+            height: 32px;
+            border-radius: 8px;
+            background: linear-gradient(135deg, var(--accent), var(--accent-secondary));
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: white;
+            font-weight: bold;
+            font-size: 1.2rem;
+            box-shadow: 0 0 12px var(--accent-glow);
+        }
+
+        .brand-name {
+            font-family: 'Outfit', sans-serif;
+            font-size: 1.25rem;
+            font-weight: 700;
+            letter-spacing: -0.02em;
+            background: linear-gradient(to right, var(--text-primary), var(--text-secondary));
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+        }
+
+        /* Search Box Container */
+        .search-wrapper {
+            position: relative;
+            margin-bottom: 24px;
+        }
+
+        .search-input {
+            width: 100%;
+            padding: 10px 16px 10px 40px;
+            border-radius: var(--radius-md);
+            border: 1px solid var(--border-color);
+            background-color: var(--bg-tertiary);
+            color: var(--text-primary);
+            font-family: inherit;
+            font-size: 0.9rem;
+            outline: none;
+            transition: border-color 0.2s ease, box-shadow 0.2s ease;
+        }
+
+        .search-input:focus {
+            border-color: var(--accent);
+            box-shadow: 0 0 0 3px var(--accent-glow);
+        }
+
+        .search-icon {
+            position: absolute;
+            left: 14px;
+            top: 50%;
+            transform: translateY(-50%);
+            fill: var(--text-tertiary);
+            width: 16px;
+            height: 16px;
+            pointer-events: none;
+        }
+
+        /* Document Metadata Stats Grid */
+        .doc-metadata {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 12px;
+            margin-bottom: 24px;
+            padding: 16px;
+            background-color: var(--bg-tertiary);
+            border-radius: var(--radius-md);
+            border: 1px solid var(--border-color);
+        }
+
+        .meta-item {
+            display: flex;
+            flex-direction: column;
+        }
+
+        .meta-label {
+            font-size: 0.7rem;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+            color: var(--text-tertiary);
+            margin-bottom: 4px;
+        }
+
+        .meta-value {
+            font-size: 0.85rem;
+            font-weight: 600;
+            color: var(--text-secondary);
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+
+        /* Table of Contents Sidebar Nav */
+        .toc-container {
+            flex-grow: 1;
+            overflow-y: auto;
+            margin-right: -8px;
+            padding-right: 8px;
+        }
+
+        .toc-title {
+            font-family: 'Outfit', sans-serif;
+            font-size: 0.75rem;
+            text-transform: uppercase;
+            letter-spacing: 0.1em;
+            color: var(--text-tertiary);
+            margin-bottom: 12px;
+            font-weight: 700;
+        }
+
+        .toc-list {
+            list-style: none;
+            display: flex;
+            flex-direction: column;
+            gap: 4px;
+        }
+
+        .toc-item {
+            display: block;
+        }
+
+        .toc-link {
+            display: block;
+            padding: 6px 12px;
+            border-radius: var(--radius-sm);
+            font-size: 0.85rem;
+            color: var(--text-secondary);
+            transition: all 0.2s ease;
+            border-left: 2px solid transparent;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+
+        .toc-link:hover {
+            background-color: var(--bg-tertiary);
+            color: var(--text-primary);
+            text-decoration: none;
+        }
+
+        .toc-link.active {
+            background-color: var(--accent-glow);
+            color: var(--accent);
+            font-weight: 600;
+            border-left-color: var(--accent);
+        }
+
+        /* Hierarchical indentation levels in TOC */
+        .toc-depth-2 { padding-left: 12px; }
+        .toc-depth-3 { padding-left: 24px; font-size: 0.8rem; }
+        .toc-depth-4 { padding-left: 36px; font-size: 0.75rem; }
+
+        /* Custom scrollbar for sidebar TOC list */
+        .toc-container::-webkit-scrollbar {
+            width: 4px;
+        }
+        .toc-container::-webkit-scrollbar-track {
+            background: transparent;
+        }
+        .toc-container::-webkit-scrollbar-thumb {
+            background: var(--border-color);
+            border-radius: 2px;
+        }
+        .toc-container::-webkit-scrollbar-thumb:hover {
+            background: var(--text-tertiary);
+        }
+
+        /* ==========================================================================
+           Main Content & Header Area
+           ========================================================================== */
+        .main-viewport {
+            flex-grow: 1;
+            margin-left: var(--sidebar-width);
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+            position: relative;
+            transition: margin-left var(--transition-speed) cubic-bezier(0.4, 0, 0.2, 1);
+        }
+
+        /* Top Navbar Sticky Header */
+        .top-navbar {
+            height: var(--header-height);
+            padding: 0 40px;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            border-bottom: 1px solid var(--border-color);
+            background-color: var(--glass-bg);
+            backdrop-filter: var(--glass-blur);
+            position: sticky;
+            top: 0;
+            z-index: 90;
+            transition: background-color var(--transition-speed), border-color var(--transition-speed);
+        }
+
+        /* Mobile menu trigger */
+        .menu-toggle {
+            display: none;
+            background: none;
+            border: none;
+            cursor: pointer;
+            color: var(--text-primary);
+            padding: 4px;
+        }
+
+        .navbar-title-wrapper {
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+            max-width: 60%;
+        }
+
+        .navbar-filename {
+            font-family: 'Outfit', sans-serif;
+            font-size: 1.1rem;
+            font-weight: 600;
+            color: var(--text-primary);
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+
+        .navbar-filepath {
+            font-size: 0.75rem;
+            color: var(--text-tertiary);
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+
+        .navbar-actions {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+        }
+
+        /* Modern Button styling */
+        .btn {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            gap: 8px;
+            padding: 8px 16px;
+            border-radius: var(--radius-md);
+            font-family: inherit;
+            font-size: 0.85rem;
+            font-weight: 500;
+            cursor: pointer;
+            transition: all 0.2s ease;
+            border: 1px solid var(--border-color);
+            background-color: var(--bg-secondary);
+            color: var(--text-primary);
+        }
+
+        .btn:hover {
+            background-color: var(--bg-tertiary);
+            border-color: var(--text-tertiary);
+        }
+
+        .btn-primary {
+            background: linear-gradient(135deg, var(--accent), var(--accent-secondary));
+            color: white;
+            border: none;
+            box-shadow: 0 4px 12px var(--accent-glow);
+        }
+
+        .btn-primary:hover {
+            transform: translateY(-1px);
+            box-shadow: 0 6px 16px var(--accent-glow);
+        }
+
+        .btn-icon-only {
+            padding: 8px;
+            border-radius: var(--radius-md);
+        }
+
+        /* Reading Workspace */
+        .content-workspace {
+            flex-grow: 1;
+            padding: 60px 40px 100px;
+            display: flex;
+            justify-content: center;
+            background-color: var(--bg-primary);
+            transition: background-color var(--transition-speed);
+        }
+
+        /* Center Document Card */
+        .document-card {
+            width: 100%;
+            max-width: var(--reading-width);
+            background-color: var(--bg-secondary);
+            border-radius: var(--radius-lg);
+            border: 1px solid var(--border-color);
+            box-shadow: var(--shadow-md);
+            padding: 48px;
+            transition: transform 0.4s cubic-bezier(0.16, 1, 0.3, 1), 
+                        opacity 0.4s ease,
+                        background-color var(--transition-speed), 
+                        border-color var(--transition-speed);
+            opacity: 1;
+        }
+
+        .document-card.updating {
+            opacity: 0.4;
+            transform: translateY(8px);
+        }
+
+        /* ==========================================================================
+           Premium Markdown Typography & Styling
+           ========================================================================== */
+        #document-content {
+            font-size: 1.05rem;
+            color: var(--text-primary);
+        }
+
+        /* Adjustment wrapper for user text scaling */
+        .scale-adjust-1 { font-size: 0.9rem !important; }
+        .scale-adjust-2 { font-size: 0.975rem !important; }
+        .scale-adjust-3 { font-size: 1.05rem !important; }
+        .scale-adjust-4 { font-size: 1.15rem !important; }
+        .scale-adjust-5 { font-size: 1.25rem !important; }
+
+        #document-content h1,
+        #document-content h2,
+        #document-content h3,
+        #document-content h4,
+        #document-content h5,
+        #document-content h6 {
+            font-family: 'Outfit', sans-serif;
+            color: var(--text-primary);
+            font-weight: 700;
+            line-height: 1.3;
+            margin-top: 1.8em;
+            margin-bottom: 0.6em;
+            letter-spacing: -0.02em;
+        }
+
+        #document-content h1 {
+            font-size: 2.2rem;
+            border-bottom: 1px solid var(--border-color);
+            padding-bottom: 12px;
+            margin-top: 0.5em;
+        }
+
+        #document-content h2 {
+            font-size: 1.65rem;
+            border-bottom: 1px solid var(--border-color);
+            padding-bottom: 8px;
+        }
+
+        #document-content h3 { font-size: 1.35rem; }
+        #document-content h4 { font-size: 1.15rem; }
+        
+        #document-content p {
+            margin-bottom: 1.2em;
+            color: var(--text-secondary);
+        }
+
+        /* Inline Code Highlight */
+        #document-content code {
+            background-color: var(--bg-tertiary);
+            padding: 3px 6px;
+            border-radius: var(--radius-sm);
+            font-family: Consolas, Monaco, 'Andale Mono', 'Ubuntu Mono', monospace;
+            font-size: 0.85em;
+            color: var(--accent);
+            border: 1px solid var(--border-color);
+        }
+
+        /* Code Block Highlight Container */
+        #document-content pre {
+            margin-bottom: 1.6em;
+            border-radius: var(--radius-md);
+            background-color: var(--code-bg) !important;
+            border: 1px solid var(--border-color);
+            overflow: visible; /* Allow absolute actions overlay */
+            position: relative;
+            padding: 16px;
+        }
+
+        #document-content pre > code {
+            background: none !important;
+            border: none !important;
+            padding: 0 !important;
+            font-size: 0.9rem;
+            display: block;
+            overflow-x: auto;
+            color: inherit;
+            border-radius: 0;
+        }
+
+        /* Code block header with Language badge & Copy action */
+        .code-header {
+            position: absolute;
+            top: 8px;
+            right: 8px;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            opacity: 0.3;
+            transition: opacity 0.2s ease;
+            z-index: 10;
+        }
+
+        #document-content pre:hover .code-header {
+            opacity: 1;
+        }
+
+        .code-lang-badge {
+            font-size: 0.7rem;
+            text-transform: uppercase;
+            color: var(--text-tertiary);
+            font-weight: 600;
+            letter-spacing: 0.05em;
+            background-color: var(--bg-primary);
+            padding: 2px 6px;
+            border-radius: 4px;
+            border: 1px solid var(--border-color);
+        }
+
+        .code-copy-btn {
+            background-color: var(--bg-primary);
+            border: 1px solid var(--border-color);
+            color: var(--text-secondary);
+            cursor: pointer;
+            padding: 4px;
+            border-radius: 4px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            transition: all 0.2s ease;
+        }
+
+        .code-copy-btn:hover {
+            color: var(--accent);
+            border-color: var(--accent);
+            background-color: var(--bg-tertiary);
+        }
+
+        .code-copy-btn svg {
+            width: 14px;
+            height: 14px;
+            fill: currentColor;
+        }
+
+        /* Lists */
+        #document-content ul,
+        #document-content ol {
+            margin-bottom: 1.2em;
+            padding-left: 24px;
+            color: var(--text-secondary);
+        }
+
+        #document-content li {
+            margin-bottom: 0.4em;
+        }
+
+        #document-content li > ul,
+        #document-content li > ol {
+            margin-top: 0.4em;
+            margin-bottom: 0;
+        }
+
+        /* Elegant Blockquotes */
+        #document-content blockquote {
+            border-left: 4px solid var(--accent);
+            background: linear-gradient(to right, var(--accent-glow), transparent);
+            padding: 16px 24px;
+            margin-bottom: 1.6em;
+            border-radius: 0 var(--radius-md) var(--radius-md) 0;
+        }
+
+        #document-content blockquote p {
+            margin-bottom: 0;
+            color: var(--text-primary);
+            font-style: italic;
+        }
+
+        /* Custom GitHub-style Alert callouts */
+        #document-content blockquote.alert-note { border-left-color: var(--accent-secondary); }
+        #document-content blockquote.alert-tip { border-left-color: #10b981; } /* emerald green */
+        #document-content blockquote.alert-important { border-left-color: var(--accent); }
+        #document-content blockquote.alert-warning { border-left-color: #f59e0b; } /* amber yellow */
+        #document-content blockquote.alert-caution { border-left-color: #ef4444; } /* rose red */
+
+        /* Styled Tables */
+        #document-content table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-bottom: 1.6em;
+            font-size: 0.95rem;
+        }
+
+        #document-content th,
+        #document-content td {
+            padding: 12px 16px;
+            border-bottom: 1px solid var(--border-color);
+            text-align: left;
+        }
+
+        #document-content th {
+            font-family: 'Outfit', sans-serif;
+            font-weight: 600;
+            background-color: var(--bg-tertiary);
+            color: var(--text-primary);
+        }
+
+        #document-content tr:hover {
+            background-color: rgba(255, 255, 255, 0.01);
+        }
+
+        [data-theme="light"] #document-content tr:hover {
+            background-color: rgba(0, 0, 0, 0.01);
+        }
+
+        /* Images */
+        #document-content img {
+            max-width: 100%;
+            border-radius: var(--radius-md);
+            margin-bottom: 1.2em;
+            border: 1px solid var(--border-color);
+            box-shadow: var(--shadow-sm);
+        }
+
+        /* Horizontal Rules */
+        #document-content hr {
+            border: 0;
+            height: 1px;
+            background-color: var(--border-color);
+            margin: 2.4em 0;
+        }
+
+        /* Search matches highlights style */
+        .search-highlight {
+            background-color: #fef08a; /* bright pastel yellow */
+            color: #0f172a !important;
+            border-radius: 2px;
+            box-shadow: 0 0 0 1px #fef08a;
+        }
+
+        /* ==========================================================================
+           Floating Pill Controls Menu
+           ========================================================================== */
+        .floating-menu {
+            position: fixed;
+            bottom: 32px;
+            right: 32px;
+            display: flex;
+            flex-direction: column;
+            gap: 12px;
+            z-index: 95;
+        }
+
+        .floating-trigger {
+            width: 48px;
+            height: 48px;
+            border-radius: 50%;
+            background-color: var(--accent);
+            color: white;
+            border: none;
+            cursor: pointer;
+            box-shadow: 0 4px 16px var(--accent-glow);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            transition: all 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+        }
+
+        .floating-trigger:hover {
+            transform: rotate(45deg) scale(1.05);
+            background-color: var(--accent-secondary);
+        }
+
+        .floating-trigger svg {
+            width: 20px;
+            height: 20px;
+            fill: currentColor;
+        }
+
+        .floating-items {
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+            opacity: 0;
+            transform: translateY(20px) scale(0.9);
+            pointer-events: none;
+            transition: all 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+        }
+
+        .floating-menu.open .floating-items {
+            opacity: 1;
+            transform: translateY(0) scale(1);
+            pointer-events: auto;
+        }
+
+        .floating-btn {
+            width: 40px;
+            height: 40px;
+            border-radius: 50%;
+            background-color: var(--glass-bg);
+            backdrop-filter: var(--glass-blur);
+            border: 1px solid var(--border-color);
+            color: var(--text-primary);
+            cursor: pointer;
+            box-shadow: var(--shadow-sm);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            transition: all 0.2s ease;
+        }
+
+        .floating-btn:hover {
+            background-color: var(--bg-tertiary);
+            border-color: var(--text-tertiary);
+            transform: scale(1.05);
+        }
+
+        .floating-btn svg {
+            width: 16px;
+            height: 16px;
+            fill: currentColor;
+        }
+
+        /* ==========================================================================
+           Responsive Screen Handling
+           ========================================================================== */
+        @media (max-width: 1024px) {
+            :root {
+                --sidebar-width: 250px;
+            }
+        }
+
+        @media (max-width: 768px) {
+            .sidebar {
+                transform: translateX(-100%);
+            }
+
+            .sidebar.open {
+                transform: translateX(0);
+                box-shadow: var(--shadow-lg);
+            }
+
+            .main-viewport {
+                margin-left: 0;
+            }
+
+            .top-navbar {
+                padding: 0 20px;
+            }
+
+            .menu-toggle {
+                display: block;
+            }
+
+            .content-workspace {
+                padding: 30px 16px;
+            }
+
+            .document-card {
+                padding: 24px;
+                border-radius: var(--radius-md);
+            }
+
+            #document-content h1 {
+                font-size: 1.8rem;
+            }
+        }
+
+        /* ==========================================================================
+           Print & PDF Sheet Custom Layout
+           ========================================================================== */
+        @media print {
+            body {
+                background-color: white !important;
+                color: black !important;
+                font-size: 12pt !important;
+            }
+
+            .sidebar,
+            .top-navbar,
+            .floating-menu,
+            .code-header {
+                display: none !important;
+            }
+
+            .main-viewport {
+                margin-left: 0 !important;
+                width: 100% !important;
+            }
+
+            .content-workspace {
+                padding: 0 !important;
+                background-color: white !important;
+            }
+
+            .document-card {
+                box-shadow: none !important;
+                border: none !important;
+                padding: 0 !important;
+                max-width: 100% !important;
+                background-color: white !important;
+            }
+
+            #document-content h1,
+            #document-content h2,
+            #document-content h3 {
+                page-break-after: avoid !important;
+                color: black !important;
+            }
+
+            #document-content pre {
+                page-break-inside: avoid !important;
+                background-color: #f8fafc !important;
+                border: 1px solid #cbd5e1 !important;
+            }
+
+            #document-content blockquote {
+                page-break-inside: avoid !important;
+                border-left-color: #cbd5e1 !important;
+                background: none !important;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div id="app-container">
+        <!-- Left Sticky Sidebar Drawer -->
+        <aside class="sidebar" id="sidebar-drawer">
+            <div class="brand">
+                <div class="brand-logo">M</div>
+                <div class="brand-name">MDView</div>
+            </div>
+
+            <!-- In-page Interactive Search -->
+            <div class="search-wrapper">
+                <svg class="search-icon" viewBox="0 0 24 24">
+                    <path d="M15.5 14h-.79l-.28-.27C15.41 12.59 16 11.11 16 9.5 16 5.91 13.09 3 9.5 3S3 5.91 3 9.5 5.91 16 9.5 16c1.61 0 3.09-.59 4.23-1.57l.27.28v.79l5 4.99L20.49 19l-4.99-5zm-6 0C7.01 14 5 11.99 5 9.5S7.01 5 9.5 5 14 7.01 14 9.5 11.99 14 9.5 14z"/>
+                </svg>
+                <input type="text" class="search-input" id="search-input" placeholder="Search within document...">
+            </div>
+
+            <!-- Document Info Stats -->
+            <div class="doc-metadata">
+                <div class="meta-item">
+                    <span class="meta-label">Words</span>
+                    <span class="meta-value" id="meta-words">0</span>
+                </div>
+                <div class="meta-item">
+                    <span class="meta-label">Read Time</span>
+                    <span class="meta-value" id="meta-readtime">0 min</span>
+                </div>
+                <div class="meta-item" style="grid-column: span 2; margin-top: 8px; border-top: 1px solid var(--border-color); padding-top: 8px;">
+                    <span class="meta-label">Compiled Date</span>
+                    <span class="meta-value" id="meta-compiled" style="font-size: 0.75rem;">-</span>
+                </div>
+            </div>
+
+            <!-- Table of Contents -->
+            <div class="toc-container">
+                <div class="toc-title">Table of Contents</div>
+                <ul class="toc-list" id="toc-list">
+                    <!-- Populated dynamically via script -->
+                </ul>
+            </div>
+        </aside>
+
+        <!-- Main Readable Workspace -->
+        <div class="main-viewport">
+            <!-- Top Navbar Sticky Header -->
+            <header class="top-navbar">
+                <button class="menu-toggle" id="sidebar-toggle" aria-label="Toggle sidebar">
+                    <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <line x1="3" y1="12" x2="21" y2="12"></line>
+                        <line x1="3" y1="6" x2="21" y2="6"></line>
+                        <line x1="3" y1="18" x2="21" y2="18"></line>
+                    </svg>
+                </button>
+
+                <div class="navbar-title-wrapper">
+                    <div class="navbar-filename" id="nav-filename">Document Name</div>
+                    <div class="navbar-filepath" id="nav-filepath">/path/to/document.md</div>
+                </div>
+
+                <div class="navbar-actions">
+                    <button class="btn btn-primary" onclick="window.print();">
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="margin-right: 4px;">
+                            <polyline points="6 9 6 2 18 2 18 9"></polyline>
+                            <path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"></path>
+                            <rect x="6" y="14" width="12" height="8"></rect>
+                        </svg>
+                        Save PDF
+                    </button>
+                </div>
+            </header>
+
+            <!-- Document Workspace container -->
+            <main class="content-workspace">
+                <article class="document-card" id="document-card">
+                    <div id="document-content" class="scale-adjust-3">
+                        <!-- Dynamically parsed markdown content goes here -->
+                    </div>
+                </article>
+            </main>
+        </div>
+
+        <!-- Floating Pill Controls Menu -->
+        <div class="floating-menu" id="floating-menu">
+            <div class="floating-items">
+                <!-- Theme Toggle button -->
+                <button class="floating-btn" id="theme-toggle-btn" title="Toggle Light/Dark Theme">
+                    <svg id="theme-icon" viewBox="0 0 24 24">
+                        <!-- SVG icon dynamically injected -->
+                    </svg>
+                </button>
+                <!-- Zoom In button -->
+                <button class="floating-btn" onclick="changeTextZoom(1);" title="Increase Text Size">
+                    <svg viewBox="0 0 24 24"><path d="M19 13h-6v6h-2v-6H5v-2h6V5h2v6h6v2z"/></svg>
+                </button>
+                <!-- Zoom Out button -->
+                <button class="floating-btn" onclick="changeTextZoom(-1);" title="Decrease Text Size">
+                    <svg viewBox="0 0 24 24"><path d="M19 13H5v-2h14v2z"/></svg>
+                </button>
+                <!-- Scroll back to top -->
+                <button class="floating-btn" onclick="window.scrollTo({top:0, behavior:'smooth'});" title="Back to Top">
+                    <svg viewBox="0 0 24 24"><path d="M4 12l1.41 1.41L11 7.83V20h2V7.83l5.58 5.59L20 12l-8-8-8 8z"/></svg>
+                </button>
+            </div>
+            <!-- Floating menu toggle trigger -->
+            <button class="floating-trigger" id="floating-menu-trigger" title="Show Controls">
+                <svg viewBox="0 0 24 24">
+                    <path d="M19.14,12.94c0.04-0.3,0.06-0.61,0.06-0.94c0-0.32-0.02-0.64-0.07-0.94l2.03-1.58c0.18-0.14,0.23-0.41,0.12-0.61 l-1.92-3.32c-0.12-0.22-0.37-0.29-0.59-0.22l-2.39,0.96c-0.5-0.38-1.03-0.7-1.62-0.94L14.4,2.81c-0.04-0.24-0.24-0.41-0.48-0.41 h-3.84c-0.24,0-0.43,0.17-0.47,0.41L9.25,5.35C8.66,5.59,8.12,5.92,7.63,6.29L5.24,5.33c-0.22-0.08-0.47,0-0.59,0.22L2.74,8.87 c-0.12,0.21-0.08,0.47,0.12,0.61l2.03,1.58C4.84,11.36,4.8,11.68,4.8,12c0,0.32,0.02,0.64,0.07,0.94l-2.03,1.58 c-0.18,0.14-0.23,0.41-0.12,0.61l1.92,3.32c0.12,0.22,0.37,0.29,0.59,0.22l2.39-0.96c0.5,0.38,1.03,0.7,1.62,0.94l0.36,2.54 c0.05,0.24,0.24,0.41,0.48,0.41h3.84c0.24,0,0.43-0.17,0.47-0.41l0.36-2.54c0.59-0.24,1.13-0.56,1.62-0.94l2.39,0.96 c0.22,0.08,0.47,0,0.59-0.22l1.92-3.32c0.12-0.22,0.07-0.47-0.12-0.61L19.14,12.94z M12,15.6c-1.98,0-3.6-1.62-3.6-3.6 c0-1.98,1.62-3.6,3.6-3.6s3.6,1.62,3.6,3.6C15.6,13.98,13.98,15.6,12,15.6z"/>
+                </svg>
+            </button>
+        </div>
+    </div>
+
+    <!-- Core JS CDNs. Pinned stable versions with subresource fallback warnings -->
+    <script src="https://cdn.jsdelivr.net/npm/marked@12.0.0/lib/marked.umd.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/dompurify@3.0.9/dist/purify.min.js"></script>
+    
+    <!-- Prism Core and Autoloader JS for syntax highlighting -->
+    <script src="https://cdn.jsdelivr.net/npm/prismjs@1.29.0/components/prism-core.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/prismjs@1.29.0/plugins/autoloader/prism-autoloader.min.js"></script>
+
+    <!-- Injection of Raw Markdown Content and Stats compiled in Python -->
+    <script>
+        const DOC_METADATA = {"filename": "requirements.md", "filepath": "/Users/dkhawk/Projects/RuffTerrain/requirements.md", "word_count": "2,461", "read_time": 13, "compiled_date": "2026-06-05 15:53:27"};
+        const RAW_MARKDOWN = "# \ud83d\uddfa\ufe0f Kokopelli's Ruff Terrain Explorer: Engineering Requirements Specification\n\nThis document details the reverse-engineered functional requirements, non-functional requirements, system architecture, data schemas, and mathematical algorithms of **Kokopelli** (also known as RuffTerrain), a premium WebGL-based 3D route visualizer and course architect.\n\n---\n\n## 1. Project Overview & System Context\n**Kokopelli** is a client-side web application designed to help race directors, trail runners, and hikers import, enhance, and visualize remote trail courses in high-fidelity 3D. The application overlays routes onto 3D satellite terrain, calculates detailed safety metrics, and provides an interactive playback fly-through simulation. \n\nAdditionally, it integrates with a generative AI agent (the **Gemini Course Architect**) to ingest unstructured text or PDFs (such as race web pages) and generate snaps, aid station lists, and safety attributes.\n\n### Technology Stack\n1. **Core Development**: Vanilla HTML5, CSS3, and modern modular ES6 JavaScript.\n2. **Bundler**: Vite (Vite JS dev & production builds).\n3. **Map Renderer**: Google Maps JavaScript 3D Maps API (`Map3DElement`, `Polyline3DElement`, `Marker3DInteractiveElement`, `Marker3DElement`) in `v1beta/alpha` hybrid mode.\n4. **Elevation Profiles**: HTML5 Canvas API (custom drawing with device-pixel-ratio calibration).\n5. **AI Integration**: Google Gemini API via HTTPS REST endpoints (`v1beta` models list and content generation).\n6. **External Libraries**: PDF.js (via CDN link) for parsing client-side PDF document attachments in the chat interface.\n7. **Elevation Services**: Open-Meteo Elevation API with Open-Elevation POST API as a fallback.\n\n---\n\n## 2. System Architecture & Components\n\n```mermaid\ngraph TD\n    User([User]) -->|Import GPX/KML / Chat / Scrub| UI[HTML5/CSS3 HUD & Panels]\n    UI -->|Coordinates Actions| Controller[main.js Controller]\n    Controller -->|Manages View/Camera| MapController[map-3d.js Map3DController]\n    Controller -->|Draws Profile & Cursor| ChartController[elevation-chart.js ElevationChart]\n    Controller -->|Batch Requests| ElevController[fetch-elevation.js Elevation Client]\n    Controller -->|Converts JSON| Writer[gpx-writer.js GPX Serializer]\n    Controller -->|Structured Chat Commands| GeminiController[gemini-client.js Gemini Client]\n    \n    MapController -->|WebGL Satellite| GMaps[Google Maps 3D API]\n    ElevController -->|HTTP Batching| OpenMeteo[Open-Meteo Elevation API]\n    ElevController -->|Fallback POST| OpenElevation[Open-Elevation Fallback API]\n    GeminiController -->|HTTPS Structured Generation| Gemini[Gemini API Endpoint]\n```\n\nThe codebase is structured into the following decoupled modules:\n- **`index.html`**: Entry point defining the page layouts, floating glassmorphic panels, SVGs, templates, and overlay modals.\n- **`src/style.css`**: Design system tokens, glassmorphism filters, 3D compass CSS layout, metrics overlays, and responsive spacing.\n- **`src/main.js`**: Core controller coordinator. Manages application state, handles event bindings, coordinates playback simulation, and controls local storage.\n- **`src/gpx-parser.js`**: Parsing engine for GPX and KML. Implements distance calculations, snapped coordinates matching, multi-pass search loops, and safety warnings generation.\n- **`src/gpx-writer.js`**: Serializer converting route state back into valid XML GPX format decorated with custom metadata namespace annotations.\n- **`src/map-3d.js`**: Map controller encapsulating WebGL 3D Maps element. Drives camera tracking, SLERP rotation dampening, markers generation, and climb color-coding.\n- **`src/elevation-chart.js`**: Interactive Canvas renderer. Draws elevation graphs, highlights warning zones, positions cursor guides, and translates screen coordinates.\n- **`src/fetch-elevation.js`**: Elevation correction client. Fetches, interpolates, and filters terrain elevation data from external web APIs.\n- **`src/gemini-client.js`**: AI client. Sends route context and instructions to the Gemini API, enforcing JSON output formatting matching the system's schema.\n\n---\n\n## 3. Data Schemas & Specifications\n\n### 3.1 Course Architect Custom XML GPX Schema (`ca:`)\nKokopelli exports GPX files annotated with custom XML schema tags under the `xmlns:ca=\"http://coursearchitect.com/schema/v1\"` namespace. These tags are appended to standard `<wpt>` (waypoint) tags inside `<extensions>`:\n\n```xml\n<wpt lat=\"40.0150\" lon=\"-105.2705\">\n  <ele>1624.00</ele>\n  <name>Resurrection Aid Station</name>\n  <sym>icons/aid_station.svg</sym>\n  <desc>Pass 1 at 7.24km (Outbound) | Pass 2 at 27.68km (Inbound)</desc>\n  <extensions>\n    <ca:station type=\"segmenting\" id=\"resurrection\" subtype=\"aid_station\">\n      <ca:passes>\n        <ca:pass num=\"1\" dist_m=\"7242\" label=\"Outbound\" cutoff_clock=\"9:15 AM\" cutoff_elapsed=\"PT2H15M\" />\n        <ca:pass num=\"2\" dist_m=\"27681\" label=\"Inbound\" cutoff_clock=\"1:15 PM\" cutoff_elapsed=\"PT6H15M\" />\n      </ca:passes>\n      <ca:accessibility crew_allowed=\"true\" pacer_allowed=\"false\" vehicle_tier=\"auto\" drop_bag_allowed=\"true\" />\n      <ca:services water=\"true\" unmanaged_water=\"false\" food=\"true\" hot_food=\"false\" toilets=\"true\" medical=\"true\" sleep_area=\"false\" />\n      <ca:navigation_alert severity=\"info\" turn_type=\"straight\" prompt=\"Keep straight past reservoir road.\" />\n    </ca:station>\n  </extensions>\n</wpt>\n```\n\n#### Schema Parameters:\n- **`ca:station`**: Represents a physical waypoint. Attributes:\n  - `type`: `segmenting` (major aid station dividing segments) or `informational` (landmark, water source).\n  - `id`: Unique string identifier.\n  - `subtype`: `aid_station`, `water_source`, `scenic`, `campground`, `refuge`, `summit`, `navigation`.\n- **`ca:pass`**: Represents a timing pass at the station. Attributes:\n  - `num`: Integer pass index (1-indexed).\n  - `dist_m`: Cumulative distance from start in meters.\n  - `label`: Pass description (e.g., \"Outbound\", \"Inbound\").\n  - `cutoff_clock`: Clock time cutoff (e.g., \"1:15 PM\").\n  - `cutoff_elapsed`: ISO 8601 duration relative to race start (e.g., \"PT6H15M\").\n- **`ca:accessibility`**: Crew/pacer permissions. Attributes:\n  - `crew_allowed`, `pacer_allowed`, `drop_bag_allowed`: Boolean string (`\"true\"`/`\"false\"`).\n  - `vehicle_tier`: Access level: `\"none\"`, `\"hike_only\"`, `\"foot_bike\"`, `\"auto\"`, `\"4wd\"`.\n- **`ca:services`**: Amenities checklist. Attributes: Water, unmanaged water, food, hot food, toilets, medical, and sleep area (all Boolean strings).\n- **`ca:navigation_alert`**: Critical turn notices. Attributes:\n  - `severity`: `\"critical\"`, `\"warning\"`, `\"info\"`.\n  - `turn_type`: `\"sharp_right\"`, `\"sharp_left\"`, `\"fork_right\"`, `\"fork_left\"`, `\"straight\"`.\n  - `prompt`: Directions description.\n\n### 3.2 Gemini Response Schema (`GEMINI_RESPONSE_SCHEMA`)\nAll outputs from the Gemini chat client are constrained to conform to a strict JSON structure utilizing the following schema:\n\n```json\n{\n  \"stations\": [\n    {\n      \"id\": \"string\",\n      \"name\": \"string\",\n      \"type\": \"segmenting | informational\",\n      \"subtype\": \"aid_station | water_source | navigation | scenic | campground | refuge | summit\",\n      \"coordinate_override\": {\n        \"lat\": \"number\",\n        \"lon\": \"number\"\n      },\n      \"passes\": [\n        {\n          \"num\": \"integer\",\n          \"dist_m\": \"number\",\n          \"label\": \"string\",\n          \"cutoff_clock\": \"string\",\n          \"cutoff_elapsed\": \"string\"\n        }\n      ],\n      \"accessibility\": {\n        \"crew_allowed\": \"boolean\",\n        \"pacer_allowed\": \"boolean\",\n        \"vehicle_tier\": \"none | hike_only | foot_bike | auto | 4wd\",\n        \"drop_bag_allowed\": \"boolean\"\n      },\n      \"services\": {\n        \"water\": \"boolean\",\n        \"unmanaged_water\": \"boolean\",\n        \"food\": \"boolean\",\n        \"hot_food\": \"boolean\",\n        \"toilets\": \"boolean\",\n        \"medical\": \"boolean\",\n        \"sleep_area\": \"boolean\"\n      },\n      \"navigation_alert\": {\n        \"severity\": \"critical | warning | info\",\n        \"turn_type\": \"sharp_right | sharp_left | fork_right | fork_left | straight\",\n        \"prompt\": \"string\"\n      }\n    }\n  ]\n}\n```\n\n---\n\n## 4. Mathematical Algorithms & Calculations\n\n### 4.1 Spatial Coordinate Distance (Haversine Formula)\nThe distance $d$ in meters between two lat/lon coordinate pairs is calculated using the Haversine formula:\n\n$$\\Delta \\phi = \\frac{(\\text{lat}_2 - \\text{lat}_1) \\cdot \\pi}{180}$$\n$$\\Delta \\lambda = \\frac{(\\text{lon}_2 - \\text{lon}_1) \\cdot \\pi}{180}$$\n$$a = \\sin^2\\left(\\frac{\\Delta \\phi}{2}\\right) + \\cos\\left(\\frac{\\text{lat}_1 \\cdot \\pi}{180}\\right) \\cdot \\cos\\left(\\frac{\\text{lat}_2 \\cdot \\pi}{180}\\right) \\cdot \\sin^2\\left(\\frac{\\Delta \\lambda}{2}\\right)$$\n$$c = 2 \\cdot \\text{atan2}\\left(\\sqrt{a}, \\sqrt{1 - a}\\right)$$\n$$d = R \\cdot c$$\n\n*Where $R = 6,371,000\\text{ meters}$ (Earth's radius).*\n\n### 4.2 Elevation Slope Grade Calculation\nSlope grade (percentage) at a trackpoint is calculated over a stable **30-meter cumulative distance baseline** to filter out GPS noise and signal fluctuations:\n\n$$\\text{run} = d_{\\text{current}} - d_{\\text{base}}$$\n$$\\text{rise} = h_{\\text{current}} - h_{\\text{base}}$$\n$$\\text{grade} = \\left(\\frac{\\text{rise}}{\\text{run}}\\right) \\cdot 100 \\quad (\\text{if }\\text{run} > 5\\text{ meters})$$\n\n*Where $d$ is cumulative distance in meters and $h$ is elevation in meters. The base index is found by walking backward until the cumulative distance difference is $\\ge 30\\text{ meters}$.*\n\n### 4.3 Snapping Algorithms\n#### Standard Snapping (`snapToRouteSegments`)\nFinds the closest projection point on the route polyline. For each segment between trackpoints $A$ and $B$, project the point $P$:\n1. Calculate vectors $\\vec{v} = B - A$ and $\\vec{w} = P - A$ in scaled coordinate space:\n   $$x = \\text{lon} \\cdot \\cos\\left(\\frac{\\text{lat}_A + \\text{lat}_B}{2} \\cdot \\frac{\\pi}{180}\\right)$$\n   $$y = \\text{lat}$$\n2. Calculate projection fraction $t$:\n   $$t = \\max\\left(0, \\min\\left(1, \\frac{\\vec{w} \\cdot \\vec{v}}{\\|\\vec{v}\\|^2}\\right)\\right)$$\n3. Project coordinates and interpolate elevation/distance:\n   $$\\text{lat}_{\\text{proj}} = \\text{lat}_A + t \\cdot (\\text{lat}_B - \\text{lat}_A)$$\n   $$\\text{lon}_{\\text{proj}} = \\text{lon}_A + t \\cdot (\\text{lon}_B - \\text{lon}_A)$$\n   $$\\text{ele}_{\\text{proj}} = \\text{ele}_A + t \\cdot (\\text{ele}_B - \\text{ele}_A)$$\n   $$\\text{dist}_{\\text{proj}} = \\text{dist}_A + t \\cdot (\\text{dist}_B - \\text{dist}_A)$$\n\n#### Snap Windows\n- **Local Constraint Window**: Filters segment iterations within $\\pm3000\\text{ meters}$ of the waypoint's nominal distance. This preserves pass direction (e.g. outbound vs. inbound passes in loop/out-and-back routes).\n- **Full Course Search Fallback**: Iterates through all route segments if the local window yields no segments.\n\n#### Turnaround Snapping\nWaypoint passes explicitly labeled as `\"turnaround\"` snap directly to the trackpoint closest to the mathematical midpoint of the course distance:\n\n$$d_{\\text{target}} = \\frac{d_{\\text{total}}}{2.0}$$\n\n#### Multi-Pass Snapping (`findMultiPassIntersection`)\nFinds a trackpoint index near the first pass nominal distance $d_1$ that minimizes the aggregate spatial distance to all subsequent passes $d_k$ ($k > 1$):\n1. Compute scaled nominal distances: $d'_k = d_k \\cdot \\text{scaleFactor}$.\n2. Walk first pass search indices within range $[d'_1 - 1500\\text{m}, d'_1 + 1500\\text{m}]$.\n3. For each candidate point $C$, calculate the minimum spatial distance to any trackpoint in the subsequent search ranges $[d'_k - 1500\\text{m}, d'_k + 1500\\text{m}]$:\n   $$\\text{Score}(C) = \\sum_{k=2}^{M} \\min_{T \\in \\text{Range}(d'_k)} \\text{haversine}(C, T)$$\n4. Select the candidate point index that minimizes $\\text{Score}(C)$.\n\n---\n\n## 5. Functional Requirements Spec\n\n### 5.1 Route File Ingestion & Processing\n- **Format Support**: Import GPX (using trackpoints `<trkpt>` or routepoints `<rtept>`) and KML files (parsing `<coordinates>` tokens under `<LineString>` and waypoints under `<Placemark>`).\n- **Elevation Smoothing**: Apply an **11-point moving average filter** (5 points on either side) to parsed trackpoint elevations to smooth out raw GPS noise.\n- **Dynamic Detours**: When editing or adding waypoints, if the coordinates sit off-route:\n  - If placed along a segment: splice new trackpoint coordinates into the route array, stretching the polyline to visit the waypoint and immediately return.\n  - If placed near route boundaries: prepend or append coordinates to extend the course terminal bounds.\n- **Elevation Correcting (Open-Meteo)**:\n  - Batch API request payload size to **20 coordinate pairs** to avoid URL length failures.\n  - Apply exponential backoff retries (3 retries starting at 1000ms delay).\n  - Implement a **300ms throttle pause** between requests to obey API rate limits.\n  - Downsample coordinates by sampling every **10th coordinate** to reduce bandwidth, then linearly interpolate intermediate elevations before applying the 11-point smoothing pass.\n\n### 5.2 3D Map Renderer & Camera Simulation\n- **Map Initialization**: Embed `Map3DElement` in Hybrid mode. Calculate bounds to set target camera range to fit the entire route overhead on load, looking straight down.\n- **Compass Integration**: Embed a digital rotating compass overlay. Feed the Map 3D heading (`gmp-headingchange` event) directly into the compass cylinder rotation transform using 3D CSS:\n  $$\\text{CSS Transform} = \\text{rotateY}(-\\text{heading})$$\n- **Climb Color Visualizer Toggle**:\n  - Apply 10-point moving average smoothing to grades before drawing.\n  - When **active**: Split the route polyline into discrete segments and color-code:\n    - **Red**: Steep climbs (grade $> 2.5\\%$)\n    - **Green**: Descents (grade $< -2.5\\%$)\n    - **Blue**: Neutral segments (grade between $-2.5\\%$ and $2.5\\%$)\n  - When **inactive**: Draw a solid cyan polyline (`#00d2ff`).\n- **Interactive Waypoint Markers**:\n  - Custom waypoints render as `Marker3DInteractiveElement` pins.\n  - Enforce slotted `<template>` elements wrapping pure parsed `SVGElement` nodes (HTML wrappers or images are rejected by the WebGL renderer).\n  - Pin colors map to type: Start (Emerald Green), Finish (Red), Medical (Rose Red), Food/Station (Royal Purple), Water (Cyan), Default (Blue).\n  - Listeners map to `gmp-dragend` coordinates to trigger route metrics updates.\n- **Camera Playback Loop**:\n  - Playback simulation speed: $\\text{simSpeed} = 20 \\cdot \\text{speedScale}^2\\text{ m/s}$ (slider values 1-10 yields 20m/s to 2000m/s).\n  - Update position using linear interpolation between trackpoints (`getInterpolatedPoint`).\n  - Calculate camera heading dynamically by pointing the camera toward a lookahead point:\n    $$d_{\\text{lookahead}} = d_{\\text{current}} + \\max(50\\text{m}, \\text{avgSpacing} \\cdot 3.5)$$\n  - Apply **SLERP heading interpolation** to smooth out quick camera pivots around tight trail switchbacks.\n  - Apply a **Bungee Lerp Filter** to camera coordinates center focus to smooth out jitters.\n  - **Auto-Pause at POIs**: Automatically pause the playback thread when the simulation distance crosses the snapping distance of a waypoint. Open the POI detail modal and pause for the user-configured duration (default 5s, or indefinitely if set to 0).\n\n### 5.3 Elevation Scrubber Chart\n- **Canvas Rendering**: Draw on a high-DPI adjusted HTML5 `<canvas>` using `window.devicePixelRatio`.\n- **Telemetry Indicators**: Highlight completed progress on the chart with a bold cyan line (`#00d2ff`) and gradient fill; show remaining progress in translucent grey.\n- **Axes Labels**: Translate Y-axis (4 splits) and X-axis (5 splits) values dynamically on the canvas based on active units configuration (Metric vs. Imperial).\n- **Interactive Tooltips**:\n  - Mouse hover displays vertical scrubber line, white focal dot, and a card detailing cumulative distance, elevation, and grade.\n  - Hovering within **15px** of a waypoint node highlights the dot and shows a detailed popover displaying the station name, distance, elevation, cutoffs, and available amenities icons (Water `\ud83d\udca7`, Food `\ud83c\udf54`, WC `\ud83d\udebe`, Medical `\u2795`, Sleep `\ud83d\udecc`).\n\n### 5.4 Safety Warnings Engine\nAutomatically evaluate courses for three safety warning categories on ingestion or recalculation:\n1. **Resource Deserts**:\n   - Gaps between successive resource-providing waypoints (Start, Finish, or stations supplying water or food) exceeding **5 miles (~8046.72 meters)**.\n   - Triggers warnings for: (a) Start to first resource gap, (b) resource-to-resource gaps, and (c) last resource to Finish gap.\n2. **Difficult Climbs**:\n   - Climb segments starting when the slope grade exceeds **3.5%**.\n   - Terminates the climb segment when: (a) descending $>20\\text{ meters}$ below the peek, (b) flat segment length exceeds $200\\text{ meters}$ since grade was last $>3.5\\%$, or (c) route ends.\n   - Calculates a difficulty score if climb length is $\\ge 400\\text{ meters}$ and gain $> 0$:\n     $$\\text{Difficulty Score} = \\text{Elevation Gain (m)} \\cdot \\text{Average Grade (\\%)}$$\n   - Generates warnings for climbs with a score $\\ge 100$. Categories: Moderate (100\u2013250), Difficult (251\u2013600), Severe (601\u20131500), Extreme ($>1500$).\n3. **Spatial Mismatch**:\n   - Triggered during Gemini AI coordinate overrides if the distance between the user-defined waypoint lat/lon and the nearest snapped GPX trackpoint exceeds **2000 meters**.\n- **Map Focus**: Clicking any warning in the sidebar panel flies the 3D map camera directly to focus on the warning segment and draws a thick highlight polyline (width 14).\n\n### 5.5 Gemini Course Architect Chat\n- **Context Ingestion**: Compress route coordinates into a concise array of existing waypoints to fit the Gemini context window before sending chat messages.\n- **Unstructured File Parsing**: Ingest uploaded `.txt`, `.csv`, `.gpx`, or `.pdf` attachments. Parse PDFs directly in the client browser using `PDF.js` text page extraction streams and submit the text contents to the Gemini API.\n- **Multi-Pass Deduplication**: Merge multiple mentions of a single waypoint (e.g. outbound and inbound passes of an out-and-back) into a single entity containing a list of passes in the JSON array.\n- **Temporal Duration Parsing**: Convert relative clock time cutoff text (e.g. \"1:15 PM\") to ISO 8601 durations relative to the race start.\n\n---\n\n## 6. Non-Functional Requirements\n\n### 6.1 Performance Constraints\n- **Polyline Downsampling**: Downsample long tracks on load to a maximum of **1500 points** for WebGL drawing to prevent browser thread freeze and GPU memory limits.\n- **Flexbox Resize Loops**: Chart container dimensions must be calculated against a parent element with absolute positioning and fixed/flex boundaries to avoid triggering `ResizeObserver loop completed with undelivered notifications` rendering exceptions.\n- **API Request Throttling**: Adhere to Open-Meteo and Open-Elevation rate-limiting policies by batching coordinate queries and applying wait timers.\n\n### 6.2 User Experience & Accessibility\n- **Design Tokens**: Standardize HSL variables (`--primary`, `--background`, `--card`, etc.) to build a premium, glassmorphic UI. Combine dark translucent backdrops (`backdrop-filter: blur(12px)`) with thin borders (`1px solid rgba(255, 255, 255, 0.1)`).\n- **Measurement Units System**: Standardize core computations (meters, elevation change) strictly in metric. Apply Metric/Imperial conversions (miles, feet, kilometers) only at the rendering layers to prevent cumulative rounding drifts.\n- **Edit Protections**: Implement a global edit lock toggle. When locked, drag behaviors on 3D map markers and chat-initiated route modifications are completely disabled.\n- **Local Storage Configuration**: Maintain state persistence across page reloads by caching:\n  - Maps and Gemini API keys.\n  - Active units configuration.\n  - Playback parameters (speed, camera range, camera tilt).\n  - History queue containing the **10 most recently loaded courses** for fast retrieval.\n";
+    </script>
+
+    <script>
+        // ==========================================================================
+        // Frontend Application State & Initialization
+        // ==========================================================================
+        let appTheme = 'dark';
+        let currentTextZoom = 3; // Defaults to scale-adjust-3
+        const themeIcons = {
+            dark: `<path d="M12 3c.132 0 .263 0 .393.007a7.5 7.5 0 0 0 7.92 12.446A9 9 0 1 1 12 2.999z"/>`,
+            light: `<path d="M12 7a5 5 0 1 0 0 10 5 5 0 0 0 0-10zM2 13h2v-2H2v2zm18 0h2v-2h-2v2zM11 2v2h2V2h-2zm0 18v2h2v-2h-2zM5.99 4.58L4.58 5.99l1.41 1.41 1.41-1.41-1.41-1.41zm10.6 10.6l-1.41 1.41 1.41 1.41 1.41-1.41-1.41-1.41zm-9.19 9.19l1.41-1.41-1.41-1.41-1.41 1.41 1.41 1.41zm10.6-10.6l1.41-1.41-1.41-1.41-1.41 1.41 1.41 1.41z"/>`
+        };
+
+        document.addEventListener('DOMContentLoaded', () => {
+            initializeTheme();
+            renderDocument();
+            setupEventListeners();
+            setupScrollSpy();
+        });
+
+        // ==========================================================================
+        // Markdown & UI Rendering Functions
+        // ==========================================================================
+        
+        /**
+         * Formats and parses raw markdown, sanitizes it using DOMPurify,
+         * renders it into the DOM, and triggers highlight & sidebar TOC generation.
+         */
+        function renderDocument() {
+            const contentContainer = document.getElementById('document-content');
+            
+            // Populate static metadata fields safely via textContent
+            document.getElementById('nav-filename').textContent = DOC_METADATA.filename;
+            document.getElementById('nav-filepath').textContent = DOC_METADATA.filepath;
+            document.getElementById('meta-words').textContent = DOC_METADATA.word_count;
+            document.getElementById('meta-readtime').textContent = DOC_METADATA.read_time + ' min';
+            document.getElementById('meta-compiled').textContent = DOC_METADATA.compiled_date;
+
+            if (!RAW_MARKDOWN) {
+                contentContainer.textContent = 'No content available.';
+                return;
+            }
+
+            try {
+                // Configure custom marked renderer for premium visual alerts & clean structures
+                const renderer = new marked.Renderer();
+                
+                // Intercept and wrap code blocks to add the language badge & copy buttons overlay
+                renderer.code = (code, language) => {
+                    const lang = language || 'text';
+                    const escapedCode = code.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+                    
+                    return `<pre class="language-${lang}"><div class="code-header"><span class="code-lang-badge">${lang}</span><button class="code-copy-btn" onclick="copyCodeBlock(this)" title="Copy Code"><svg viewBox="0 0 24 24"><path d="M16 1H4c-1.1 0-2 .9-2 2v14h2V3h12V1zm3 4H8c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h11c1.1 0 2-.9 2-2V7c0-1.1-.9-2-2-2zm0 16H8V7h11v14z"/></svg></button></div><code class="language-${lang}">${escapedCode}</code></pre>`;
+                };
+
+                // Support GitHub-style Alert blockquotes: e.g., [!NOTE]
+                const originalBlockquote = renderer.blockquote.bind(renderer);
+                renderer.blockquote = (quote) => {
+                    const noteMatch = quote.match(/\[!(NOTE|TIP|IMPORTANT|WARNING|CAUTION)\]/i);
+                    if (noteMatch) {
+                        const type = noteMatch[1].toUpperCase();
+                        const cleanQuote = quote.replace(/\[!(NOTE|TIP|IMPORTANT|WARNING|CAUTION)\]/gi, '');
+                        return `<blockquote class="alert-${type.toLowerCase()}"><p>${cleanQuote}</p></blockquote>`;
+                    }
+                    return originalBlockquote(quote);
+                };
+
+                marked.setOptions({ renderer: renderer });
+
+                // Parse MD and Sanitize output to block XSS
+                const rawHtml = marked.parse(RAW_MARKDOWN);
+                const cleanHtml = DOMPurify.sanitize(rawHtml);
+                
+                // Insert strictly sanitized content safely
+                contentContainer.innerHTML = cleanHtml;
+                
+                // Force Prism to highlight code blocks inside the reading pane
+                if (window.Prism) {
+                    Prism.highlightAllUnder(contentContainer);
+                }
+                
+                // Dynamically build TOC based on current headings
+                buildTableOfContents();
+                
+            } catch (error) {
+                console.error('Compilation error:', error);
+                contentContainer.textContent = 'Error rendering document content: ' + error.message;
+            }
+        }
+
+        /**
+         * Scans the rendered DOM for h1, h2, h3 headings and constructs a 
+         * beautiful hierarchical Table of Contents in the sidebar.
+         */
+        function buildTableOfContents() {
+            const contentContainer = document.getElementById('document-content');
+            const tocList = document.getElementById('toc-list');
+            
+            // Clear current TOC contents safely
+            tocList.replaceChildren();
+
+            const headings = contentContainer.querySelectorAll('h1, h2, h3, h4');
+            if (headings.length === 0) {
+                const placeholder = document.createElement('li');
+                placeholder.className = 'toc-item';
+                placeholder.textContent = 'No headings found.';
+                tocList.appendChild(placeholder);
+                return;
+            }
+
+            headings.forEach((heading, index) => {
+                // Ensure each heading has a unique ID for anchor navigation
+                const headingId = heading.id || `heading-${index}`;
+                heading.id = headingId;
+
+                const level = parseInt(heading.tagName.substring(1));
+                
+                // Create hierarchical link items
+                const listItem = document.createElement('li');
+                listItem.className = 'toc-item';
+
+                const link = document.createElement('a');
+                link.href = `#${headingId}`;
+                link.className = `toc-link toc-depth-${level}`;
+                link.textContent = heading.textContent;
+                
+                // Handle TOC items click for smooth scrolling and drawer collapsing
+                link.addEventListener('click', (e) => {
+                    e.preventDefault();
+                    document.getElementById(headingId).scrollIntoView({ behavior: 'smooth' });
+                    
+                    // Highlight selected link instantly
+                    document.querySelectorAll('.toc-link').forEach(el => el.classList.remove('active'));
+                    link.classList.add('active');
+
+                    // Collapse drawer on mobile after navigating
+                    document.getElementById('sidebar-drawer').classList.remove('open');
+                });
+
+                listItem.appendChild(link);
+                tocList.appendChild(listItem);
+            });
+        }
+
+        // ==========================================================================
+        // Active Controls: Zoom, Themes, Search, ScrollSpy
+        // ==========================================================================
+
+        /**
+         * Handles theme switching and persists selection inside localStorage.
+         */
+        function initializeTheme() {
+            const savedTheme = localStorage.getItem('mdview-theme') || 'dark';
+            setTheme(savedTheme);
+        }
+
+        function setTheme(theme) {
+            appTheme = theme;
+            document.documentElement.setAttribute('data-theme', theme);
+            localStorage.setItem('mdview-theme', theme);
+            
+            // Update floating theme toggle icon
+            const themeIconElement = document.getElementById('theme-icon');
+            if (themeIconElement) {
+                themeIconElement.innerHTML = themeIcons[theme === 'dark' ? 'light' : 'dark'];
+            }
+        }
+
+        /**
+         * Adjusts the typography sizing scale for the document reader pane.
+         */
+        function changeTextZoom(direction) {
+            const contentContainer = document.getElementById('document-content');
+            contentContainer.classList.remove(`scale-adjust-${currentTextZoom}`);
+            
+            currentTextZoom = Math.max(1, Math.min(5, currentTextZoom + direction));
+            contentContainer.classList.add(`scale-adjust-${currentTextZoom}`);
+        }
+
+        /**
+         * High-performance Copy text operation for code blocks.
+         */
+        function copyCodeBlock(buttonElement) {
+            const pre = buttonElement.closest('pre');
+            const code = pre.querySelector('code');
+            
+            navigator.clipboard.writeText(code.innerText).then(() => {
+                // Show micro-animation feedback
+                const origIcon = buttonElement.innerHTML;
+                buttonElement.innerHTML = `<svg viewBox="0 0 24 24"><path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41z"/></svg>`;
+                buttonElement.style.color = '#10b981'; // green
+                
+                setTimeout(() => {
+                    buttonElement.innerHTML = origIcon;
+                    buttonElement.style.color = '';
+                }, 2000);
+            }).catch(err => {
+                console.error('Could not copy code block:', err);
+            });
+        }
+
+        /**
+         * Interactive in-page search highlighting matches.
+         */
+        function performSearch(query) {
+            const contentContainer = document.getElementById('document-content');
+            
+            // Remove all previous highlights
+            removeHighlights(contentContainer);
+
+            if (!query || query.trim() === "") {
+                // Restore full visibility of headings inside TOC
+                document.querySelectorAll('.toc-link').forEach(link => {
+                    link.style.display = '';
+                });
+                return;
+            }
+
+            const lowerQuery = query.toLowerCase().trim();
+            
+            // Highlight text matches inside DOM nodes recursively
+            highlightTextNodes(contentContainer, lowerQuery);
+
+            // Filter TOC to match searched headings
+            document.querySelectorAll('.toc-link').forEach(link => {
+                const text = link.textContent.toLowerCase();
+                if (text.includes(lowerQuery)) {
+                    link.style.display = '';
+                    link.style.opacity = '1';
+                } else {
+                    link.style.opacity = '0.3';
+                }
+            });
+        }
+
+        function highlightTextNodes(node, query) {
+            if (node.nodeType === Node.TEXT_NODE) {
+                const text = node.nodeValue;
+                const index = text.toLowerCase().indexOf(query);
+                
+                if (index >= 0) {
+                    const parent = node.parentNode;
+                    // Avoid highlighting inside code blocks or already highlighted elements
+                    if (parent.tagName === 'CODE' || parent.className === 'search-highlight' || parent.tagName === 'PRE' || parent.tagName === 'SCRIPT' || parent.tagName === 'STYLE') {
+                        return;
+                    }
+
+                    const span = document.createElement('span');
+                    span.className = 'search-highlight';
+                    
+                    const match = text.substring(index, index + query.length);
+                    const before = text.substring(0, index);
+                    const after = text.substring(index + query.length);
+
+                    span.textContent = match;
+
+                    // Reconstruct text nodes safely
+                    const beforeNode = document.createTextNode(before);
+                    const afterNode = document.createTextNode(after);
+
+                    parent.insertBefore(beforeNode, node);
+                    parent.insertBefore(span, node);
+                    parent.insertBefore(afterNode, node);
+                    parent.removeChild(node);
+                }
+            } else {
+                // Recurse children safely (use Array.from to copy list to prevent index shifting errors during modification)
+                const children = Array.from(node.childNodes);
+                for (let child of children) {
+                    highlightTextNodes(child, query);
+                }
+            }
+        }
+
+        function removeHighlights(node) {
+            const highlights = node.querySelectorAll('.search-highlight');
+            highlights.forEach(highlight => {
+                const parent = highlight.parentNode;
+                const textNode = document.createTextNode(highlight.textContent);
+                parent.replaceChild(textNode, highlight);
+                parent.normalize(); // merge adjacent text nodes
+            });
+        }
+
+        /**
+         * High-performance Scrollspy engine that highlights the active 
+         * Table of Contents sidebar link as the user reads the document.
+         */
+        function setupScrollSpy() {
+            const tocLinks = document.querySelectorAll('.toc-link');
+            if (tocLinks.length === 0) return;
+
+            window.addEventListener('scroll', () => {
+                let activeHeadingId = '';
+                const scrollPosition = window.scrollY + varToPixels('--header-height') + 50;
+
+                const headings = document.getElementById('document-content').querySelectorAll('h1, h2, h3, h4');
+                
+                for (let heading of headings) {
+                    if (heading.offsetTop <= scrollPosition) {
+                        activeHeadingId = heading.id;
+                    } else {
+                        break; // Headings are sorted by offsetTop
+                    }
+                }
+
+                if (activeHeadingId) {
+                    tocLinks.forEach(link => {
+                        if (link.getAttribute('href') === `#${activeHeadingId}`) {
+                            link.classList.add('active');
+                            // Auto scroll sidebar container if active element is off-view
+                            const tocContainer = document.querySelector('.toc-container');
+                            const linkOffsetTop = link.offsetTop;
+                            if (linkOffsetTop < tocContainer.scrollTop || linkOffsetTop > (tocContainer.scrollTop + tocContainer.clientHeight)) {
+                                tocContainer.scrollTo({ top: linkOffsetTop - 100, behavior: 'smooth' });
+                            }
+                        } else {
+                            link.classList.remove('active');
+                        }
+                    });
+                }
+            });
+        }
+
+        function varToPixels(varName) {
+            const value = getComputedStyle(document.documentElement).getPropertyValue(varName).trim();
+            return parseFloat(value) || 0;
+        }
+
+        // ==========================================================================
+        // Navigation & Drawer Listeners
+        // ==========================================================================
+        function setupEventListeners() {
+            // Toggle Sidebar drawer on mobile
+            const sidebarToggle = document.getElementById('sidebar-toggle');
+            const sidebarDrawer = document.getElementById('sidebar-drawer');
+            
+            if (sidebarToggle && sidebarDrawer) {
+                sidebarToggle.addEventListener('click', () => {
+                    sidebarDrawer.classList.toggle('open');
+                });
+                
+                // Close sidebar when clicking outside on mobile
+                document.addEventListener('click', (e) => {
+                    if (!sidebarDrawer.contains(e.target) && !sidebarToggle.contains(e.target)) {
+                        sidebarDrawer.classList.remove('open');
+                    }
+                });
+            }
+
+            // Theme Toggle buttons
+            const themeToggleBtn = document.getElementById('theme-toggle-btn');
+            if (themeToggleBtn) {
+                themeToggleBtn.addEventListener('click', () => {
+                    setTheme(appTheme === 'dark' ? 'light' : 'dark');
+                });
+            }
+
+            // Floating Action Menu trigger
+            const floatingMenu = document.getElementById('floating-menu');
+            const floatingTrigger = document.getElementById('floating-menu-trigger');
+            if (floatingTrigger && floatingMenu) {
+                floatingTrigger.addEventListener('click', () => {
+                    floatingMenu.classList.toggle('open');
+                });
+                // Auto close floating menu when clicking away
+                document.addEventListener('click', (e) => {
+                    if (!floatingMenu.contains(e.target)) {
+                        floatingMenu.classList.remove('open');
+                    }
+                });
+            }
+
+            // Search Input debounced listener
+            const searchInput = document.getElementById('search-input');
+            if (searchInput) {
+                let debounceTimeout;
+                searchInput.addEventListener('input', (e) => {
+                    clearTimeout(debounceTimeout);
+                    debounceTimeout = setTimeout(() => {
+                        performSearch(e.target.value);
+                    }, 150);
+                });
+            }
+        }
+    </script>
+</body>
+</html>
