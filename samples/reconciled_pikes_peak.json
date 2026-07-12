@@ -1,0 +1,58 @@
+{
+  "success": true,
+  "course_name": "Pikes Peak",
+  "total_distance_m": 43682.82478037355,
+  "waypoints": [
+    {
+      "id": "barr-camp",
+      "name": "Barr Camp",
+      "lat": 38.847792366337856,
+      "lon": -105.00694879614652,
+      "ele": 2986.6706865601805,
+      "dist_m": 11598.587096702662,
+      "passes": [
+        {
+          "num": 1,
+          "dist_m": 11585.450269104324,
+          "label": "Barr Camp",
+          "cutoff_clock": null,
+          "cutoff_elapsed": null
+        },
+        {
+          "num": 2,
+          "dist_m": 30327.93919355251,
+          "label": "Inbound",
+          "cutoff_clock": null,
+          "cutoff_elapsed": null
+        }
+      ],
+      "services": {
+        "food": true,
+        "water": true
+      },
+      "subtype": "aid_station"
+    },
+    {
+      "id": "pikes-peak-summit-house",
+      "name": "Pikes Peak Summit House",
+      "lat": 38.84075954127663,
+      "lon": -105.0425246751654,
+      "ele": 4093.1636363636367,
+      "dist_m": 21167.12467137668,
+      "passes": [
+        {
+          "num": 1,
+          "dist_m": 21136.686116888064,
+          "label": "Pikes Peak Summit House",
+          "cutoff_clock": null,
+          "cutoff_elapsed": null
+        }
+      ],
+      "services": {
+        "food": true,
+        "water": true
+      },
+      "subtype": "aid_station"
+    }
+  ]
+}
