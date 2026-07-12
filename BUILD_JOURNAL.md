@@ -972,3 +972,23 @@ This journal records all design decisions, architecture patterns, development st
     *   Overhauled `MainScreen.kt` layout structure.
     *   Ran build compiling and verified tests successfully pass.
     *   Deployed build, verified file picking works, and verified UI layout using adb screenshots.
+
+---
+
+### 🚀 Session 35: Retro Stereo Volume-Style Gradient Bar Graph Visualization
+*   **Goal**: Add better visualization tools with a retro color-coded bar graph representing the terrain gradient, indicating zero and negative gradients, aligned with the alerts and color-coded segments color scheme.
+*   **Decisions & Rationale**:
+    *   **30m Lookback Baseline Window**: Added `grade` calculation to `GpxParser.kt` over a ~30-meter horizontal baseline window. Raw GPS trackpoint-to-trackpoint elevation changes suffer from high vertical inaccuracy and quantization noise over 1-2 meters. A 30m baseline smooths out false spikes while accurately capturing true physical terrain steepness.
+    *   **Retro Stereo Equalizer VU Meter (`RetroGradientBarGraph`)**: Created a dedicated Composable in [`GradientVisualizer.kt`](file:///Users/dkhawk/Projects/RuffTerrain/android-port/app/src/main/java/com/example/ruffterrain/ui/main/GradientVisualizer.kt) designed to evoke the classic LED volume bars / VU meters found on stereos from the 80s and 90s.
+        *   **Zero (0%) Indicator**: Explicitly indicated with a bright white center tick mark and label `0%`.
+        *   **Negative Gradient Indicator**: When `grade < 0`, LED segments to the left of zero illuminate in vibrant Emerald Green (`#10B981`), clearly distinguishing downhill recovery sections from upward climbing terrain.
+        *   **Color Alignment**: Aligned positive tiers directly with the scheme used for alerts and 3D color-coded segments: Blue (`#3B82F6`) for flat/zero, Amber (`#F59E0B`) for moderate climb (up to 5%), Orange (`#F97316`) for steep climb (up to 8%), Red (`#EF4444`) for very steep (up to 10%), and Dark Red (`#B91C1C`) for extreme climbs (> 10%).
+    *   **Course-wide Gradient Profile Bar Graph (`CourseGradientBarChart`)**: Added a complementary horizontal bar graph breaking down the gradient distribution across the entire course timeline with a central zero baseline and dynamic scrubber tracking dot.
+    *   **Dashboard Integration**: Embedded `RetroGradientBarGraph` and `CourseGradientBarChart` in `MainScreen.kt` under SIMULATION preview mode and embedded `RetroGradientBarGraph` in RUNNING mode dashboard for instant telemetry feedback.
+*   **Key Actions Taken**:
+    *   Added `grade` property to `RoutePoint` in `CourseModels.kt`.
+    *   Updated `GpxParser.kt` to compute gradient over ~30m lookback baseline.
+    *   Implemented `RetroGradientBarGraph` and `CourseGradientBarChart` in `GradientVisualizer.kt`.
+    *   Added unit tests in `GradientVisualizerTest.kt` verifying negative/zero classification and color alignment.
+    *   Ran `./gradlew :app:testDebugUnitTest` and confirmed 100% test pass.
+

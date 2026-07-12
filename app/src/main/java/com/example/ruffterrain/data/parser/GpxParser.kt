@@ -90,6 +90,7 @@ object GpxParser {
                         distance = 0.0,
                         climb = 0.0,
                         descent = 0.0,
+                        grade = 0.0,
                         time = curr.time
                     )
                 )
@@ -104,6 +105,24 @@ object GpxParser {
                 totalClimb += climb
                 totalDescent += descent
 
+                // Calculate gradient percentage (%) over ~30-meter horizontal baseline lookback window.
+                // Why ~30 meters? Because raw GPS trackpoint-to-trackpoint elevation changes over 1-2 meters
+                // suffer from high vertical GPS noise and quantization error. A 30-meter baseline smooths out
+                // false spikes while accurately capturing true physical terrain steepness.
+                var grade = 0.0
+                var j = finalPoints.size - 1
+                while (j > 0 && cumulativeDistance - finalPoints[j].distance < 30.0) {
+                    j--
+                }
+                val basePt = finalPoints.getOrNull(j)
+                if (basePt != null) {
+                    val runDist = cumulativeDistance - basePt.distance
+                    val riseEle = curr.ele - basePt.elevation
+                    if (runDist > 5.0) {
+                        grade = (riseEle / runDist) * 100.0
+                    }
+                }
+
                 finalPoints.add(
                     RoutePoint(
                         latitude = curr.lat,
@@ -112,6 +131,7 @@ object GpxParser {
                         distance = cumulativeDistance,
                         climb = totalClimb,
                         descent = totalDescent,
+                        grade = grade,
                         time = curr.time
                     )
                 )

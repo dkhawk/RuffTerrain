@@ -29,6 +29,7 @@ data class RoutePoint(
     val distance: Double,  // Cumulative distance from start in meters
     val climb: Double = 0.0,
     val descent: Double = 0.0,
+    val grade: Double = 0.0, // Gradient percentage (%) calculated over ~30m baseline window
     val time: String? = null // Timestamp if available
 )
 

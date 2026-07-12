@@ -322,6 +322,20 @@ fun MainScreen(
 
                     Spacer(modifier = Modifier.height(8.dp))
 
+                    val scrubberIndex = (state.scrubberProgress * (course.points.size - 1)).toInt().coerceIn(0, course.points.size - 1)
+                    val scrubberPoint = course.points.getOrNull(scrubberIndex)
+                    val currentGrade = scrubberPoint?.grade ?: 0.0
+
+                    // 1. Retro Stereo Equalizer / Volume-style Gradient Bar Graph VU Meter
+                    RetroGradientBarGraph(currentGrade = currentGrade)
+
+                    Spacer(modifier = Modifier.height(8.dp))
+
+                    // 2. Course-wide Color-Coded Gradient Profile Bar Graph
+                    CourseGradientBarChart(courseData = course, scrubberProgress = state.scrubberProgress)
+
+                    Spacer(modifier = Modifier.height(8.dp))
+
                     Row(
                         modifier = Modifier.fillMaxWidth(),
                         verticalAlignment = Alignment.CenterVertically,
@@ -414,6 +428,11 @@ fun MainScreen(
                           fontSize = 12.sp
                       )
                     }
+
+                    Spacer(modifier = Modifier.height(16.dp))
+
+                    // Instantaneous Gradient Retro Equalizer VU Meter
+                    RetroGradientBarGraph(currentGrade = activePt?.grade ?: 0.0)
 
                     Spacer(modifier = Modifier.height(16.dp))
 
