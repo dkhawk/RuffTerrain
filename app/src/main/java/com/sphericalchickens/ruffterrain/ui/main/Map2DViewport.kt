@@ -102,7 +102,7 @@ fun Map2DViewport(
     LaunchedEffect(scrubberLatLng) {
         scrubberLatLng?.let { latLng ->
             runnerMarkerState.position = latLng
-            cameraPositionState.animate(
+            cameraPositionState.move(
                 com.google.android.gms.maps.CameraUpdateFactory.newLatLng(latLng)
             )
         }
