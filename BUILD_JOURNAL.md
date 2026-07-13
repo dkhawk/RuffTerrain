@@ -987,8 +987,26 @@ This journal records all design decisions, architecture patterns, development st
     *   **Dashboard Integration**: Embedded `RetroGradientBarGraph` and `CourseGradientBarChart` in `MainScreen.kt` under SIMULATION preview mode and embedded `RetroGradientBarGraph` in RUNNING mode dashboard for instant telemetry feedback.
 *   **Key Actions Taken**:
     *   Added `grade` property to `RoutePoint` in `CourseModels.kt`.
-    *   Updated `GpxParser.kt` to compute gradient over ~30m lookback baseline.
-    *   Implemented `RetroGradientBarGraph` and `CourseGradientBarChart` in `GradientVisualizer.kt`.
-    *   Added unit tests in `GradientVisualizerTest.kt` verifying negative/zero classification and color alignment.
     *   Ran `./gradlew :app:testDebugUnitTest` and confirmed 100% test pass.
+
+---
+
+### 🚀 Session 36: Mapless Run Mode with Tactical & Strategic Dashboard
+*   **Goal**: Advance the Android port by building a mapless Tactical & Strategic Dashboard in RUNNING mode to conserve battery and provide high-contrast, immediate guidance on trail progression, deviation alerts, and pacing plans.
+*   **Decisions & Rationale**:
+    *   **Mapless by Default in RUNNING Mode**: When in `AppMode.RUNNING`, the map viewport is hidden by default. The dashboard provides a high-contrast dark screen to conserve power. A toggle lets runners switch back to standard 2D map tracking if needed.
+    *   **GPS Snapping & Cross-Track Error calculations**: Integrated system `LocationManager` updates via lifecycle-aware Compose side effects. Snaps coordinates onto the trail line using flat-plane projections and `Haversine.distanceToSegment` calculations, determining user progress and cross-track error.
+    *   **Tactical Warning Alerts & Steering**: Deviation greater than 20 meters shows a prominent red blinking `🚨 OFF COURSE` card. The card calculates cardinal bearings (`Haversine.bearing`) to show a relative arrow (e.g. `↗`) and steering command (e.g. "Steer North-East to return"). Waypoint navigation alerts (like turning prompts) are shown when approaching them.
+    *   **Strategic Objective & Climb Tracking**: Shows the next POI details (remaining distance, elevation gain, cutoff times) and dynamically scans course points ahead to detect climbs, displaying climb details (gain remaining, average grade, remaining distance). Renders the vector elevation chart progress filled in up to the current position.
+    *   **Mock Location Simulation Panel**: Includes a developer/testing panel in simulated location mode with progress controls and a "Mock Deviation" slider (0 to 100 meters) to test course alerts and steering arrows.
+*   **Key Actions Taken**:
+    *   Added `ClimbInfo` to `CourseModels.kt`.
+    *   Implemented `bearing` and `distanceToSegment` in `Haversine.kt`.
+    *   Updated `MainScreenViewModel.kt` to handle projection, snapping, climb detection, and GPS/simulation state changes.
+    *   Overhauled `MainScreen.kt` to define `RunningTacticalDashboard`, permission launchers, location listener callbacks, and lock-screen gestures.
+    *   Added `HaversineTest.kt` and `MainScreenViewModelLocationTest.kt` verifying math and snap projections.
+    *   Updated `Map2DViewport.kt` and `Map3DViewport.kt` to dynamically center the map camera viewport on the runner position marker as the scrubber or GPS coordinates progress.
+    *   Ran `./gradlew :app:testDebugUnitTest` and confirmed all unit tests pass successfully.
+
+
 

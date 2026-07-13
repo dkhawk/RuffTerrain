@@ -11,10 +11,10 @@ secrets {
 }
 
 android {
-    namespace = "com.example.ruffterrain"
+    namespace = "com.sphericalchickens.ruffterrain"
     compileSdk = 36
     defaultConfig {
-        applicationId = "com.example.ruffterrain"
+        applicationId = "com.sphericalchickens.ruffterrain"
         minSdk = 25
         targetSdk = 36
         versionCode = 1
