@@ -1691,30 +1691,28 @@ fun WaypointDetailDialog(
                 ) {
                     val items = buildList {
                         services?.let { svc ->
-                            add(Pair("💧 Water Available", svc.water))
-                            add(Pair("🚰 Unmanaged Water Source", svc.unmanagedWater))
-                            add(Pair("🍞 Food/Snacks Available", svc.food))
-                            add(Pair("🍲 Hot Meals Served", svc.hotFood))
-                            add(Pair("🚽 Public Restrooms", svc.toilets))
-                            if (svc.medical) add(Pair("🏥 Medical Station", true))
-                            if (svc.sleepArea) add(Pair("🛏️ Sleeping Area", true))
+                            if (svc.water) add("💧 Water Available")
+                            if (svc.unmanagedWater) add("🚰 Unmanaged Water Source")
+                            if (svc.food) add("🍞 Food/Snacks Available")
+                            if (svc.hotFood) add("🍲 Hot Meals Served")
+                            if (svc.toilets) add("🚽 Public Restrooms")
+                            if (svc.medical) add("🏥 Medical Station")
+                            if (svc.sleepArea) add("🛏️ Sleeping Area")
                         }
                         access?.let { acc ->
-                            add(Pair("💼 Drop Bags Allowed", acc.dropBagAllowed))
-                            add(Pair("👥 Crew Support Access", acc.crewAllowed))
-                            add(Pair("👟 Pacer Exchange Station", acc.pacerAllowed))
-                            add(Pair("🚗 Transportation/Vehicle Support", acc.vehicleTier != "none"))
+                            if (acc.dropBagAllowed) add("💼 Drop Bags Allowed")
+                            if (acc.crewAllowed) add("👥 Crew Support Access")
+                            if (acc.pacerAllowed) add("👟 Pacer Exchange Station")
+                            if (acc.vehicleTier != "none") add("🚗 Transportation/Vehicle Support")
                         }
                     }
                     
                     if (items.isNotEmpty()) {
-                        items.forEach { (label, available) ->
-                            val statusIcon = if (available) "✅" else "❌"
-                            val color = if (available) Color.White else Color.Gray
+                        items.forEach { label ->
                             Text(
-                                text = "$statusIcon  $label",
+                                text = "✅  $label",
                                 style = MaterialTheme.typography.bodySmall,
-                                color = color,
+                                color = Color.White,
                                 modifier = Modifier.padding(vertical = 2.dp)
                             )
                         }
