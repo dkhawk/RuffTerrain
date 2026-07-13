@@ -72,6 +72,8 @@ import com.sphericalchickens.ruffterrain.data.DefaultDataRepository
 import com.sphericalchickens.ruffterrain.data.model.AppMode
 import com.sphericalchickens.ruffterrain.data.model.CourseData
 import com.sphericalchickens.ruffterrain.data.model.MapMode
+import com.sphericalchickens.ruffterrain.data.model.Waypoint
+import com.sphericalchickens.ruffterrain.data.model.WeatherCondition
 import androidx.activity.compose.ManagedActivityResultLauncher
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.fadeIn
@@ -100,6 +102,7 @@ fun MainScreen(
   var isScreenLocked by remember { mutableStateOf(false) }
   var isControlsVisible by remember { mutableStateOf(true) }
   var lastInteractionTime by remember { mutableStateOf(System.currentTimeMillis()) }
+  var selectedDetailWaypoint by remember { mutableStateOf<Waypoint?>(null) }
 
   // Auto-hide controls after a timeout (3 seconds) of no interaction - disabled for test harness legibility
   LaunchedEffect(isControlsVisible, lastInteractionTime) {
@@ -281,7 +284,8 @@ fun MainScreen(
             courseData = course,
             mapMode = activeMapMode,
             scrubberProgress = state.scrubberProgress,
-            modifier = Modifier.fillMaxSize()
+            modifier = Modifier.fillMaxSize(),
+            onWaypointClick = { selectedDetailWaypoint = it }
         )
       }
 
@@ -673,6 +677,14 @@ fun MainScreen(
       CriticalOffCourseDialog(
           deviation = state.deviationMeters,
           onAcknowledge = { viewModel.acknowledgeOffCourse() }
+      )
+  }
+
+  selectedDetailWaypoint?.let { wpt ->
+      WaypointDetailDialog(
+          waypoint = wpt,
+          weatherForecast = state.courseData?.weatherForecast ?: emptyList(),
+          onDismiss = { selectedDetailWaypoint = null }
       )
   }
 }
@@ -1500,12 +1512,13 @@ fun MapViewport(
     courseData: CourseData,
     mapMode: MapMode,
     scrubberProgress: Double,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    onWaypointClick: (Waypoint) -> Unit = {}
 ) {
     if (mapMode == MapMode.MAP_3D) {
         Map3DViewport(courseData = courseData, scrubberProgress = scrubberProgress, modifier = modifier)
     } else {
-        Map2DViewport(courseData = courseData, scrubberProgress = scrubberProgress, modifier = modifier)
+        Map2DViewport(courseData = courseData, scrubberProgress = scrubberProgress, modifier = modifier, onWaypointClick = onWaypointClick)
     }
 }
 
@@ -1532,4 +1545,200 @@ private fun getFileName(context: Context, uri: Uri): String? {
         }
     }
     return result
+}
+
+@Composable
+fun WaypointDetailDialog(
+    waypoint: Waypoint,
+    weatherForecast: List<WeatherCondition>,
+    onDismiss: () -> Unit
+) {
+    Dialog(onDismissRequest = onDismiss) {
+        Card(
+            colors = CardDefaults.cardColors(containerColor = Color(0xFF0F172A)),
+            shape = RoundedCornerShape(16.dp),
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(16.dp)
+        ) {
+            Column(
+                modifier = Modifier
+                    .padding(24.dp)
+                    .fillMaxWidth()
+            ) {
+                // Header
+                Text(
+                    text = waypoint.name,
+                    style = MaterialTheme.typography.titleLarge,
+                    fontWeight = FontWeight.Bold,
+                    color = Color.White
+                )
+                
+                Spacer(modifier = Modifier.height(4.dp))
+                
+                val distKm = waypoint.distanceMeters / 1000.0
+                Text(
+                    text = String.format(Locale.US, "Distance: %.2f km | Elevation: %d m", distKm, waypoint.elevation.toInt()),
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = Color.LightGray
+                )
+                
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(vertical = 12.dp)
+                        .height(1.dp)
+                        .background(Color.Gray.copy(alpha = 0.3f))
+                )
+                
+                // 1. Expected Arrival / Cutoff
+                val station = waypoint.extensions?.station
+                val pass = station?.passes?.firstOrNull()
+                
+                Text(
+                    text = "⏰ EXPECTED ARRIVAL & TIME LIMITS",
+                    style = MaterialTheme.typography.bodyMedium,
+                    fontWeight = FontWeight.Bold,
+                    color = Color(0xFF38BDF8) // Light blue
+                )
+                Spacer(modifier = Modifier.height(4.dp))
+                
+                if (pass != null) {
+                    val target = pass.targetArrival ?: "Not set"
+                    val cutoff = pass.cutoffElapsed ?: pass.cutoffClock ?: "No cutoff"
+                    Text(
+                        text = "• Target Arrival: $target (elapsed)\n• Cutoff Limit: $cutoff",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = Color.LightGray,
+                        lineHeight = 20.sp
+                    )
+                } else {
+                    Text(
+                        text = "No expected arrival or cutoff data available.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = Color.LightGray
+                    )
+                }
+                
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(vertical = 12.dp)
+                        .height(1.dp)
+                        .background(Color.Gray.copy(alpha = 0.3f))
+                )
+                
+                // 2. Expected Weather
+                Text(
+                    text = "🌤️ EXPECTED WEATHER",
+                    style = MaterialTheme.typography.bodyMedium,
+                    fontWeight = FontWeight.Bold,
+                    color = Color(0xFFFBBF24) // Yellow/Amber
+                )
+                Spacer(modifier = Modifier.height(4.dp))
+                
+                // Estimate arrival time in hours (using normal 2.78 m/s speed if targetArrival is empty)
+                val arrivalHour = if (pass != null && !pass.targetArrival.isNullOrEmpty()) {
+                    val parts = pass.targetArrival.split(":")
+                    val hrs = parts.getOrNull(0)?.toIntOrNull() ?: 0
+                    hrs.coerceIn(0, 24)
+                } else {
+                    (waypoint.distanceMeters / (2.78 * 3600.0)).toInt().coerceIn(0, 24)
+                }
+                
+                val weather = weatherForecast.getOrNull(arrivalHour)
+                if (weather != null) {
+                    val tempF = (weather.temperature * 9.0 / 5.0) + 32.0
+                    Text(
+                        text = "• Condition: ${weather.conditionEmoji} ${weather.conditionText}\n" +
+                               String.format(Locale.US, "• Temperature: %.1f°C / %.1f°F\n", weather.temperature, tempF) +
+                               String.format(Locale.US, "• Wind: %.1f km/h | Humidity: %.1f%%\n", weather.windSpeed, weather.humidity) +
+                               String.format(Locale.US, "• Rain Probability: %.0f%%", weather.rainProbability),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = Color.LightGray,
+                        lineHeight = 20.sp
+                    )
+                } else {
+                    Text(
+                        text = "Weather forecast unavailable.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = Color.LightGray
+                    )
+                }
+                
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(vertical = 12.dp)
+                        .height(1.dp)
+                        .background(Color.Gray.copy(alpha = 0.3f))
+                )
+                
+                // 3. Amenities Breakdown
+                Text(
+                    text = "🎒 AMENITIES & ACCESS BREAKDOWN",
+                    style = MaterialTheme.typography.bodyMedium,
+                    fontWeight = FontWeight.Bold,
+                    color = Color(0xFF34D399) // Emerald/Green
+                )
+                Spacer(modifier = Modifier.height(6.dp))
+                
+                val services = station?.services
+                val access = station?.accessibility
+                
+                Column(
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    val items = buildList {
+                        services?.let { svc ->
+                            add(Pair("💧 Water Available", svc.water))
+                            add(Pair("🚰 Unmanaged Water Source", svc.unmanagedWater))
+                            add(Pair("🍞 Food/Snacks Available", svc.food))
+                            add(Pair("🍲 Hot Meals Served", svc.hotFood))
+                            add(Pair("🚽 Public Restrooms", svc.toilets))
+                            if (svc.medical) add(Pair("🏥 Medical Station", true))
+                            if (svc.sleepArea) add(Pair("🛏️ Sleeping Area", true))
+                        }
+                        access?.let { acc ->
+                            add(Pair("💼 Drop Bags Allowed", acc.dropBagAllowed))
+                            add(Pair("👥 Crew Support Access", acc.crewAllowed))
+                            add(Pair("👟 Pacer Exchange Station", acc.pacerAllowed))
+                            add(Pair("🚗 Transportation/Vehicle Support", acc.vehicleTier != "none"))
+                        }
+                    }
+                    
+                    if (items.isNotEmpty()) {
+                        items.forEach { (label, available) ->
+                            val statusIcon = if (available) "✅" else "❌"
+                            val color = if (available) Color.White else Color.Gray
+                            Text(
+                                text = "$statusIcon  $label",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = color,
+                                modifier = Modifier.padding(vertical = 2.dp)
+                            )
+                        }
+                    } else {
+                        Text(
+                            text = "No recorded amenities or access rules at this checkpoint.",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = Color.LightGray
+                        )
+                    }
+                }
+                
+                Spacer(modifier = Modifier.height(24.dp))
+                
+                // Action Button
+                Button(
+                    onClick = onDismiss,
+                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF334155)),
+                    shape = RoundedCornerShape(8.dp),
+                    modifier = Modifier.align(Alignment.End)
+                ) {
+                    Text("Dismiss", color = Color.White)
+                }
+            }
+        }
+    }
 }

@@ -388,10 +388,40 @@ object GpxParser {
             }
         }
 
+        val forecastList = mutableListOf<WeatherCondition>()
+        val weatherTypes = listOf(
+            Pair("☀️", "Clear/Sunny"),
+            Pair("⛅", "Partly Cloudy"),
+            Pair("☁️", "Mostly Cloudy"),
+            Pair("🌦️", "Light Rain Showers"),
+            Pair("🌧️", "Rain")
+        )
+        for (h in 0..24) {
+            val hourStr = String.format(java.util.Locale.US, "%02d:00", (8 + h) % 24)
+            val angle = Math.toRadians((h - 6) * 15.0)
+            val temp = 12.0 + 6.0 * Math.sin(angle)
+            val conditionIdx = (h / 5).coerceIn(0, weatherTypes.size - 1)
+            val (emoji, text) = weatherTypes[conditionIdx]
+            
+            forecastList.add(
+                WeatherCondition(
+                    timestamp = hourStr,
+                    temperature = temp,
+                    windSpeed = 10.0 + 5.0 * Math.sin(Math.toRadians(h * 30.0)),
+                    windDirection = 180.0,
+                    humidity = 50.0 - 20.0 * Math.sin(angle),
+                    rainProbability = if (emoji == "🌧️" || emoji == "🌦️") 60.0 else 10.0,
+                    conditionEmoji = emoji,
+                    conditionText = text
+                )
+            )
+        }
+
         return CourseData(
             name = currentTrackName,
             points = finalPoints,
             waypoints = finalWaypoints,
+            weatherForecast = forecastList,
             totalDistance = cumulativeDistance,
             elevationGain = totalClimb,
             elevationLoss = totalDescent,

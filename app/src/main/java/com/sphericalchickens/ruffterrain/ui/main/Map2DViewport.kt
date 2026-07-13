@@ -34,6 +34,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import com.sphericalchickens.ruffterrain.R
 import com.sphericalchickens.ruffterrain.data.model.CourseData
+import com.sphericalchickens.ruffterrain.data.model.Waypoint
 import com.google.android.gms.maps.model.BitmapDescriptor
 import com.google.android.gms.maps.model.BitmapDescriptorFactory
 import com.google.android.gms.maps.model.CameraPosition
@@ -51,7 +52,8 @@ import java.util.Locale
 fun Map2DViewport(
     courseData: CourseData,
     scrubberProgress: Double,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    onWaypointClick: (Waypoint) -> Unit = {}
 ) {
     val points = courseData.points
     if (points.isEmpty()) return
@@ -140,21 +142,21 @@ fun Map2DViewport(
             
             val amenities = buildList {
                 services?.let { svc ->
-                    if (svc.water) add("💧 Water")
-                    if (svc.unmanagedWater) add("🚰 Unmanaged Water")
-                    if (svc.food) add("🍞 Food")
-                    if (svc.hotFood) add("🍲 Hot Food")
-                    if (svc.toilets) add("🚽 Restrooms")
-                    if (svc.medical) add("🏥 Medical")
-                    if (svc.sleepArea) add("🛏️ Sleep")
+                    if (svc.water) add("💧")
+                    if (svc.unmanagedWater) add("🚰")
+                    if (svc.food) add("🍞")
+                    if (svc.hotFood) add("🍲")
+                    if (svc.toilets) add("🚽")
+                    if (svc.medical) add("🏥")
+                    if (svc.sleepArea) add("🛏️")
                 }
                 access?.let { acc ->
-                    if (acc.dropBagAllowed) add("💼 Drop Bags")
-                    if (acc.crewAllowed) add("👥 Crew Access")
-                    if (acc.pacerAllowed) add("👟 Pacer")
-                    if (acc.vehicleTier != "none") add("🚗 Transport")
+                    if (acc.dropBagAllowed) add("💼")
+                    if (acc.crewAllowed) add("👥")
+                    if (acc.pacerAllowed) add("👟")
+                    if (acc.vehicleTier != "none") add("🚗")
                 }
-            }.joinToString(", ")
+            }.joinToString(" ")
 
             val snippetText = buildString {
                 if (wpt.description.isNotEmpty()) {
@@ -164,7 +166,7 @@ fun Map2DViewport(
                     append(String.format(Locale.US, "Distance: %.2f km | Elevation: %d m", distKm, wpt.elevation.toInt()))
                 }
                 if (amenities.isNotEmpty()) {
-                    append(" | Services: $amenities")
+                    append("\n$amenities")
                 }
             }
 
@@ -172,7 +174,8 @@ fun Map2DViewport(
                 state = rememberMarkerState(position = LatLng(wpt.latitude, wpt.longitude)),
                 title = wpt.name,
                 snippet = snippetText,
-                icon = if (isAidStation) aidStationIcon else waypointIcon
+                icon = if (isAidStation) aidStationIcon else waypointIcon,
+                onInfoWindowClick = { onWaypointClick(wpt) }
             )
         }
 
