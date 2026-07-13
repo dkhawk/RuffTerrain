@@ -101,12 +101,14 @@ fun Map2DViewport(
     var runnerIcon by remember { mutableStateOf<BitmapDescriptor?>(null) }
     var aidStationIcon by remember { mutableStateOf<BitmapDescriptor?>(null) }
     var waypointIcon by remember { mutableStateOf<BitmapDescriptor?>(null) }
+    var finishIcon by remember { mutableStateOf<BitmapDescriptor?>(null) }
 
     LaunchedEffect(context) {
         MapsInitializer.initialize(context, MapsInitializer.Renderer.LATEST) {
             runnerIcon = bitmapDescriptorFromVector(context, R.drawable.ic_runner)
             aidStationIcon = bitmapDescriptorFromVector(context, R.drawable.ic_aid_station)
             waypointIcon = bitmapDescriptorFromVector(context, R.drawable.ic_waypoint)
+            finishIcon = bitmapDescriptorFromVector(context, R.drawable.ic_finish)
         }
     }
 
@@ -139,6 +141,10 @@ fun Map2DViewport(
             val station = wpt.extensions?.station
             val services = station?.services
             val access = station?.accessibility
+            val isFinish = wpt.name.contains("Finish", ignoreCase = true) ||
+                    wpt.symbol.contains("finish", ignoreCase = true) ||
+                    station?.subtype == "finish" ||
+                    station?.type == "finish"
             val isAidStation = wpt.name.contains("Aid", ignoreCase = true) ||
                     wpt.name.contains("Water", ignoreCase = true) ||
                     wpt.name.contains("Medical", ignoreCase = true) ||
@@ -170,9 +176,15 @@ fun Map2DViewport(
                 }
             }.joinToString(" ")
 
+            val markerIcon = when {
+                isFinish && finishIcon != null -> finishIcon
+                isAidStation -> aidStationIcon
+                else -> waypointIcon
+            }
+
             MarkerInfoWindowContent(
                 state = rememberMarkerState(position = LatLng(wpt.latitude, wpt.longitude)),
-                icon = if (isAidStation) aidStationIcon else waypointIcon,
+                icon = markerIcon,
                 onInfoWindowClick = { onWaypointClick(wpt) }
             ) { marker ->
                 Box(
