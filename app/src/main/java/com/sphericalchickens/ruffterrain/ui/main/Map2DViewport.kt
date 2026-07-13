@@ -124,6 +124,7 @@ fun Map2DViewport(
         courseData.waypoints.forEach { wpt ->
             val station = wpt.extensions?.station
             val services = station?.services
+            val access = station?.accessibility
             val isAidStation = wpt.name.contains("Aid", ignoreCase = true) ||
                     wpt.name.contains("Water", ignoreCase = true) ||
                     wpt.name.contains("Medical", ignoreCase = true) ||
@@ -146,6 +147,12 @@ fun Map2DViewport(
                     if (svc.toilets) add("🚽 Restrooms")
                     if (svc.medical) add("🏥 Medical")
                     if (svc.sleepArea) add("🛏️ Sleep")
+                }
+                access?.let { acc ->
+                    if (acc.dropBagAllowed) add("💼 Drop Bags")
+                    if (acc.crewAllowed) add("👥 Crew Access")
+                    if (acc.pacerAllowed) add("👟 Pacer")
+                    if (acc.vehicleTier != "none") add("🚗 Transport")
                 }
             }.joinToString(", ")
 

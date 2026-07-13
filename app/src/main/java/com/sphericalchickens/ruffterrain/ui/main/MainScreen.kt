@@ -334,8 +334,10 @@ fun MainScreen(
                                 .height(100.dp)
                                 .verticalScroll(rememberScrollState())
                         ) {
-                          course.waypoints.forEach { wpt ->
-                            val services = wpt.extensions?.station?.services
+                           course.waypoints.forEach { wpt ->
+                            val station = wpt.extensions?.station
+                            val services = station?.services
+                            val access = station?.accessibility
                             val amenities = buildList {
                                 services?.let { svc ->
                                     if (svc.water) add("💧")
@@ -345,6 +347,12 @@ fun MainScreen(
                                     if (svc.toilets) add("🚽")
                                     if (svc.medical) add("🏥")
                                     if (svc.sleepArea) add("🛏️")
+                                }
+                                access?.let { acc ->
+                                    if (acc.dropBagAllowed) add("💼")
+                                    if (acc.crewAllowed) add("👥")
+                                    if (acc.pacerAllowed) add("👟")
+                                    if (acc.vehicleTier != "none") add("🚗")
                                 }
                             }.joinToString("")
                             val suffix = if (amenities.isNotEmpty()) " $amenities" else ""
