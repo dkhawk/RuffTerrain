@@ -104,9 +104,12 @@ fun MainScreen(
   var lastInteractionTime by remember { mutableStateOf(System.currentTimeMillis()) }
   var selectedDetailWaypoint by remember { mutableStateOf<Waypoint?>(null) }
 
-  // Auto-hide controls after a timeout (3 seconds) of no interaction - disabled for test harness legibility
+  // Auto-hide controls after a timeout (3 seconds) of no interaction
   LaunchedEffect(isControlsVisible, lastInteractionTime) {
-      // Keep controls visible
+      if (isControlsVisible) {
+          kotlinx.coroutines.delay(3000)
+          isControlsVisible = false
+      }
   }
 
   // System picker result launcher (reads bytes synchronously in callback)

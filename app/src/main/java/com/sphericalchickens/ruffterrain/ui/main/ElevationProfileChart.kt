@@ -106,20 +106,42 @@ fun ElevationProfileChart(
             )
         )
 
-        // 2. Draw solid course elevation profile stroke color-coded by grade
-        var prevOffset = startOffset
+        // 2. Draw solid course elevation profile stroke color-coded by grade (smoothed using horizontal gradient)
+        val profilePath = Path()
+        profilePath.moveTo(startOffset.x, startOffset.y)
         for (i in 1 until points.size) {
             val pt = points[i]
             val offset = getCanvasCoordinates(pt.distance, pt.elevation)
-            val tier = classifyGradient(pt.grade)
-            drawLine(
-                color = tier.color,
-                start = prevOffset,
-                end = offset,
-                strokeWidth = 3.dp.toPx()
-            )
-            prevOffset = offset
+            profilePath.lineTo(offset.x, offset.y)
         }
+
+        val sampleCount = 200.coerceAtMost(points.size)
+        val gradientColors = (0 until sampleCount).map { step ->
+            val fraction = step.toDouble() / (sampleCount - 1).coerceAtLeast(1)
+            val idx = (fraction * (points.size - 1)).toInt().coerceIn(0, points.size - 1)
+            
+            // Smear: average grades of points in a running window to filter noise
+            val windowSize = 8
+            val start = (idx - windowSize).coerceAtLeast(0)
+            val end = (idx + windowSize).coerceAtMost(points.size - 1)
+            val avgGrade = points.subList(start, end + 1).map { it.grade }.average()
+            
+            classifyGradient(avgGrade).color
+        }
+
+        drawPath(
+            path = profilePath,
+            brush = Brush.horizontalGradient(
+                colors = gradientColors,
+                startX = 0f,
+                endX = width
+            ),
+            style = Stroke(
+                width = 3.dp.toPx(),
+                join = androidx.compose.ui.graphics.StrokeJoin.Round,
+                cap = androidx.compose.ui.graphics.StrokeCap.Round
+            )
+        )
 
 
         // 3. Draw vertical dotted lines for Waypoints (Aid Stations / Water points)
