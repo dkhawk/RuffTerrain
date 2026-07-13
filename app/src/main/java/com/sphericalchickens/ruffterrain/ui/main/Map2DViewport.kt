@@ -159,6 +159,7 @@ fun Map2DViewport(
                     services?.medical == true
             
             val amenities = buildList {
+                if (isFinish) add("🏁")
                 services?.let { svc ->
                     if (svc.water) add("💧")
                     if (svc.unmanagedWater) add("🚰")

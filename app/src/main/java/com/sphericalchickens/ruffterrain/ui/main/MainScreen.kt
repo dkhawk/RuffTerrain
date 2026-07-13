@@ -345,7 +345,12 @@ fun MainScreen(
                             val station = wpt.extensions?.station
                             val services = station?.services
                             val access = station?.accessibility
+                            val isFinish = wpt.name.contains("Finish", ignoreCase = true) ||
+                                    wpt.symbol.contains("finish", ignoreCase = true) ||
+                                    station?.subtype == "finish" ||
+                                    station?.type == "finish"
                             val amenities = buildList {
+                                if (isFinish) add("🏁")
                                 services?.let { svc ->
                                     if (svc.water) add("💧")
                                     if (svc.unmanagedWater) add("🚰")
@@ -1556,6 +1561,12 @@ fun WaypointDetailDialog(
     weatherForecast: List<WeatherCondition>,
     onDismiss: () -> Unit
 ) {
+    val station = waypoint.extensions?.station
+    val isFinish = waypoint.name.contains("Finish", ignoreCase = true) ||
+            waypoint.symbol.contains("finish", ignoreCase = true) ||
+            station?.subtype == "finish" ||
+            station?.type == "finish"
+
     Dialog(onDismissRequest = onDismiss) {
         Card(
             colors = CardDefaults.cardColors(containerColor = Color(0xFF0F172A)),
@@ -1571,7 +1582,7 @@ fun WaypointDetailDialog(
             ) {
                 // Header
                 Text(
-                    text = waypoint.name,
+                    text = if (isFinish) "${waypoint.name} 🏁" else waypoint.name,
                     style = MaterialTheme.typography.titleLarge,
                     fontWeight = FontWeight.Bold,
                     color = Color.White
@@ -1698,6 +1709,7 @@ fun WaypointDetailDialog(
                     modifier = Modifier.fillMaxWidth()
                 ) {
                     val items = buildList {
+                        if (isFinish) add("🏁 Course Finish Line")
                         services?.let { svc ->
                             if (svc.water) add("💧 Water Available")
                             if (svc.unmanagedWater) add("🚰 Unmanaged Water Source")
