@@ -137,10 +137,34 @@ fun Map2DViewport(
                     services?.hotFood == true ||
                     services?.medical == true
             
+            val amenities = buildList {
+                services?.let { svc ->
+                    if (svc.water) add("💧 Water")
+                    if (svc.unmanagedWater) add("🚰 Unmanaged Water")
+                    if (svc.food) add("🍞 Food")
+                    if (svc.hotFood) add("🍲 Hot Food")
+                    if (svc.toilets) add("🚽 Restrooms")
+                    if (svc.medical) add("🏥 Medical")
+                    if (svc.sleepArea) add("🛏️ Sleep")
+                }
+            }.joinToString(", ")
+
+            val snippetText = buildString {
+                if (wpt.description.isNotEmpty()) {
+                    append(wpt.description)
+                } else {
+                    val distKm = wpt.distanceMeters / 1000.0
+                    append(String.format(Locale.US, "Distance: %.2f km | Elevation: %d m", distKm, wpt.elevation.toInt()))
+                }
+                if (amenities.isNotEmpty()) {
+                    append(" | Services: $amenities")
+                }
+            }
+
             Marker(
                 state = rememberMarkerState(position = LatLng(wpt.latitude, wpt.longitude)),
                 title = wpt.name,
-                snippet = wpt.description.ifEmpty { "Elevation: ${wpt.elevation.toInt()}m" },
+                snippet = snippetText,
                 icon = if (isAidStation) aidStationIcon else waypointIcon
             )
         }

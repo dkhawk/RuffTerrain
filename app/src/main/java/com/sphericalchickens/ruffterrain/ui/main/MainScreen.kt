@@ -335,8 +335,22 @@ fun MainScreen(
                                 .verticalScroll(rememberScrollState())
                         ) {
                           course.waypoints.forEach { wpt ->
+                            val services = wpt.extensions?.station?.services
+                            val amenities = buildList {
+                                services?.let { svc ->
+                                    if (svc.water) add("💧")
+                                    if (svc.unmanagedWater) add("🚰")
+                                    if (svc.food) add("🍞")
+                                    if (svc.hotFood) add("🍲")
+                                    if (svc.toilets) add("🚽")
+                                    if (svc.medical) add("🏥")
+                                    if (svc.sleepArea) add("🛏️")
+                                }
+                            }.joinToString("")
+                            val suffix = if (amenities.isNotEmpty()) " $amenities" else ""
+                            
                             Text(
-                                text = "• ${wpt.name} (km ${(wpt.distanceMeters/1000.0).format(1)})",
+                                text = "• ${wpt.name}$suffix (km ${(wpt.distanceMeters/1000.0).format(1)})",
                                 color = Color.LightGray,
                                 style = MaterialTheme.typography.bodySmall,
                                 modifier = Modifier.padding(vertical = 2.dp)
