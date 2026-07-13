@@ -29,6 +29,43 @@ import javax.xml.parsers.DocumentBuilderFactory
  */
 object GpxParser {
 
+    private fun Element.getChildElement(localName: String): Element? {
+        val children = this.childNodes
+        for (i in 0 until children.length) {
+            val child = children.item(i)
+            if (child.nodeType == Node.ELEMENT_NODE) {
+                val childEl = child as Element
+                val name = childEl.nodeName
+                val actualLocalName = name.substringAfter(':')
+                if (actualLocalName.equals(localName, ignoreCase = true)) {
+                    return childEl
+                }
+            }
+        }
+        return null
+    }
+
+    private fun Element.getChildElements(localName: String): List<Element> {
+        val result = mutableListOf<Element>()
+        val children = this.childNodes
+        for (i in 0 until children.length) {
+            val child = children.item(i)
+            if (child.nodeType == Node.ELEMENT_NODE) {
+                val childEl = child as Element
+                val name = childEl.nodeName
+                val actualLocalName = name.substringAfter(':')
+                if (actualLocalName.equals(localName, ignoreCase = true)) {
+                    result.add(childEl)
+                }
+            }
+        }
+        return result
+    }
+
+    private fun Element.getChildText(localName: String): String? {
+        return getChildElement(localName)?.textContent
+    }
+
     /**
      * Parses a GPX InputStream and returns a fully calculated CourseData object.
      */
@@ -40,14 +77,14 @@ object GpxParser {
         doc.documentElement.normalize()
 
         // Extract track/course name
-        val nameNodes = doc.getElementsByTagNameNS("*", "name")
+        val nameNodes = doc.getElementsByTagName("name")
         var currentTrackName = "Imported Course"
         if (nameNodes.length > 0) {
             currentTrackName = nameNodes.item(0).textContent
         }
 
         // Extract track points
-        val trkptNodes = doc.getElementsByTagNameNS("*", "trkpt")
+        val trkptNodes = doc.getElementsByTagName("trkpt")
         val rawPoints = mutableListOf<RoutePointTemp>()
 
         for (i in 0 until trkptNodes.length) {
@@ -57,17 +94,8 @@ object GpxParser {
                 val lat = element.getAttribute("lat").toDouble()
                 val lon = element.getAttribute("lon").toDouble()
 
-                var ele = 0.0
-                val eleNodes = element.getElementsByTagNameNS("*", "ele")
-                if (eleNodes.length > 0) {
-                    ele = eleNodes.item(0).textContent.toDoubleOrNull() ?: 0.0
-                }
-
-                var time: String? = null
-                val timeNodes = element.getElementsByTagNameNS("*", "time")
-                if (timeNodes.length > 0) {
-                    time = timeNodes.item(0).textContent
-                }
+                val ele = element.getChildText("ele")?.toDoubleOrNull() ?: 0.0
+                val time = element.getChildText("time")
 
                 rawPoints.add(RoutePointTemp(lat, lon, ele, time))
             }
@@ -140,25 +168,13 @@ object GpxParser {
 
         // Extract metadata extensions (ca:race_plan, ca:execution_plan)
         var executionPlan: ExecutionPlan? = null
-        val metadataNodes = doc.getElementsByTagNameNS("*", "metadata")
+        val metadataNodes = doc.getElementsByTagName("metadata")
         if (metadataNodes.length > 0) {
             val metadataEl = metadataNodes.item(0) as Element
-            val extensionsNodes = metadataEl.getElementsByTagNameNS("*", "extensions")
-            if (extensionsNodes.length > 0) {
-                val extEl = extensionsNodes.item(0) as Element
-
+            val extEl = metadataEl.getChildElement("extensions")
+            if (extEl != null) {
                 // Race Plan
-                val racePlanNodes = extEl.getElementsByTagNameNS("*", "race_plan")
-                val racePlanEl = if (racePlanNodes.length > 0) {
-                    racePlanNodes.item(0) as Element
-                } else {
-                    val rp = extEl.getElementsByTagName("ca:race_plan")
-                    if (rp.length > 0) rp.item(0) as Element else {
-                        val rp2 = extEl.getElementsByTagName("race_plan")
-                        if (rp2.length > 0) rp2.item(0) as Element else null
-                    }
-                }
-
+                val racePlanEl = extEl.getChildElement("race_plan")
                 var startTime: String? = null
                 var targetDurationHrs: Double? = null
                 if (racePlanEl != null) {
@@ -167,56 +183,20 @@ object GpxParser {
                 }
 
                 // Execution Plan Sectors
-                val execPlanNodes = extEl.getElementsByTagNameNS("*", "execution_plan")
-                val execPlanEl = if (execPlanNodes.length > 0) {
-                    execPlanNodes.item(0) as Element
-                } else {
-                    val ep = extEl.getElementsByTagName("ca:execution_plan")
-                    if (ep.length > 0) ep.item(0) as Element else {
-                        val ep2 = extEl.getElementsByTagName("execution_plan")
-                        if (ep2.length > 0) ep2.item(0) as Element else null
-                    }
-                }
-
+                val execPlanEl = extEl.getChildElement("execution_plan")
                 val sectors = mutableListOf<Sector>()
                 if (execPlanEl != null) {
-                    val sectorNodes = execPlanEl.getElementsByTagNameNS("*", "sector")
-                    val finalSecNodes = if (sectorNodes.length > 0) sectorNodes else {
-                        val sn = execPlanEl.getElementsByTagName("ca:sector")
-                        if (sn.length > 0) sn else execPlanEl.getElementsByTagName("sector")
-                    }
+                    val sectorElements = execPlanEl.getChildElements("sector")
+                    for (secEl in sectorElements) {
+                        val startDistM = secEl.getAttribute("start_dist_m").toDoubleOrNull() ?: 0.0
+                        val endDistM = secEl.getAttribute("end_dist_m").toDoubleOrNull() ?: 0.0
+                        val secName = secEl.getAttribute("name")
+                        val targetPaceMin = secEl.getAttribute("target_pace_min").toDoubleOrNull() ?: 10.0
 
-                    for (j in 0 until finalSecNodes.length) {
-                        val secNode = finalSecNodes.item(j)
-                        if (secNode.nodeType == Node.ELEMENT_NODE) {
-                            val secEl = secNode as Element
-                            val startDistM = secEl.getAttribute("start_dist_m").toDoubleOrNull() ?: 0.0
-                            val endDistM = secEl.getAttribute("end_dist_m").toDoubleOrNull() ?: 0.0
-                            val secName = secEl.getAttribute("name")
-                            val targetPaceMin = secEl.getAttribute("target_pace_min").toDoubleOrNull() ?: 10.0
+                        val strategy = secEl.getChildText("strategy")?.trim() ?: ""
+                        val nutrition = secEl.getChildText("nutrition")?.trim() ?: ""
 
-                            var strategy = ""
-                            val stratNodes = secEl.getElementsByTagNameNS("*", "strategy")
-                            val finalStratNodes = if (stratNodes.length > 0) stratNodes else {
-                                val st = secEl.getElementsByTagName("ca:strategy")
-                                if (st.length > 0) st else secEl.getElementsByTagName("strategy")
-                            }
-                            if (finalStratNodes.length > 0) {
-                                strategy = finalStratNodes.item(0).textContent.trim()
-                            }
-
-                            var nutrition = ""
-                            val nutNodes = secEl.getElementsByTagNameNS("*", "nutrition")
-                            val finalNutNodes = if (nutNodes.length > 0) nutNodes else {
-                                val nu = secEl.getElementsByTagName("ca:nutrition")
-                                if (nu.length > 0) nu else secEl.getElementsByTagName("nutrition")
-                            }
-                            if (finalNutNodes.length > 0) {
-                                nutrition = finalNutNodes.item(0).textContent.trim()
-                            }
-
-                            sectors.add(Sector(startDistM, endDistM, secName, targetPaceMin, strategy, nutrition))
-                        }
+                        sectors.add(Sector(startDistM, endDistM, secName, targetPaceMin, strategy, nutrition))
                     }
                 }
 
@@ -227,7 +207,7 @@ object GpxParser {
         }
 
         // Extract Waypoints (wpt)
-        val wptNodes = doc.getElementsByTagNameNS("*", "wpt")
+        val wptNodes = doc.getElementsByTagName("wpt")
         val finalWaypoints = mutableListOf<Waypoint>()
 
         for (i in 0 until wptNodes.length) {
@@ -237,47 +217,17 @@ object GpxParser {
                 val lat = element.getAttribute("lat").toDouble()
                 val lon = element.getAttribute("lon").toDouble()
 
-                var ele = 0.0
-                val eleNodes = element.getElementsByTagNameNS("*", "ele")
-                if (eleNodes.length > 0) {
-                    ele = eleNodes.item(0).textContent.toDoubleOrNull() ?: 0.0
-                }
-
-                var name = "Waypoint ${i + 1}"
-                val nameNodes = element.getElementsByTagNameNS("*", "name")
-                if (nameNodes.length > 0) {
-                    name = nameNodes.item(0).textContent.trim()
-                }
-
-                var sym = ""
-                val symNodes = element.getElementsByTagNameNS("*", "sym")
-                if (symNodes.length > 0) {
-                    sym = symNodes.item(0).textContent.trim()
-                }
-
-                var desc = ""
-                val descNodes = element.getElementsByTagNameNS("*", "desc")
-                if (descNodes.length > 0) {
-                    desc = descNodes.item(0).textContent.trim()
-                }
+                val ele = element.getChildText("ele")?.toDoubleOrNull() ?: 0.0
+                val name = element.getChildText("name")?.trim() ?: "Waypoint ${i + 1}"
+                val sym = element.getChildText("sym")?.trim() ?: ""
+                val desc = element.getChildText("desc")?.trim() ?: ""
 
                 // Parse station extensions
                 var id = "wpt-$i"
                 var stationExtensions: StationExtensions? = null
-                val extNodes = element.getElementsByTagNameNS("*", "extensions")
-                if (extNodes.length > 0) {
-                    val extEl = extNodes.item(0) as Element
-
-                    val stationNodes = extEl.getElementsByTagNameNS("*", "station")
-                    val stationEl = if (stationNodes.length > 0) {
-                        stationNodes.item(0) as Element
-                    } else {
-                        val st = extEl.getElementsByTagName("ca:station")
-                        if (st.length > 0) st.item(0) as Element else {
-                            val st2 = extEl.getElementsByTagName("station")
-                            if (st2.length > 0) st2.item(0) as Element else null
-                        }
-                    }
+                val extEl = element.getChildElement("extensions")
+                if (extEl != null) {
+                    val stationEl = extEl.getChildElement("station")
 
                     if (stationEl != null) {
                         id = stationEl.getAttribute("id").ifEmpty { "station-$i" }
@@ -286,35 +236,22 @@ object GpxParser {
 
                         // Parse passes
                         val passes = mutableListOf<Pass>()
-                        val passNodes = stationEl.getElementsByTagNameNS("*", "pass")
-                        val finalPassNodes = if (passNodes.length > 0) passNodes else {
-                            val pn = stationEl.getElementsByTagName("ca:pass")
-                            if (pn.length > 0) pn else stationEl.getElementsByTagName("pass")
-                        }
-                        for (p in 0 until finalPassNodes.length) {
-                            val pEl = finalPassNodes.item(p) as Element
-                            val num = pEl.getAttribute("num").toIntOrNull() ?: 1
-                            val distM = pEl.getAttribute("dist_m").toDoubleOrNull() ?: 0.0
-                            val label = pEl.getAttribute("label").takeIf { it.isNotEmpty() }
-                            val cutoffClock = pEl.getAttribute("cutoff_clock").takeIf { it.isNotEmpty() }
-                            val cutoffElapsed = pEl.getAttribute("cutoff_elapsed").takeIf { it.isNotEmpty() }
-                            val targetArrival = pEl.getAttribute("target_arrival").takeIf { it.isNotEmpty() }
-                            val stretchStrategy = pEl.getAttribute("stretch_strategy").takeIf { it.isNotEmpty() }
+                        val passesEl = stationEl.getChildElement("passes")
+                        val passElements = passesEl?.getChildElements("pass") ?: stationEl.getChildElements("pass")
+                        for (p in passElements) {
+                            val num = p.getAttribute("num").toIntOrNull() ?: 1
+                            val distM = p.getAttribute("dist_m").toDoubleOrNull() ?: 0.0
+                            val label = p.getAttribute("label").takeIf { it.isNotEmpty() }
+                            val cutoffClock = p.getAttribute("cutoff_clock").takeIf { it.isNotEmpty() }
+                            val cutoffElapsed = p.getAttribute("cutoff_elapsed").takeIf { it.isNotEmpty() }
+                            val targetArrival = p.getAttribute("target_arrival").takeIf { it.isNotEmpty() }
+                            val stretchStrategy = p.getAttribute("stretch_strategy").takeIf { it.isNotEmpty() }
                             passes.add(Pass(num, distM, label, cutoffClock, cutoffElapsed, targetArrival, stretchStrategy))
                         }
 
                         // Parse accessibility
                         var accessibility = Accessibility()
-                        val accessNodes = stationEl.getElementsByTagNameNS("*", "accessibility")
-                        val accessEl = if (accessNodes.length > 0) {
-                            accessNodes.item(0) as Element
-                        } else {
-                            val ac = stationEl.getElementsByTagName("ca:accessibility")
-                            if (ac.length > 0) ac.item(0) as Element else {
-                                val ac2 = stationEl.getElementsByTagName("accessibility")
-                                if (ac2.length > 0) ac2.item(0) as Element else null
-                            }
-                        }
+                        val accessEl = stationEl.getChildElement("accessibility")
                         if (accessEl != null) {
                             accessibility = Accessibility(
                                 crewAllowed = accessEl.getAttribute("crew_allowed").toBoolean(),
@@ -326,16 +263,7 @@ object GpxParser {
 
                         // Parse services
                         var services = Services()
-                        val servNodes = stationEl.getElementsByTagNameNS("*", "services")
-                        val servEl = if (servNodes.length > 0) {
-                            servNodes.item(0) as Element
-                        } else {
-                            val se = stationEl.getElementsByTagName("ca:services")
-                            if (se.length > 0) se.item(0) as Element else {
-                                val se2 = stationEl.getElementsByTagName("services")
-                                if (se2.length > 0) se2.item(0) as Element else null
-                            }
-                        }
+                        val servEl = stationEl.getChildElement("services")
                         if (servEl != null) {
                             services = Services(
                                 water = servEl.getAttribute("water").toBoolean(),
@@ -350,16 +278,7 @@ object GpxParser {
 
                         // Parse navigation_alert
                         var navigationAlert: NavigationAlert? = null
-                        val navNodes = stationEl.getElementsByTagNameNS("*", "navigation_alert")
-                        val navEl = if (navNodes.length > 0) {
-                            navNodes.item(0) as Element
-                        } else {
-                            val na = stationEl.getElementsByTagName("ca:navigation_alert")
-                            if (na.length > 0) na.item(0) as Element else {
-                                val na2 = stationEl.getElementsByTagName("navigation_alert")
-                                if (na2.length > 0) na2.item(0) as Element else null
-                            }
-                        }
+                        val navEl = stationEl.getChildElement("navigation_alert")
                         if (navEl != null) {
                             navigationAlert = NavigationAlert(
                                 severity = navEl.getAttribute("severity").ifEmpty { "info" },
