@@ -18,6 +18,7 @@ package com.sphericalchickens.ruffterrain.ui.main
 
 import android.content.Context
 import android.net.Uri
+import java.util.Locale
 import android.provider.OpenableColumns
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
@@ -80,6 +81,7 @@ import androidx.compose.animation.shrinkVertically
 import androidx.compose.animation.core.tween
 import androidx.compose.ui.input.pointer.PointerEventPass
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.window.Dialog
 
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.combinedClickable
@@ -94,16 +96,14 @@ fun MainScreen(
   val state by viewModel.uiState.collectAsStateWithLifecycle()
   val context = LocalContext.current
   var showSettingsMenu by remember { mutableStateOf(false) }
+  var showSimulationHarness by remember { mutableStateOf(false) }
   var isScreenLocked by remember { mutableStateOf(false) }
   var isControlsVisible by remember { mutableStateOf(true) }
   var lastInteractionTime by remember { mutableStateOf(System.currentTimeMillis()) }
 
-  // Auto-hide controls after a timeout (3 seconds) of no interaction
+  // Auto-hide controls after a timeout (3 seconds) of no interaction - disabled for test harness legibility
   LaunchedEffect(isControlsVisible, lastInteractionTime) {
-      if (isControlsVisible) {
-          kotlinx.coroutines.delay(3000)
-          isControlsVisible = false
-      }
+      // Keep controls visible
   }
 
   // System picker result launcher (reads bytes synchronously in callback)
@@ -591,13 +591,20 @@ fun MainScreen(
                     expanded = showSettingsMenu,
                     onDismissRequest = { showSettingsMenu = false }
                 ) {
-                  DropdownMenuItem(
-                      text = { Text("Import GPX Course") },
-                      onClick = {
-                        showSettingsMenu = false
-                        filePickerLauncher.launch("*/*")
-                      }
-                  )
+                   DropdownMenuItem(
+                       text = { Text("Import GPX Course") },
+                       onClick = {
+                         showSettingsMenu = false
+                         filePickerLauncher.launch("*/*")
+                       }
+                   )
+                   DropdownMenuItem(
+                       text = { Text("📍 Launch GPS Simulator") },
+                       onClick = {
+                         showSettingsMenu = false
+                         showSimulationHarness = true
+                       }
+                   )
                   if (state.appMode != AppMode.RUNNING) {
                     DropdownMenuItem(
                         text = { Text(if (state.mapMode == MapMode.MAP_3D) "Switch to 2D Map" else "Switch to 3D Map") },
@@ -631,6 +638,169 @@ fun MainScreen(
       }
     }
   }
+
+  if (showSimulationHarness) {
+      GpsSimulationHarnessDialog(
+          state = state,
+          viewModel = viewModel,
+          onDismiss = { showSimulationHarness = false }
+      )
+  }
+
+  if (state.showCriticalOffCourseDialog) {
+      CriticalOffCourseDialog(
+          deviation = state.deviationMeters,
+          onAcknowledge = { viewModel.acknowledgeOffCourse() }
+      )
+  }
+}
+
+@Composable
+fun GpsSimulationHarnessDialog(
+    state: MainScreenUiState,
+    viewModel: MainScreenViewModel,
+    onDismiss: () -> Unit
+) {
+    Dialog(onDismissRequest = onDismiss) {
+        Card(
+            colors = CardDefaults.cardColors(containerColor = Color(0xFF0F172A)),
+            shape = RoundedCornerShape(16.dp),
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(16.dp)
+        ) {
+            Column(
+                modifier = Modifier.padding(24.dp),
+                horizontalAlignment = Alignment.CenterHorizontally
+            ) {
+                Text(
+                    text = "📍 GPS SIMULATOR HARNESS",
+                    color = Color.White,
+                    fontWeight = FontWeight.Bold,
+                    fontSize = 18.sp,
+                    textAlign = TextAlign.Center
+                )
+                Spacer(modifier = Modifier.height(16.dp))
+                
+                Text(
+                    text = "Select a scenario to inject mock coordinates:",
+                    color = Color.LightGray,
+                    fontSize = 13.sp,
+                    textAlign = TextAlign.Center
+                )
+                Spacer(modifier = Modifier.height(16.dp))
+
+                val scenarios = listOf(
+                    "Normal" to "On Course, Steady Pace (No alerts)",
+                    "Off-Course" to "Off-Course Veering (Triggers dialog + muting)",
+                    "Cutoff" to "Too Slow Pace (Triggers cutoff warning)"
+                )
+
+                scenarios.forEach { (name, desc) ->
+                    val isActive = state.activeSimulationScenario == name
+                    Button(
+                        onClick = {
+                            viewModel.startSimulation(name)
+                        },
+                        colors = ButtonDefaults.buttonColors(
+                            containerColor = if (isActive) Color(0xFF10B981) else Color(0xFF1E293B)
+                        ),
+                        shape = RoundedCornerShape(8.dp),
+                        modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp)
+                    ) {
+                        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                            Text(
+                                text = if (isActive) "★ $name Running" else name,
+                                fontWeight = FontWeight.Bold,
+                                color = Color.White
+                            )
+                            Text(text = desc, fontSize = 11.sp, color = Color.Gray)
+                        }
+                    }
+                }
+
+                Spacer(modifier = Modifier.height(16.dp))
+
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceEvenly
+                ) {
+                    if (state.activeSimulationScenario != null) {
+                        Button(
+                            onClick = { viewModel.stopSimulation() },
+                            colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFEF4444)),
+                            shape = RoundedCornerShape(8.dp)
+                        ) {
+                            Text("Stop Sim")
+                        }
+                    }
+                    Button(
+                        onClick = onDismiss,
+                        colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF475569)),
+                        shape = RoundedCornerShape(8.dp)
+                    ) {
+                        Text("Close")
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+fun CriticalOffCourseDialog(
+    deviation: Double,
+    onAcknowledge: () -> Unit
+) {
+    Dialog(onDismissRequest = {}) {
+        Card(
+            colors = CardDefaults.cardColors(containerColor = Color(0xFF7F1D1D)),
+            shape = RoundedCornerShape(16.dp),
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(16.dp)
+        ) {
+            Column(
+                modifier = Modifier.padding(24.dp),
+                horizontalAlignment = Alignment.CenterHorizontally
+            ) {
+                Text(
+                    text = "🚨 CRITICAL WARNING",
+                    color = Color.White,
+                    fontWeight = FontWeight.Bold,
+                    fontSize = 22.sp,
+                    textAlign = TextAlign.Center
+                )
+                Spacer(modifier = Modifier.height(12.dp))
+                
+                Text(
+                    text = String.format(Locale.US, "You are %.0f meters off course!", deviation),
+                    color = Color.White,
+                    fontWeight = FontWeight.ExtraBold,
+                    fontSize = 18.sp,
+                    textAlign = TextAlign.Center
+                )
+                Spacer(modifier = Modifier.height(8.dp))
+                
+                Text(
+                    text = "Verify route map and return to trail immediately.",
+                    color = Color(0xFFFCA5A5),
+                    fontSize = 13.sp,
+                    textAlign = TextAlign.Center
+                )
+                Spacer(modifier = Modifier.height(24.dp))
+
+                Button(
+                    onClick = onAcknowledge,
+                    colors = ButtonDefaults.buttonColors(containerColor = Color.White, contentColor = Color(0xFF7F1D1D)),
+                    shape = RoundedCornerShape(12.dp),
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Text("Acknowledge & Mute Alert", fontWeight = FontWeight.Bold)
+                }
+            }
+        }
+    }
 }
 
 @OptIn(ExperimentalFoundationApi::class)
@@ -744,6 +914,71 @@ fun RunningTacticalDashboard(
                 }
 
                 Spacer(modifier = Modifier.height(8.dp))
+
+                if (state.activeSimulationScenario != null) {
+                    Card(
+                        colors = CardDefaults.cardColors(containerColor = Color(0xFF0F172A)),
+                        shape = RoundedCornerShape(12.dp),
+                        modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp)
+                    ) {
+                        Row(
+                            modifier = Modifier.padding(12.dp).fillMaxWidth(),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.SpaceBetween
+                        ) {
+                            Text(
+                                text = "📍 Simulating: ${state.activeSimulationScenario} (${state.elapsedSimulationTimeSeconds}s)",
+                                color = Color(0xFF38BDF8),
+                                fontWeight = FontWeight.Bold,
+                                fontSize = 13.sp
+                            )
+                            Button(
+                                onClick = { viewModel.stopSimulation() },
+                                colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFEF4444)),
+                                shape = RoundedCornerShape(8.dp),
+                                contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 12.dp)
+                            ) {
+                                Text("Stop", fontSize = 11.sp, color = Color.White)
+                            }
+                        }
+                    }
+                }
+
+                if (state.cutoffAlertMessage != null) {
+                    Card(
+                        colors = CardDefaults.cardColors(containerColor = Color(0xFF854D0E)),
+                        shape = RoundedCornerShape(12.dp),
+                        modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp)
+                    ) {
+                        Text(
+                            text = state.cutoffAlertMessage,
+                            color = Color.White,
+                            fontWeight = FontWeight.Bold,
+                            fontSize = 14.sp,
+                            modifier = Modifier.padding(16.dp),
+                            textAlign = TextAlign.Center
+                        )
+                    }
+                }
+
+                if (state.paceAlertMessage != null) {
+                    Card(
+                        colors = CardDefaults.cardColors(containerColor = Color(0xFF1E293B)),
+                        shape = RoundedCornerShape(12.dp),
+                        modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp)
+                    ) {
+                        Text(
+                            text = state.paceAlertMessage,
+                            color = Color(0xFFFBBF24),
+                            fontWeight = FontWeight.Bold,
+                            fontSize = 14.sp,
+                            modifier = Modifier.padding(16.dp),
+                            textAlign = TextAlign.Center
+                        )
+                    }
+                }
+
+                Spacer(modifier = Modifier.height(4.dp))
 
                 val isOffTrail = state.deviationMeters > 20.0
                 val (arrow, cardinalDir) = getDirectionArrowAndText(state.bearingToTrail)

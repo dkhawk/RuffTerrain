@@ -33,6 +33,7 @@ import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlin.math.cos
+import java.util.Locale
 
 /**
  * Screen state representation for the course analyzer dashboard.
@@ -55,7 +56,17 @@ data class MainScreenUiState(
     val bearingToTrail: Double = 0.0,
     val showRunningMap: Boolean = false, // Toggle map on/off in RUNNING mode
     val mockDeviation: Double = 0.0, // Mock deviation slider value
-    val activeClimbInfo: ClimbInfo? = null
+    val activeClimbInfo: ClimbInfo? = null,
+
+    // GPS Simulation Harness additions
+    val activeSimulationScenario: String? = null,
+    val elapsedSimulationTimeSeconds: Long = 0L,
+    val currentSpeedMps: Double = 0.0,
+    val isOffCourseWarningMuted: Boolean = false,
+    val showCriticalOffCourseDialog: Boolean = false,
+    val cutoffAlertMessage: String? = null,
+    val paceAlertMessage: String? = null,
+    val userLocationTimestampMs: Long? = null
 )
 
 /**
@@ -67,6 +78,8 @@ class MainScreenViewModel(private val dataRepository: DataRepository) : ViewMode
     val uiState: StateFlow<MainScreenUiState> = _uiState.asStateFlow()
 
     private var playbackJob: Job? = null
+    private var simulationJob: Job? = null
+    private var raceStartTimestampMs: Long? = null
 
     /**
      * Loads a course from an input stream. Reads the bytes synchronously to prevent closure issues.
@@ -246,26 +259,124 @@ class MainScreenViewModel(private val dataRepository: DataRepository) : ViewMode
     /**
      * Updates coordinates and snaps progress + deviation from GPS.
      */
-    fun updateUserLocation(lat: Double, lon: Double) {
+    fun updateUserLocation(lat: Double, lon: Double, timestampMs: Long = System.currentTimeMillis()) {
         val course = _uiState.value.courseData ?: return
         if (course.points.isEmpty()) return
 
         val proj = projectUserToTrail(lat, lon, course)
 
-        _uiState.update {
+        _uiState.update { state ->
             val totalDist = course.totalDistance
             val nextProgress = if (totalDist > 0.0) (proj.progressDistance / totalDist).coerceIn(0.0..1.0) else 0.0
             val climb = detectClimb(proj.progressDistance, course)
 
-            it.copy(
+            // Compute speed and pace
+            var speed = 0.0
+            val prevLat = state.userLatitude
+            val prevLon = state.userLongitude
+            val prevTime = state.userLocationTimestampMs
+            if (prevLat != null && prevLon != null && prevTime != null) {
+                val dtSec = (timestampMs - prevTime) / 1000.0
+                if (dtSec > 0.1) {
+                    val distMoved = Haversine.distance(prevLat, prevLon, lat, lon)
+                    speed = (distMoved / dtSec).coerceAtLeast(0.0)
+                }
+            } else {
+                // If it's the first GPS point, initialize race start timestamp
+                if (raceStartTimestampMs == null) {
+                    raceStartTimestampMs = timestampMs
+                }
+            }
+
+            // Mute / Acknowledge deviation alerts
+            var isMuted = state.isOffCourseWarningMuted
+            if (proj.deviation < 20.0) {
+                isMuted = false
+            }
+            val showDialog = (proj.deviation > 50.0) && !isMuted
+
+            // Cutoff alert calculation
+            val currentDist = nextProgress * totalDist
+            var cutoffAlert: String? = null
+            
+            // Find the next checkpoint waypoint with a cutoff
+            val nextWaypoint = course.waypoints
+                .filter { it.distanceMeters > currentDist }
+                .minByOrNull { it.distanceMeters }
+            
+            val pass = nextWaypoint?.extensions?.station?.passes?.firstOrNull()
+            // To ensure scenario 3 triggers warning regardless of which course is loaded,
+            // we mock a cutoff of 15 mins at the first waypoint if it doesn't have one during simulation
+            val mockCutoffSeconds = if (state.activeSimulationScenario == "Cutoff" && nextWaypoint != null) {
+                900L // 15 mins cutoff
+            } else {
+                null
+            }
+            
+            val cutoffLimitSeconds = mockCutoffSeconds ?: pass?.let { p ->
+                val timeStr = p.cutoffElapsed ?: p.cutoffClock
+                timeStr?.let { parseTimeStringToSeconds(it) }
+            }
+
+            if (cutoffLimitSeconds != null && nextWaypoint != null) {
+                val distToWpt = nextWaypoint.distanceMeters - currentDist
+                val projSpeed = if (speed > 0.1) speed else 1.38 // fallback to 5 km/h hiking speed
+                val timeToWptSeconds = distToWpt / projSpeed
+                
+                val elapsedSeconds = if (state.activeSimulationScenario != null) {
+                    state.elapsedSimulationTimeSeconds
+                } else {
+                    ((timestampMs - (raceStartTimestampMs ?: timestampMs)) / 1000)
+                }
+                
+                val projectedArrivalSeconds = elapsedSeconds + timeToWptSeconds
+                if (projectedArrivalSeconds > cutoffLimitSeconds) {
+                    val diffMins = ((projectedArrivalSeconds - cutoffLimitSeconds) / 60.0).toInt()
+                    cutoffAlert = "⚠️ CUTOFF WARNING: Projected to miss cutoff at ${nextWaypoint.name} by $diffMins min!"
+                }
+            }
+
+            // Pace warning calculation
+            var paceAlert: String? = null
+            val activeSector = course.executionPlan?.sectors?.find { currentDist >= it.startDistM && currentDist <= it.endDistM }
+            if (activeSector != null && speed > 0.1) {
+                val currentPace = (1000.0 / speed) / 60.0
+                val targetPace = activeSector.targetPaceMin
+                if (currentPace > targetPace + 3.0) {
+                    paceAlert = String.format(Locale.US, "🐢 Running too slow! Pace: %.1f min/km (Target: %.1f)", currentPace, targetPace)
+                } else if (currentPace < targetPace - 2.0) {
+                    paceAlert = String.format(Locale.US, "⚡ Running too fast! Pace: %.1f min/km (Target: %.1f)", currentPace, targetPace)
+                }
+            }
+
+            state.copy(
                 userLatitude = lat,
                 userLongitude = lon,
+                userLocationTimestampMs = timestampMs,
                 scrubberProgress = nextProgress,
                 deviationMeters = proj.deviation,
                 bearingToTrail = proj.bearing,
-                activeClimbInfo = climb
+                activeClimbInfo = climb,
+                currentSpeedMps = speed,
+                isOffCourseWarningMuted = isMuted,
+                showCriticalOffCourseDialog = showDialog,
+                cutoffAlertMessage = cutoffAlert,
+                paceAlertMessage = paceAlert
             )
         }
+    }
+
+    private fun parseTimeStringToSeconds(timeStr: String): Long {
+        val parts = timeStr.split(":").map { it.toIntOrNull() ?: 0 }
+        return when (parts.size) {
+            2 -> (parts[0] * 3600 + parts[1] * 60).toLong()
+            3 -> (parts[0] * 3600 + parts[1] * 60 + parts[2]).toLong()
+            else -> 0L
+        }
+    }
+
+    fun acknowledgeOffCourse() {
+        _uiState.update { it.copy(isOffCourseWarningMuted = true, showCriticalOffCourseDialog = false) }
     }
 
     // --- MATH & ALIGNMENT ENGINES ---
@@ -435,8 +546,88 @@ class MainScreenViewModel(private val dataRepository: DataRepository) : ViewMode
         }
     }
 
+    fun startSimulation(scenarioName: String) {
+        stopSimulation()
+        val course = _uiState.value.courseData ?: return
+        if (course.points.isEmpty()) return
+
+        _uiState.update { it.copy(activeSimulationScenario = scenarioName) }
+
+        simulationJob = viewModelScope.launch {
+            var simTime = 0L
+            var distanceRun = 0.0
+            
+            // For scenario 2, we veers off-course at specific distances
+            val isOffCourseScenario = (scenarioName == "Off-Course")
+            val isCutoffScenario = (scenarioName == "Cutoff")
+            
+            // Set runner speed based on scenario
+            // Scenario 1 and 2: normal speed ~ 2.78 m/s (10 km/h)
+            // Scenario 3: cutoff speed ~ 0.4 m/s (extremely slow!)
+            val speedMps = if (isCutoffScenario) 0.4 else 2.78
+            
+            val timeStep = 50L // Advance 50 seconds per tick
+            while (isActive) {
+                delay(500) // Tick 2 times per second
+                simTime += timeStep
+                distanceRun += speedMps * timeStep
+                
+                val totalDist = course.totalDistance
+                if (distanceRun >= totalDist) {
+                    distanceRun = totalDist
+                }
+                
+                // Find point at distanceRun
+                val targetIndex = course.points.indexOfFirst { it.distance >= distanceRun }
+                    .coerceIn(0, course.points.size - 1)
+                val basePt = course.points[targetIndex]
+                
+                // Calculate simulated coordinates
+                var simulatedLat = basePt.latitude
+                var simulatedLon = basePt.longitude
+                
+                // Veering logic for Scenario 2
+                if (isOffCourseScenario) {
+                    if (distanceRun in 500.0..1000.0) {
+                        // Veer slightly (30 meters)
+                        simulatedLat += 0.00027
+                        simulatedLon += 0.00027
+                    } else if (distanceRun in 1000.0..1500.0) {
+                        // Veer critically (80 meters)
+                        simulatedLat += 0.00072
+                        simulatedLon += 0.00072
+                    }
+                }
+                
+                _uiState.update { it.copy(elapsedSimulationTimeSeconds = simTime) }
+                updateUserLocation(simulatedLat, simulatedLon, System.currentTimeMillis() + simTime * 1000)
+                
+                if (distanceRun >= totalDist) {
+                    break
+                }
+            }
+        }
+    }
+
+    fun stopSimulation() {
+        simulationJob?.cancel()
+        _uiState.update {
+            it.copy(
+                activeSimulationScenario = null,
+                elapsedSimulationTimeSeconds = 0L,
+                currentSpeedMps = 0.0,
+                isOffCourseWarningMuted = false,
+                showCriticalOffCourseDialog = false,
+                cutoffAlertMessage = null,
+                paceAlertMessage = null,
+                userLocationTimestampMs = null
+            )
+        }
+    }
+
     override fun onCleared() {
         super.onCleared()
         playbackJob?.cancel()
+        simulationJob?.cancel()
     }
 }
