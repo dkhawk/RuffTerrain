@@ -122,9 +122,12 @@ fun Map2DViewport(
 
         // Draw course waypoints / aid stations
         courseData.waypoints.forEach { wpt ->
-            val isAidStation = wpt.name.contains("Aid Station", ignoreCase = true) ||
-                    wpt.name.contains("AS", ignoreCase = true) ||
-                    wpt.name.contains("Water", ignoreCase = true)
+            val isAidStation = wpt.name.contains("Aid", ignoreCase = true) ||
+                    wpt.name.contains("Water", ignoreCase = true) ||
+                    wpt.name.contains("Medical", ignoreCase = true) ||
+                    wpt.name.contains(Regex("(?i)\\bAS\\d*\\b")) ||
+                    wpt.symbol.contains("aid", ignoreCase = true) ||
+                    wpt.extensions?.station?.subtype == "aid_station"
             Marker(
                 state = rememberMarkerState(position = LatLng(wpt.latitude, wpt.longitude)),
                 title = wpt.name,
