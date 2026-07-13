@@ -26,7 +26,7 @@ dist-ssr
 *.sw?
 
 # Samples
-samples/
+# samples/
 
 # Race-specific generated plans and outputs
 enhanced_leadiots_fitty*
@@ -34,3 +34,4 @@ Ruff_Terrain_Ultra_Race_Execution_Plan*
 ruff_terrain_ultra_race_plan*
 *.bak
 
+!samples/**
