@@ -35,3 +35,29 @@ ruff_terrain_ultra_race_plan*
 *.bak
 
 !samples/**
+
+# Android Gradle & IDE
+*.iml
+.gradle
+/local.properties
+local.properties
+/secrets.properties
+secrets.properties
+/.idea/caches
+/.idea/libraries
+/.idea/modules.xml
+/.idea/workspace.xml
+/.idea/navEditor.xml
+/.idea/assetWizardSettings.xml
+/build
+/captures
+.externalNativeBuild
+.cxx
+
+# Python & virtualenv
+.venv/
+__pycache__/
+*.pyc
+
+# Agent output data
+public/data/

@@ -1162,3 +1162,101 @@ This journal records all design decisions, architecture patterns, development st
 
 
 
+
+---
+
+### 🚀 Session 30: Android Project Setup & Maps 3D Configuration
+*   **Goal**: Initialize a modern Kotlin Android project and configure target dependencies (Maps 3D SDK, Compose Lifecycle, Play Services) safely using Version Catalogs.
+*   **Decisions & Rationale**:
+    *   **Android Architecture Setup**: Bootstrapped a baseline Android module (`app`) targeting Compose UI and standard Google Maps Platform 3D SDK. Excluded all web modules to establish mobile development boundaries.
+*   **Key Actions Taken**:
+    *   Configured root build files, Gradle properties, AndroidManifest, and UI components.
+    *   Created `MainActivity`, `MainScreen`, and ViewModel tests.
+
+---
+
+### 🚀 Session 31: Formal Spec Document & Rich GPX Parser Architecture
+*   **Goal**: Create a comprehensive specification for Ruff Terrain's execution-centric Android app and update GPX parsing logic to read complex waypoints, aid station properties, and execution plans.
+*   **Decisions & Rationale**:
+    *   **Execution-Centric Spec**: Authored `android_execution_spec.md` detailing dual-map rendering (2D MapView vs 3D Map3DView toggling), dynamic GPS route snapping, adaptive pacing adjustments (drift scaling), and on-device Gemma LLM + TTS speech cues.
+    *   **Rich Waypoint & Extension Support**: Upgraded `CourseModels.kt` to define `Waypoint`, `StationExtensions`, `Pass`, `Accessibility`, `Services`, and `ExecutionPlan`.
+    *   **Namespace-Aware XML Parsing**: Updated `GpxParser.kt` to use `doc.getElementsByTagNameNS("*", ...)` to extract namespace-qualified elements resiliently.
+*   **Key Actions Taken**:
+    *   Created `android_execution_spec.md` planning out the features, architecture, and roadmap.
+    *   Expanded models in `CourseModels.kt` and refactored `GpxParser.kt`.
+    *   Appended `testParseGPXWithRuffTerrainExtensions` unit test to `GpxParserTest.kt` validating correct GPX extension parsing.
+    *   Built the codebase and successfully verified all unit tests.
+
+---
+
+### 🚀 Session 32: Dual 2D/3D Map Viewport Toggling, Adaptive Edge-To-Edge Layout & Maps 3D API Stabilization
+*   **Goal**: Implement dual 2D/3D map viewport switching, handle screen window insets dynamically for Edge-to-Edge displays, and stabilize Google Maps 3D SDK calls to match pre-release binary signatures.
+*   **Decisions & Rationale**:
+    *   **Dynamic Map Viewport Toggling**: Added a `mapMode` state variable (`MAP_2D` vs `MAP_3D`) to `MainScreenViewModel` and integrated dynamic UI switching (`DualMapViewport`) in `MainScreen.kt`. If `MAP_2D` is active, the app uses standard Google Maps Compose; if `MAP_3D` is active, it falls back to the native `Map3DView` via Compose `AndroidView` interop.
+    *   **Map Viewport Implementations**:
+        *   [`Map2DViewport.kt`](file:///Users/dkhawk/Projects/RuffTerrain/android-port/app/src/main/java/com/example/ruffterrain/ui/main/Map2DViewport.kt): Built standard 2D view rendering with `GoogleMap` from `android-maps-compose`, plotting route polyline and waypoint markers.
+        *   [`Map3DViewport.kt`](file:///Users/dkhawk/Projects/RuffTerrain/android-port/app/src/main/java/com/example/ruffterrain/ui/main/Map3DViewport.kt): Rebuilt the native 3D view using compile-safe positional constructors for `Map3DOptions`, replacing raw setters and named arguments, mapping marker names to the `label` parameter (as `title` does not exist in 3D options), and utilizing list-based path setters for `PolylineOptions`.
+    *   **Jitter-Free Edge-to-Edge Insets**: Handled modern system window bounds by appending `.statusBarsPadding()` to the top HUD overlay card and `.navigationBarsPadding()` to the bottom progress scrubber card.
+*   **Key Actions Taken**:
+    *   Wrote `Map2DViewport.kt` using Compose 2D Maps.
+    *   Rewrote `Map3DViewport.kt` to stabilize parameters and resolve signature failures.
+    *   Modified `MainScreen.kt` to implement toggle views and padding overlays.
+    *   Created `local.defaults.properties` asset loader fallback.
+    *   Executed JVM compilation tests and verified "BUILD SUCCESSFUL" compiles cleanly.
+    *   Successfully ran `./gradlew installDebug` to compile and deploy the debug package to the connected physical device (`Pixel 3a - 12`).
+    *   Fired intent to launch the app launcher package activity (`com.example.ruffterrain/.MainActivity`) via adb shell to verify startup stability on-device.
+
+---
+
+### 🚀 Session 33: Synchronized Coroutine Playback Loop, On-Device Course Importer Picker & Playback Controls Integration
+*   **Goal**: Add a synchronized coroutine-based simulation playback loop to MainScreenViewModel, support user-driven GPX course imports via the Android System File Picker, and build complete playback controls in the user interface.
+*   **Decisions & Rationale**:
+    *   **Synchronized Coroutine Playback Loop**: Built a lifecycle-aware simulation playback loop inside `MainScreenViewModel.kt` utilizing Kotlin Coroutines. Toggling playback spawns a tick job (running at ~30 FPS / 32ms delays) that advances `scrubberProgress` along the route based on elapsed delta time `dt` and `playbackSpeed` (using the formula: `simSpeed = 20.0 * speed * speed` matching the web client physics). Since Compose viewports (both 2D and 3D) observe the single `scrubberProgress` state variable, they update in perfect synchronization.
+    *   **Android System File Importer**: Integrated Compose activity result launcher `rememberLauncherForActivityResult` pointing to `GetContent()` contract. Triggering the "Import" button launches the file picker and streams chosen files back to `viewModel.loadCourse()`.
+    *   **Playback Controllers UI**: Augmented the bottom scrubber card to include a speed multiplier cycler (1x -> 2x -> 5x -> 10x), a rewind button ("⏮"), and a play/pause toggle ("▶"/"⏸").
+*   **Key Actions Taken**:
+    *   Updated `MainScreenViewModel.kt` to implement playback, pause, rewind, and speed controls.
+    *   Refactored `MainScreen.kt` to bind the new controllers and define the system file importer picker launcher.
+    *   Added Unit Tests to `MainScreenViewModelTest.kt` verifying speed adjustments, rewind, and playback toggles.
+    *   Successfully ran Gradle compilation and test executions, confirming all unit tests pass.
+    *   Deployed build on device and launched the app, verifying seamless file picking, playback movement, and speed scaling on both map overlays.
+
+---
+
+### 🚀 Session 34: Mode-Based UI Redesign, Canvas Elevation Chart & Picker Stream Safety
+*   **Goal**: Restructure the application into Plan, Preview, and active Run modes, draw a custom vector elevation profile on screen, tuck secondary options into a settings menu, and resolve asynchronous stream read crashes on file loading.
+*   **Decisions & Rationale**:
+    *   **Contextual Mode UI**: Created `AppMode` enum containing `IMPORT_EDIT`, `SIMULATION`, and `RUNNING` modes. Designed unique top tab selectors and bottom overlays:
+        *   `Plan/Import`: Focuses on course metrics summary, waypoint/landmark scroll lists, and onboarding.
+        *   `Preview/Simulation`: Displays the maps, synchronized playback controls, and elevation charts.
+        *   `Active Run`: Forces 2D maps (battery savings), locking out secondary items, and presenting a massive, high-contrast monospace running metrics layout (Distance, Pace, Ascent, Time).
+    *   **Canvas Elevation Profile**: Built [`ElevationProfileChart.kt`](file:///Users/dkhawk/Projects/RuffTerrain/android-port/app/src/main/java/com/example/ruffterrain/ui/main/ElevationProfileChart.kt) using native Compose `Canvas` drawing. It plots the elevation line, applies a beautiful translucent color gradient fill, and draws vertical indicator lines and dots for waypoints and current scrubber position.
+    *   **Settings Dropdown Menu**: Relocated lesser-used actions (Import GPX, Map 2D/3D toggle, Reload sample Leadville asset) to a clean settings dropdown (⚙️).
+    *   **Sync Byte Loader**: Resolved file picking load failures by copying the selected file `InputStream` bytes immediately/synchronously inside the activity result callback to an in-memory byte array before passing them to the asynchronous coroutine parser.
+*   **Key Actions Taken**:
+    *   Added `AppMode` enum in `CourseModels.kt`.
+    *   Implemented custom vector `ElevationProfileChart.kt`.
+    *   Refactored `MainScreenViewModel.kt` to support AppModes and byte loading.
+    *   Overhauled `MainScreen.kt` layout structure.
+    *   Ran build compiling and verified tests successfully pass.
+    *   Deployed build, verified file picking works, and verified UI layout using adb screenshots.
+
+---
+
+### 🚀 Session 35: Retro Stereo Volume-Style Gradient Bar Graph Visualization
+*   **Goal**: Add better visualization tools with a retro color-coded bar graph representing the terrain gradient, indicating zero and negative gradients, aligned with the alerts and color-coded segments color scheme.
+*   **Decisions & Rationale**:
+    *   **30m Lookback Baseline Window**: Added `grade` calculation to `GpxParser.kt` over a ~30-meter horizontal baseline window. Raw GPS trackpoint-to-trackpoint elevation changes suffer from high vertical inaccuracy and quantization noise over 1-2 meters. A 30m baseline smooths out false spikes while accurately capturing true physical terrain steepness.
+    *   **Retro Stereo Equalizer VU Meter (`RetroGradientBarGraph`)**: Created a dedicated Composable in [`GradientVisualizer.kt`](file:///Users/dkhawk/Projects/RuffTerrain/android-port/app/src/main/java/com/example/ruffterrain/ui/main/GradientVisualizer.kt) designed to evoke the classic LED volume bars / VU meters found on stereos from the 80s and 90s.
+        *   **Zero (0%) Indicator**: Explicitly indicated with a bright white center tick mark and label `0%`.
+        *   **Negative Gradient Indicator**: When `grade < 0`, LED segments to the left of zero illuminate in vibrant Emerald Green (`#10B981`), clearly distinguishing downhill recovery sections from upward climbing terrain.
+        *   **Color Alignment**: Aligned positive tiers directly with the scheme used for alerts and 3D color-coded segments: Blue (`#3B82F6`) for flat/zero, Amber (`#F59E0B`) for moderate climb (up to 5%), Orange (`#F97316`) for steep climb (up to 8%), Red (`#EF4444`) for very steep (up to 10%), and Dark Red (`#B91C1C`) for extreme climbs (> 10%).
+    *   **Course-wide Gradient Profile Bar Graph (`CourseGradientBarChart`)**: Added a complementary horizontal bar graph breaking down the gradient distribution across the entire course timeline with a central zero baseline and dynamic scrubber tracking dot.
+    *   **Dashboard Integration**: Embedded `RetroGradientBarGraph` and `CourseGradientBarChart` in `MainScreen.kt` under SIMULATION preview mode and embedded `RetroGradientBarGraph` in RUNNING mode dashboard for instant telemetry feedback.
+*   **Key Actions Taken**:
+    *   Added `grade` property to `RoutePoint` in `CourseModels.kt`.
+    *   Updated `GpxParser.kt` to compute gradient over ~30m lookback baseline.
+    *   Implemented `RetroGradientBarGraph` and `CourseGradientBarChart` in `GradientVisualizer.kt`.
+    *   Added unit tests in `GradientVisualizerTest.kt` verifying negative/zero classification and color alignment.
+    *   Ran `./gradlew :app:testDebugUnitTest` and confirmed 100% test pass.
+
