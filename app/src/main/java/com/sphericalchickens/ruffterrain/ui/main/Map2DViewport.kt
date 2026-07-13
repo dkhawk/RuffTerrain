@@ -65,6 +65,7 @@ fun Map2DViewport(
     courseData: CourseData,
     scrubberProgress: Double,
     modifier: Modifier = Modifier,
+    unitsPref: String = "default",
     onWaypointClick: (Waypoint) -> Unit = {}
 ) {
     val points = courseData.points
@@ -201,12 +202,12 @@ fun Map2DViewport(
                             fontSize = 14.sp
                         )
                         Spacer(modifier = Modifier.height(2.dp))
+                        val system = getActiveUnitSystem(unitsPref)
                         Text(
                             text = if (wpt.description.isNotEmpty()) {
                                 wpt.description
                             } else {
-                                val distKm = wpt.distanceMeters / 1000.0
-                                String.format(Locale.US, "Distance: %.2f km | Elevation: %d m", distKm, wpt.elevation.toInt())
+                                "Distance: ${formatDistance(wpt.distanceMeters, system)} | Elevation: ${formatElevation(wpt.elevation, system)}"
                             },
                             color = Color.LightGray,
                             fontSize = 11.sp
@@ -226,11 +227,13 @@ fun Map2DViewport(
 
         // Draw runner progress marker dot
         if (scrubberLatLng != null && scrubberPoint != null) {
-            val distMiles = scrubberPoint.distance / 1609.34
+            val system = getActiveUnitSystem(unitsPref)
+            val distStr = formatDistance(scrubberPoint.distance, system)
+            val elevStr = formatElevation(scrubberPoint.elevation, system)
             Marker(
                 state = runnerMarkerState,
                 title = "Runner Position",
-                snippet = String.format(Locale.US, "Distance: %.2f mi | Elevation: %d m", distMiles, scrubberPoint.elevation.toInt()),
+                snippet = "Distance: $distStr | Elevation: $elevStr",
                 icon = runnerIcon
             )
         }

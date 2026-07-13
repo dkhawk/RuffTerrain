@@ -103,6 +103,8 @@ fun MainScreen(
   var isControlsVisible by remember { mutableStateOf(true) }
   var lastInteractionTime by remember { mutableStateOf(System.currentTimeMillis()) }
   var selectedDetailWaypoint by remember { mutableStateOf<Waypoint?>(null) }
+  val sharedPrefs = remember { context.getSharedPreferences("ruff_terrain_prefs", android.content.Context.MODE_PRIVATE) }
+  var unitsPref by remember { mutableStateOf(sharedPrefs.getString("units_preference", "default") ?: "default") }
 
   // Auto-hide controls after a timeout (3 seconds) of no interaction
   LaunchedEffect(isControlsVisible, lastInteractionTime) {
@@ -288,6 +290,7 @@ fun MainScreen(
             mapMode = activeMapMode,
             scrubberProgress = state.scrubberProgress,
             modifier = Modifier.fillMaxSize(),
+            unitsPref = unitsPref,
             onWaypointClick = { selectedDetailWaypoint = it }
         )
       }
@@ -302,7 +305,8 @@ fun MainScreen(
                 viewModel = viewModel,
                 permissionLauncher = permissionLauncher,
                 isScreenLocked = isScreenLocked,
-                onLockToggle = { isScreenLocked = it }
+                onLockToggle = { isScreenLocked = it },
+                unitsPref = unitsPref
             )
         } else {
             // RENDER STANDARD BOTTOM OVERLAYS (Import, Simulation, or Run-with-map)
@@ -323,12 +327,11 @@ fun MainScreen(
                     Column(modifier = Modifier.padding(16.dp)) {
                       if (course != null) {
                         Text(text = course.name, style = MaterialTheme.typography.titleLarge, color = Color.White)
+                        val system = getActiveUnitSystem(unitsPref)
                         Text(
-                            text = String.format("Distance: %.1f km  |  Ascent: %d m  |  Descent: %d m", 
-                                course.totalDistance / 1000.0, 
-                                course.elevationGain.toInt(),
-                                course.elevationLoss.toInt()
-                            ),
+                            text = "Distance: ${formatDistance(course.totalDistance, system)}  |  " +
+                                   "Ascent: ${formatElevation(course.elevationGain, system)}  |  " +
+                                   "Descent: ${formatElevation(course.elevationLoss, system)}",
                             style = MaterialTheme.typography.bodyMedium,
                             color = Color.LightGray
                         )
@@ -369,8 +372,9 @@ fun MainScreen(
                             }.joinToString("")
                             val suffix = if (amenities.isNotEmpty()) " $amenities" else ""
                             
+                            val system = getActiveUnitSystem(unitsPref)
                             Text(
-                                text = "• ${wpt.name}$suffix (km ${(wpt.distanceMeters/1000.0).format(1)})",
+                                text = "• ${wpt.name}$suffix (${formatDistanceShort(wpt.distanceMeters, system)})",
                                 color = Color.LightGray,
                                 style = MaterialTheme.typography.bodySmall,
                                 modifier = Modifier.padding(vertical = 2.dp)
@@ -533,11 +537,12 @@ fun MainScreen(
     
                         Spacer(modifier = Modifier.height(12.dp))
     
+                        val system = getActiveUnitSystem(unitsPref)
                         Row(modifier = Modifier.fillMaxWidth()) {
                           Column(modifier = Modifier.weight(1f)) {
                             Text("DISTANCE", fontSize = 11.sp, color = Color.Gray)
                             Text(
-                                text = String.format("%.2f km", (activePt?.distance ?: 0.0) / 1000.0),
+                                text = formatDistance(activePt?.distance ?: 0.0, system),
                                 fontSize = 28.sp,
                                 fontWeight = FontWeight.Bold,
                                 color = Color.White,
@@ -547,7 +552,7 @@ fun MainScreen(
                           Column(modifier = Modifier.weight(1f)) {
                             Text("TOTAL ASCENT", fontSize = 11.sp, color = Color.Gray)
                             Text(
-                                text = String.format("%d m", course.elevationGain.toInt()),
+                                text = formatElevation(course.elevationGain, system),
                                 fontSize = 28.sp,
                                 fontWeight = FontWeight.Bold,
                                 color = Color.White,
@@ -648,9 +653,29 @@ fun MainScreen(
                         }
                     )
                   }
-                  DropdownMenuItem(
-                      text = { Text("Reload Leadville Sample") },
-                      onClick = {
+                   DropdownMenuItem(
+                       text = {
+                           val label = when (unitsPref) {
+                               "metric" -> "Units: Metric (km/m)"
+                               "imperial" -> "Units: Imperial (mi/ft)"
+                               else -> "Units: Locale Default"
+                           }
+                           Text(label)
+                       },
+                       onClick = {
+                           showSettingsMenu = false
+                           val nextPref = when (unitsPref) {
+                               "default" -> "metric"
+                               "metric" -> "imperial"
+                               else -> "default"
+                           }
+                           unitsPref = nextPref
+                           sharedPrefs.edit().putString("units_preference", nextPref).apply()
+                       }
+                   )
+                   DropdownMenuItem(
+                       text = { Text("Reload Leadville Sample") },
+                       onClick = {
                         showSettingsMenu = false
                         try {
                           val sharedPrefs = context.getSharedPreferences("ruff_terrain_prefs", android.content.Context.MODE_PRIVATE)
@@ -692,6 +717,7 @@ fun MainScreen(
       WaypointDetailDialog(
           waypoint = wpt,
           weatherForecast = state.courseData?.weatherForecast ?: emptyList(),
+          unitsPref = unitsPref,
           onDismiss = { selectedDetailWaypoint = null }
       )
   }
@@ -853,6 +879,7 @@ fun RunningTacticalDashboard(
     permissionLauncher: ManagedActivityResultLauncher<Array<String>, Map<String, Boolean>>,
     isScreenLocked: Boolean,
     onLockToggle: (Boolean) -> Unit,
+    unitsPref: String = "default",
     modifier: Modifier = Modifier
 ) {
     val course = state.courseData ?: return
@@ -1198,9 +1225,10 @@ fun RunningTacticalDashboard(
                                 horizontalArrangement = Arrangement.SpaceBetween
                             ) {
                                 Column {
+                                    val system = getActiveUnitSystem(unitsPref)
                                     Text("DISTANCE TO", color = Color.Gray, fontSize = 10.sp)
                                     Text(
-                                        text = String.format("%.2f km", distLeft / 1000.0),
+                                        text = formatDistance(distLeft, system),
                                         fontSize = 18.sp,
                                         fontWeight = FontWeight.Bold,
                                         color = Color.White,
@@ -1208,9 +1236,10 @@ fun RunningTacticalDashboard(
                                     )
                                 }
                                 Column {
+                                    val system = getActiveUnitSystem(unitsPref)
                                     Text("GAIN TO", color = Color.Gray, fontSize = 10.sp)
                                     Text(
-                                        text = String.format("+%.0f m", gainToNext),
+                                        text = "+${formatElevation(gainToNext, system)}",
                                         fontSize = 18.sp,
                                         fontWeight = FontWeight.Bold,
                                         color = Color(0xFFF59E0B),
@@ -1283,9 +1312,10 @@ fun RunningTacticalDashboard(
                                 horizontalArrangement = Arrangement.SpaceBetween
                             ) {
                                 Column {
+                                    val system = getActiveUnitSystem(unitsPref)
                                     Text("CLIMB REMAINING", color = Color.Gray, fontSize = 10.sp)
                                     Text(
-                                        text = String.format("%.2f km", climb.distanceRemainingM / 1000.0),
+                                        text = formatDistance(climb.distanceRemainingM, system),
                                         fontSize = 16.sp,
                                         fontWeight = FontWeight.Bold,
                                         color = Color.White,
@@ -1293,12 +1323,13 @@ fun RunningTacticalDashboard(
                                     )
                                 }
                                 Column {
+                                    val system = getActiveUnitSystem(unitsPref)
                                     Text("GAIN REMAINING", color = Color.Gray, fontSize = 10.sp)
                                     Text(
-                                        text = String.format("+%.0f m", climb.elevationGainRemainingM),
+                                        text = "+${formatElevation(climb.elevationGainRemainingM, system)}",
                                         fontSize = 16.sp,
                                         fontWeight = FontWeight.Bold,
-                                        color = Color(0xFFF97316),
+                                        color = Color(0xFFFB923C),
                                         fontFamily = FontFamily.Monospace
                                     )
                                 }
@@ -1329,9 +1360,10 @@ fun RunningTacticalDashboard(
                         horizontalArrangement = Arrangement.SpaceBetween
                     ) {
                         Column {
+                            val system = getActiveUnitSystem(unitsPref)
                             Text("TOTAL COURSE DISTANCE", color = Color.Gray, fontSize = 9.sp)
                             Text(
-                                text = String.format("%.2f / %.2f km", currentDist / 1000.0, course.totalDistance / 1000.0),
+                                text = "${formatDistance(currentDist, system, false)} / ${formatDistance(course.totalDistance, system)}",
                                 fontSize = 18.sp,
                                 fontWeight = FontWeight.Bold,
                                 color = Color.White,
@@ -1339,12 +1371,13 @@ fun RunningTacticalDashboard(
                             )
                         }
                         Column(horizontalAlignment = Alignment.End) {
+                            val system = getActiveUnitSystem(unitsPref)
                             Text("ELEVATION GAIN DONE", color = Color.Gray, fontSize = 9.sp)
                             val donePtIdx = (state.scrubberProgress * (course.points.size - 1)).toInt().coerceIn(0, course.points.size - 1)
                             val donePt = course.points.getOrNull(donePtIdx)
                             val gainDone = donePt?.climb ?: 0.0
                             Text(
-                                text = String.format("+%.0f / +%.0f m", gainDone, course.elevationGain),
+                                text = "+${formatElevation(gainDone, system)} / +${formatElevation(course.elevationGain, system)}",
                                 fontSize = 18.sp,
                                 fontWeight = FontWeight.Bold,
                                 color = Color(0xFF10B981),
@@ -1521,12 +1554,19 @@ fun MapViewport(
     mapMode: MapMode,
     scrubberProgress: Double,
     modifier: Modifier = Modifier,
+    unitsPref: String = "default",
     onWaypointClick: (Waypoint) -> Unit = {}
 ) {
     if (mapMode == MapMode.MAP_3D) {
         Map3DViewport(courseData = courseData, scrubberProgress = scrubberProgress, modifier = modifier)
     } else {
-        Map2DViewport(courseData = courseData, scrubberProgress = scrubberProgress, modifier = modifier, onWaypointClick = onWaypointClick)
+        Map2DViewport(
+            courseData = courseData,
+            scrubberProgress = scrubberProgress,
+            modifier = modifier,
+            unitsPref = unitsPref,
+            onWaypointClick = onWaypointClick
+        )
     }
 }
 
@@ -1559,8 +1599,11 @@ private fun getFileName(context: Context, uri: Uri): String? {
 fun WaypointDetailDialog(
     waypoint: Waypoint,
     weatherForecast: List<WeatherCondition>,
+    unitsPref: String = "default",
     onDismiss: () -> Unit
 ) {
+    val context = LocalContext.current
+    val system = getActiveUnitSystem(unitsPref)
     val station = waypoint.extensions?.station
     val isFinish = waypoint.name.contains("Finish", ignoreCase = true) ||
             waypoint.symbol.contains("finish", ignoreCase = true) ||
@@ -1590,9 +1633,8 @@ fun WaypointDetailDialog(
                 
                 Spacer(modifier = Modifier.height(4.dp))
                 
-                val distKm = waypoint.distanceMeters / 1000.0
                 Text(
-                    text = String.format(Locale.US, "Distance: %.2f km | Elevation: %d m", distKm, waypoint.elevation.toInt()),
+                    text = "Distance: ${formatDistance(waypoint.distanceMeters, system)} | Elevation: ${formatElevation(waypoint.elevation, system)}",
                     style = MaterialTheme.typography.bodyMedium,
                     color = Color.LightGray
                 )
@@ -1671,7 +1713,7 @@ fun WaypointDetailDialog(
                     Text(
                         text = "• Condition: ${weather.conditionEmoji} ${weather.conditionText}\n" +
                                String.format(Locale.US, "• Temperature: %.1f°C / %.1f°F\n", weather.temperature, tempF) +
-                               String.format(Locale.US, "• Wind: %.1f km/h | Humidity: %.1f%%\n", weather.windSpeed, weather.humidity) +
+                               "• Wind: ${formatWindSpeed(weather.windSpeed, system)} | Humidity: ${String.format(Locale.US, "%.1f%%", weather.humidity)}\n" +
                                String.format(Locale.US, "• Rain Probability: %.0f%%", weather.rainProbability),
                         style = MaterialTheme.typography.bodySmall,
                         color = Color.LightGray,
@@ -1758,5 +1800,65 @@ fun WaypointDetailDialog(
                 }
             }
         }
+    }
+}
+
+fun getActiveUnitSystem(pref: String): String {
+    if (pref == "metric") return "metric"
+    if (pref == "imperial") return "imperial"
+    
+    val locale = java.util.Locale.getDefault()
+    val country = locale.country.uppercase()
+    return if (country == "US" || country == "LR" || country == "MM") {
+        "imperial"
+    } else {
+        "metric"
+    }
+}
+
+fun formatDistance(meters: Double, system: String, includeUnit: Boolean = true): String {
+    return if (system == "imperial") {
+        val miles = meters / 1609.344
+        if (includeUnit) String.format(java.util.Locale.US, "%.2f mi", miles) else String.format(java.util.Locale.US, "%.2f", miles)
+    } else {
+        val km = meters / 1000.0
+        if (includeUnit) String.format(java.util.Locale.US, "%.2f km", km) else String.format(java.util.Locale.US, "%.2f", km)
+    }
+}
+
+fun formatDistanceShort(meters: Double, system: String): String {
+    return if (system == "imperial") {
+        val miles = meters / 1609.344
+        String.format(java.util.Locale.US, "%.1f mi", miles)
+    } else {
+        val km = meters / 1000.0
+        String.format(java.util.Locale.US, "%.1f km", km)
+    }
+}
+
+fun formatElevation(meters: Double, system: String): String {
+    return if (system == "imperial") {
+        val feet = meters * 3.28084
+        String.format(java.util.Locale.US, "%d ft", feet.toInt())
+    } else {
+        String.format(java.util.Locale.US, "%d m", meters.toInt())
+    }
+}
+
+fun formatPace(minPerKm: Double, system: String): String {
+    return if (system == "imperial") {
+        val minPerMile = minPerKm * 1.609344
+        String.format(java.util.Locale.US, "%.1f min/mi", minPerMile)
+    } else {
+        String.format(java.util.Locale.US, "%.1f min/km", minPerKm)
+    }
+}
+
+fun formatWindSpeed(kmh: Double, system: String): String {
+    return if (system == "imperial") {
+        val mph = kmh * 0.621371
+        String.format(java.util.Locale.US, "%.1f mph", mph)
+    } else {
+        String.format(java.util.Locale.US, "%.1f km/h", kmh)
     }
 }
