@@ -43,9 +43,21 @@ import com.google.android.gms.maps.model.LatLngBounds
 import com.google.maps.android.compose.GoogleMap
 import com.google.maps.android.compose.MapUiSettings
 import com.google.maps.android.compose.Marker
+import com.google.maps.android.compose.MarkerInfoWindowContent
 import com.google.maps.android.compose.Polyline
 import com.google.maps.android.compose.rememberCameraPositionState
 import com.google.maps.android.compose.rememberMarkerState
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.background
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material3.Text
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import java.util.Locale
 
 @Composable
@@ -158,25 +170,45 @@ fun Map2DViewport(
                 }
             }.joinToString(" ")
 
-            val snippetText = buildString {
-                if (wpt.description.isNotEmpty()) {
-                    append(wpt.description)
-                } else {
-                    val distKm = wpt.distanceMeters / 1000.0
-                    append(String.format(Locale.US, "Distance: %.2f km | Elevation: %d m", distKm, wpt.elevation.toInt()))
-                }
-                if (amenities.isNotEmpty()) {
-                    append("\n$amenities")
-                }
-            }
-
-            Marker(
+            MarkerInfoWindowContent(
                 state = rememberMarkerState(position = LatLng(wpt.latitude, wpt.longitude)),
-                title = wpt.name,
-                snippet = snippetText,
                 icon = if (isAidStation) aidStationIcon else waypointIcon,
                 onInfoWindowClick = { onWaypointClick(wpt) }
-            )
+            ) { marker ->
+                Box(
+                    modifier = Modifier
+                        .background(Color(0xFF0F172A), shape = RoundedCornerShape(8.dp))
+                        .padding(12.dp)
+                ) {
+                    Column {
+                        Text(
+                            text = wpt.name,
+                            color = Color.White,
+                            fontWeight = FontWeight.Bold,
+                            fontSize = 14.sp
+                        )
+                        Spacer(modifier = Modifier.height(2.dp))
+                        Text(
+                            text = if (wpt.description.isNotEmpty()) {
+                                wpt.description
+                            } else {
+                                val distKm = wpt.distanceMeters / 1000.0
+                                String.format(Locale.US, "Distance: %.2f km | Elevation: %d m", distKm, wpt.elevation.toInt())
+                            },
+                            color = Color.LightGray,
+                            fontSize = 11.sp
+                        )
+                        if (amenities.isNotEmpty()) {
+                            Spacer(modifier = Modifier.height(6.dp))
+                            Text(
+                                text = amenities,
+                                color = Color.White,
+                                fontSize = 16.sp
+                            )
+                        }
+                    }
+                }
+            }
         }
 
         // Draw runner progress marker dot

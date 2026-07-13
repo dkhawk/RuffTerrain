@@ -1593,7 +1593,8 @@ fun WaypointDetailDialog(
                 
                 // 1. Expected Arrival / Cutoff
                 val station = waypoint.extensions?.station
-                val pass = station?.passes?.firstOrNull()
+                val passesList = station?.passes ?: emptyList()
+                val pass = passesList.firstOrNull()
                 
                 Text(
                     text = "⏰ EXPECTED ARRIVAL & TIME LIMITS",
@@ -1603,15 +1604,19 @@ fun WaypointDetailDialog(
                 )
                 Spacer(modifier = Modifier.height(4.dp))
                 
-                if (pass != null) {
-                    val target = pass.targetArrival ?: "Not set"
-                    val cutoff = pass.cutoffElapsed ?: pass.cutoffClock ?: "No cutoff"
-                    Text(
-                        text = "• Target Arrival: $target (elapsed)\n• Cutoff Limit: $cutoff",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = Color.LightGray,
-                        lineHeight = 20.sp
-                    )
+                if (passesList.isNotEmpty()) {
+                    val isSinglePass = passesList.size <= 1
+                    passesList.forEach { p ->
+                        val target = p.targetArrival ?: "Not set"
+                        val cutoff = p.cutoffElapsed ?: p.cutoffClock ?: "No cutoff"
+                        val prefix = if (isSinglePass) "• " else "• Pass ${p.num}: "
+                        Text(
+                            text = "${prefix}Target Arrival: $target (elapsed) | Cutoff: $cutoff",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = Color.LightGray,
+                            lineHeight = 20.sp
+                        )
+                    }
                 } else {
                     Text(
                         text = "No expected arrival or cutoff data available.",
