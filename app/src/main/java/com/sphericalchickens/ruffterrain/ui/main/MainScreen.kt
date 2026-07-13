@@ -16,6 +16,9 @@
 
 package com.sphericalchickens.ruffterrain.ui.main
 
+import android.content.Context
+import android.net.Uri
+import android.provider.OpenableColumns
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
@@ -111,6 +114,16 @@ fun MainScreen(
           try {
               context.contentResolver.openInputStream(uri)?.use { stream ->
                   val bytes = stream.readBytes()
+                  
+                  // Save file to app directory
+                  val filename = getFileName(context, uri) ?: "imported_course_${System.currentTimeMillis()}.gpx"
+                  val destFile = java.io.File(context.filesDir, filename)
+                  destFile.writeBytes(bytes)
+                  
+                  // Save filename to SharedPreferences
+                  val sharedPrefs = context.getSharedPreferences("ruff_terrain_prefs", Context.MODE_PRIVATE)
+                  sharedPrefs.edit().putString("last_opened_course", filename).apply()
+                  
                   viewModel.loadCourseBytes(bytes)
               }
           } catch (e: Exception) {
@@ -196,13 +209,30 @@ fun MainScreen(
       }
   }
 
-  // Auto-load standard Leadville asset course on startup
+  // Auto-load standard Leadville asset course or last opened course on startup
   LaunchedEffect(state.courseData, state.isLoading, state.errorMessage) {
     if (state.courseData == null && !state.isLoading && state.errorMessage == null) {
       try {
-        context.assets.open("leadville_sample.gpx").use { assetStream ->
-          val bytes = assetStream.readBytes()
-          viewModel.loadCourseBytes(bytes)
+        val sharedPrefs = context.getSharedPreferences("ruff_terrain_prefs", Context.MODE_PRIVATE)
+        val lastOpened = sharedPrefs.getString("last_opened_course", null)
+        var loaded = false
+        if (lastOpened != null) {
+          val file = java.io.File(context.filesDir, lastOpened)
+          if (file.exists()) {
+            try {
+              val bytes = file.readBytes()
+              viewModel.loadCourseBytes(bytes)
+              loaded = true
+            } catch (e: Exception) {
+              // ignore
+            }
+          }
+        }
+        if (!loaded) {
+          context.assets.open("leadville_sample.gpx").use { assetStream ->
+            val bytes = assetStream.readBytes()
+            viewModel.loadCourseBytes(bytes)
+          }
         }
       } catch (e: Exception) {
         // Fallback for missing assets
@@ -582,6 +612,9 @@ fun MainScreen(
                       onClick = {
                         showSettingsMenu = false
                         try {
+                          val sharedPrefs = context.getSharedPreferences("ruff_terrain_prefs", android.content.Context.MODE_PRIVATE)
+                          sharedPrefs.edit().remove("last_opened_course").apply()
+                          
                           context.assets.open("leadville_sample.gpx").use { assetStream ->
                             viewModel.loadCourseBytes(assetStream.readBytes())
                           }
@@ -1217,4 +1250,29 @@ fun MapViewport(
     } else {
         Map2DViewport(courseData = courseData, scrubberProgress = scrubberProgress, modifier = modifier)
     }
+}
+
+private fun getFileName(context: Context, uri: Uri): String? {
+    var result: String? = null
+    if (uri.scheme == "content") {
+        val cursor = context.contentResolver.query(uri, null, null, null, null)
+        try {
+            if (cursor != null && cursor.moveToFirst()) {
+                val index = cursor.getColumnIndex(OpenableColumns.DISPLAY_NAME)
+                if (index >= 0) {
+                    result = cursor.getString(index)
+                }
+            }
+        } finally {
+            cursor?.close()
+        }
+    }
+    if (result == null) {
+        result = uri.path
+        val cut = result?.lastIndexOf('/') ?: -1
+        if (cut != -1) {
+            result = result?.substring(cut + 1)
+        }
+    }
+    return result
 }

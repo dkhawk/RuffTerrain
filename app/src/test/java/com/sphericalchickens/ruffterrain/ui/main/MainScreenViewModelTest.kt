@@ -47,7 +47,7 @@ class MainScreenViewModelTest {
         assertFalse(state.isLoading)
         assertNull(state.errorMessage)
         assertEquals(0.0, state.scrubberProgress, 0.001)
-        assertEquals(MapMode.MAP_3D, state.mapMode)
+        assertEquals(MapMode.MAP_2D, state.mapMode)
     }
 
     @Test
@@ -106,15 +106,15 @@ class MainScreenViewModelTest {
         val repository = FakeDataRepository()
         val viewModel = MainScreenViewModel(repository)
 
-        // Initial mode should be MAP_3D
-        assertEquals(MapMode.MAP_3D, viewModel.uiState.value.mapMode)
-
-        // Toggle once -> MAP_2D
-        viewModel.toggleMapMode()
+        // Initial mode should be MAP_2D
         assertEquals(MapMode.MAP_2D, viewModel.uiState.value.mapMode)
 
+        // Toggle once -> MAP_3D
         viewModel.toggleMapMode()
         assertEquals(MapMode.MAP_3D, viewModel.uiState.value.mapMode)
+
+        viewModel.toggleMapMode()
+        assertEquals(MapMode.MAP_2D, viewModel.uiState.value.mapMode)
     }
 
     @Test
