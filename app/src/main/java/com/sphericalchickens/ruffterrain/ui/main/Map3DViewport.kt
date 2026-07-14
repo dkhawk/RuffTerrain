@@ -39,6 +39,7 @@ import com.google.android.gms.maps3d.model.PolylineOptions
 import com.google.android.gms.maps3d.model.camera
 import com.google.android.gms.maps3d.model.latLngAltitude
 import kotlinx.coroutines.isActive
+import kotlinx.coroutines.delay
 
 
 @Composable
@@ -79,6 +80,10 @@ fun Map3DViewport(
     androidx.compose.runtime.LaunchedEffect(googleMap, points, courseData.waypoints) {
         val map = googleMap ?: return@LaunchedEffect
         
+        // Wait a short duration for the native 3D renderer context to fully initialize
+        delay(300)
+        if (!isActive) return@LaunchedEffect
+
         // Configure and add Polyline course path
         val polyOpts = PolylineOptions().apply {
             path = points.map { pt ->
@@ -102,6 +107,9 @@ fun Map3DViewport(
         var runnerMarker: Marker? = null
 
         try {
+            // Wait slightly longer to let the camera subsystem stabilize before querying/centering
+            delay(500)
+
             // Collect progress updates reactively while coroutine context is active
             val coroutineScope = this
             androidx.compose.runtime.snapshotFlow { scrubberProgress }
