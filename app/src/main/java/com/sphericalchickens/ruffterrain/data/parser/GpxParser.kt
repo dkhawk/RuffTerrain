@@ -77,10 +77,33 @@ object GpxParser {
         doc.documentElement.normalize()
 
         // Extract track/course name
-        val nameNodes = doc.getElementsByTagName("name")
         var currentTrackName = "Imported Course"
-        if (nameNodes.length > 0) {
-            currentTrackName = nameNodes.item(0).textContent
+        val metadataNodes = doc.getElementsByTagName("metadata")
+        var nameFound = false
+        if (metadataNodes.length > 0) {
+            val metadataEl = metadataNodes.item(0) as Element
+            val nameEl = metadataEl.getChildElement("name")
+            if (nameEl != null) {
+                currentTrackName = nameEl.textContent
+                nameFound = true
+            }
+        }
+        if (!nameFound) {
+            val trkNodes = doc.getElementsByTagName("trk")
+            if (trkNodes.length > 0) {
+                val trkEl = trkNodes.item(0) as Element
+                val trkNameEl = trkEl.getChildElement("name")
+                if (trkNameEl != null) {
+                    currentTrackName = trkNameEl.textContent
+                    nameFound = true
+                }
+            }
+        }
+        if (!nameFound) {
+            val nameNodes = doc.getElementsByTagName("name")
+            if (nameNodes.length > 0) {
+                currentTrackName = nameNodes.item(0).textContent
+            }
         }
 
         // Extract track points
@@ -168,7 +191,6 @@ object GpxParser {
 
         // Extract metadata extensions (ca:race_plan, ca:execution_plan)
         var executionPlan: ExecutionPlan? = null
-        val metadataNodes = doc.getElementsByTagName("metadata")
         if (metadataNodes.length > 0) {
             val metadataEl = metadataNodes.item(0) as Element
             val extEl = metadataEl.getChildElement("extensions")

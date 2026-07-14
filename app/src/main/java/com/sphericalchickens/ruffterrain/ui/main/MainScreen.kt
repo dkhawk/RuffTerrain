@@ -39,8 +39,17 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.layout.width
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material3.RadioButton
+import androidx.compose.material3.RadioButtonDefaults
+import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.Switch
+import androidx.compose.material3.TextButton
+import androidx.compose.material3.TextFieldDefaults
+import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
@@ -74,6 +83,7 @@ import com.sphericalchickens.ruffterrain.data.model.CourseData
 import com.sphericalchickens.ruffterrain.data.model.MapMode
 import com.sphericalchickens.ruffterrain.data.model.Waypoint
 import com.sphericalchickens.ruffterrain.data.model.WeatherCondition
+import com.google.android.gms.maps.model.LatLng
 import androidx.activity.compose.ManagedActivityResultLauncher
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.fadeIn
@@ -103,8 +113,21 @@ fun MainScreen(
   var isControlsVisible by remember { mutableStateOf(true) }
   var lastInteractionTime by remember { mutableStateOf(System.currentTimeMillis()) }
   var selectedDetailWaypoint by remember { mutableStateOf<Waypoint?>(null) }
+  var pendingWaypointLatLng by remember { mutableStateOf<LatLng?>(null) }
+  var editingWaypoint by remember { mutableStateOf<Waypoint?>(null) }
   val sharedPrefs = remember { context.getSharedPreferences("ruff_terrain_prefs", android.content.Context.MODE_PRIVATE) }
   var unitsPref by remember { mutableStateOf(sharedPrefs.getString("units_preference", "default") ?: "default") }
+  var accuracyPref by remember { mutableStateOf(sharedPrefs.getString("accuracy_preference", "AUTO") ?: "AUTO") }
+  var pauseTimePref by remember { mutableStateOf(sharedPrefs.getInt("pause_time_preference", 2)) }
+  var mapTypePref by remember { mutableStateOf(sharedPrefs.getString("map_type_preference", "NORMAL") ?: "NORMAL") }
+  var showMapTypeDialog by remember { mutableStateOf(false) }
+
+  // Sync settings with VM on startup/change
+  LaunchedEffect(accuracyPref, pauseTimePref) {
+      val mode = try { LocationAccuracyMode.valueOf(accuracyPref) } catch(e: Exception) { LocationAccuracyMode.AUTO }
+      viewModel.updateLocationAccuracyMode(mode)
+      viewModel.updateExpectedPauseTimeMinutes(pauseTimePref)
+  }
 
   // Auto-hide controls after a timeout (3 seconds) of no interaction
   LaunchedEffect(isControlsVisible, lastInteractionTime) {
@@ -166,8 +189,29 @@ fun MainScreen(
       }
   }
 
+  val resolvedAccuracyMode = if (state.locationAccuracyMode == LocationAccuracyMode.AUTO) {
+      val course = state.courseData
+      val targetHours = course?.executionPlan?.targetDurationHrs
+          ?: course?.let { (it.totalDistance / 1.38) / 3600.0 }
+          ?: 0.0
+      when {
+          targetHours < 3.0 -> LocationAccuracyMode.HIGH_PERFORMANCE
+          targetHours < 8.0 -> LocationAccuracyMode.BALANCED
+          else -> LocationAccuracyMode.ULTRA_SAVER
+      }
+  } else {
+      state.locationAccuracyMode
+  }
+
+  val (minTimeMs, minDistanceM) = when (resolvedAccuracyMode) {
+      LocationAccuracyMode.HIGH_PERFORMANCE -> Pair(2000L, 2f)
+      LocationAccuracyMode.BALANCED -> Pair(15000L, 15f)
+      LocationAccuracyMode.ULTRA_SAVER -> Pair(60000L, 50f)
+      else -> Pair(15000L, 15f)
+  }
+
   // Register location updates when GPS is enabled
-  LaunchedEffect(state.isGpsEnabled) {
+  LaunchedEffect(state.isGpsEnabled, minTimeMs, minDistanceM) {
       if (state.isGpsEnabled) {
           try {
               val hasFine = ContextCompat.checkSelfPermission(
@@ -185,8 +229,8 @@ fun MainScreen(
                   }
                   locationManager.requestLocationUpdates(
                       provider,
-                      1000L, // 1 sec
-                      1f,    // 1 meter
+                      minTimeMs,
+                      minDistanceM,
                       locationListener
                   )
                   val lastKnown = locationManager.getLastKnownLocation(provider)
@@ -291,12 +335,42 @@ fun MainScreen(
             scrubberProgress = state.scrubberProgress,
             modifier = Modifier.fillMaxSize(),
             unitsPref = unitsPref,
-            onWaypointClick = { selectedDetailWaypoint = it }
+            mapTypePref = mapTypePref,
+            onWaypointClick = { selectedDetailWaypoint = it },
+            onMapLongClick = {
+                if (state.appMode == AppMode.IMPORT_EDIT) {
+                    pendingWaypointLatLng = it
+                }
+            }
         )
       }
 
       // Overlay UI layer
       Box(modifier = Modifier.fillMaxSize()) {
+        if (state.appMode == AppMode.IMPORT_EDIT && course != null) {
+            Card(
+                colors = CardDefaults.cardColors(containerColor = Color(0xFF0F172A).copy(alpha = 0.85f)),
+                shape = RoundedCornerShape(12.dp),
+                border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFF3B82F6).copy(alpha = 0.5f)),
+                modifier = Modifier
+                    .align(Alignment.TopCenter)
+                    .padding(top = 16.dp)
+                    .padding(horizontal = 24.dp)
+            ) {
+                Row(
+                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.Center
+                ) {
+                    Text(
+                        text = "💡 Planning Mode: Long-press on the map to add custom waypoints.",
+                        color = Color.White,
+                        fontSize = 12.sp,
+                        fontWeight = FontWeight.Medium
+                    )
+                }
+            }
+        }
         
         if (state.appMode == AppMode.RUNNING && !state.showRunningMap && course != null) {
             // RENDER MAPLESS TACTICAL RUN DASHBOARD
@@ -646,6 +720,20 @@ fun MainScreen(
                    )
                   if (state.appMode != AppMode.RUNNING) {
                     DropdownMenuItem(
+                        text = {
+                            val label = when (mapTypePref) {
+                                "SATELLITE" -> "Map Type: Satellite"
+                                "HYBRID" -> "Map Type: Hybrid"
+                                else -> "Map Type: Regular Map"
+                            }
+                            Text("🗺️ $label")
+                        },
+                        onClick = {
+                            showSettingsMenu = false
+                            showMapTypeDialog = true
+                        }
+                    )
+                    DropdownMenuItem(
                         text = { Text(if (state.mapMode == MapMode.MAP_3D) "Switch to 2D Map" else "Switch to 3D Map") },
                         onClick = {
                           showSettingsMenu = false
@@ -674,21 +762,37 @@ fun MainScreen(
                        }
                    )
                    DropdownMenuItem(
-                       text = { Text("Reload Leadville Sample") },
-                       onClick = {
-                        showSettingsMenu = false
-                        try {
-                          val sharedPrefs = context.getSharedPreferences("ruff_terrain_prefs", android.content.Context.MODE_PRIVATE)
-                          sharedPrefs.edit().remove("last_opened_course").apply()
-                          
-                          context.assets.open("leadville_sample.gpx").use { assetStream ->
-                            viewModel.loadCourseBytes(assetStream.readBytes())
-                          }
-                        } catch (e: Exception) {
-                          // ignore
-                        }
-                      }
-                  )
+                        text = { Text("Reload Leadville Sample") },
+                        onClick = {
+                         showSettingsMenu = false
+                         try {
+                           val sharedPrefs = context.getSharedPreferences("ruff_terrain_prefs", android.content.Context.MODE_PRIVATE)
+                           sharedPrefs.edit().remove("last_opened_course").apply()
+                           
+                           context.assets.open("leadville_sample.gpx").use { assetStream ->
+                             viewModel.loadCourseBytes(assetStream.readBytes())
+                           }
+                         } catch (e: Exception) {
+                           // ignore
+                         }
+                       }
+                   )
+                   DropdownMenuItem(
+                        text = { Text("Load Bear Canyon Sample") },
+                        onClick = {
+                         showSettingsMenu = false
+                         try {
+                           val sharedPrefs = context.getSharedPreferences("ruff_terrain_prefs", android.content.Context.MODE_PRIVATE)
+                           sharedPrefs.edit().remove("last_opened_course").apply()
+                           
+                           context.assets.open("bear_canyon_sample.gpx").use { assetStream ->
+                             viewModel.loadCourseBytes(assetStream.readBytes())
+                           }
+                         } catch (e: Exception) {
+                           // ignore
+                         }
+                       }
+                   )
                 }
               }
             }
@@ -706,19 +810,83 @@ fun MainScreen(
       )
   }
 
-  if (state.showCriticalOffCourseDialog) {
-      CriticalOffCourseDialog(
-          deviation = state.deviationMeters,
-          onAcknowledge = { viewModel.acknowledgeOffCourse() }
-      )
-  }
+   if (state.showCriticalOffCourseDialog) {
+       CriticalOffCourseDialog(
+           deviation = state.deviationMeters,
+           onAcknowledge = { viewModel.acknowledgeOffCourse() }
+       )
+   }
+
+   pendingWaypointLatLng?.let { latLng ->
+       AddWaypointDialog(
+           latLng = latLng,
+           onDismiss = { pendingWaypointLatLng = null },
+           onSave = { name, symbol, water, food, toilets, medical, crew, dropBag ->
+               viewModel.addCustomWaypoint(
+                   name = name,
+                   latitude = latLng.latitude,
+                   longitude = latLng.longitude,
+                   symbol = symbol,
+                   water = water,
+                   food = food,
+                   toilets = toilets,
+                   medical = medical,
+                   crewAllowed = crew,
+                   dropBagAllowed = dropBag
+               )
+               pendingWaypointLatLng = null
+           }
+       )
+    }
+
+    if (showMapTypeDialog) {
+        MapTypeDialog(
+            currentType = mapTypePref,
+            onDismiss = { showMapTypeDialog = false },
+            onSelect = { type ->
+                mapTypePref = type
+                sharedPrefs.edit().putString("map_type_preference", type).apply()
+                showMapTypeDialog = false
+            }
+        )
+    }
 
   selectedDetailWaypoint?.let { wpt ->
       WaypointDetailDialog(
           waypoint = wpt,
           weatherForecast = state.courseData?.weatherForecast ?: emptyList(),
           unitsPref = unitsPref,
-          onDismiss = { selectedDetailWaypoint = null }
+          appMode = state.appMode,
+          onDismiss = { selectedDetailWaypoint = null },
+          onEditClick = {
+              editingWaypoint = wpt
+              selectedDetailWaypoint = null
+          },
+          onRemoveClick = {
+              viewModel.removeWaypoint(wpt.id)
+              selectedDetailWaypoint = null
+          }
+      )
+  }
+
+  editingWaypoint?.let { wpt ->
+      EditWaypointDialog(
+          waypoint = wpt,
+          onDismiss = { editingWaypoint = null },
+          onSave = { name, symbol, water, food, toilets, medical, crew, dropBag ->
+              viewModel.editWaypoint(
+                  waypointId = wpt.id,
+                  name = name,
+                  symbol = symbol,
+                  water = water,
+                  food = food,
+                  toilets = toilets,
+                  medical = medical,
+                  crew = crew,
+                  dropBag = dropBag
+              )
+              editingWaypoint = null
+          }
       )
   }
 }
@@ -1555,7 +1723,9 @@ fun MapViewport(
     scrubberProgress: Double,
     modifier: Modifier = Modifier,
     unitsPref: String = "default",
-    onWaypointClick: (Waypoint) -> Unit = {}
+    mapTypePref: String = "NORMAL",
+    onWaypointClick: (Waypoint) -> Unit = {},
+    onMapLongClick: (LatLng) -> Unit = {}
 ) {
     if (mapMode == MapMode.MAP_3D) {
         Map3DViewport(courseData = courseData, scrubberProgress = scrubberProgress, modifier = modifier)
@@ -1565,7 +1735,9 @@ fun MapViewport(
             scrubberProgress = scrubberProgress,
             modifier = modifier,
             unitsPref = unitsPref,
-            onWaypointClick = onWaypointClick
+            mapTypePref = mapTypePref,
+            onWaypointClick = onWaypointClick,
+            onMapLongClick = onMapLongClick
         )
     }
 }
@@ -1600,7 +1772,10 @@ fun WaypointDetailDialog(
     waypoint: Waypoint,
     weatherForecast: List<WeatherCondition>,
     unitsPref: String = "default",
-    onDismiss: () -> Unit
+    appMode: AppMode = AppMode.IMPORT_EDIT,
+    onDismiss: () -> Unit,
+    onEditClick: () -> Unit = {},
+    onRemoveClick: () -> Unit = {}
 ) {
     val context = LocalContext.current
     val system = getActiveUnitSystem(unitsPref)
@@ -1633,11 +1808,40 @@ fun WaypointDetailDialog(
                 
                 Spacer(modifier = Modifier.height(4.dp))
                 
-                Text(
-                    text = "Distance: ${formatDistance(waypoint.distanceMeters, system)} | Elevation: ${formatElevation(waypoint.elevation, system)}",
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = Color.LightGray
-                )
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(
+                        text = "Distance: ${formatDistance(waypoint.distanceMeters, system)} | Elevation: ${formatElevation(waypoint.elevation, system)}",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = Color.LightGray
+                    )
+                    
+                    Button(
+                        onClick = {
+                            val gmmIntentUri = android.net.Uri.parse("google.streetview:cbll=${waypoint.latitude},${waypoint.longitude}")
+                            val mapIntent = android.content.Intent(android.content.Intent.ACTION_VIEW, gmmIntentUri)
+                            mapIntent.setPackage("com.google.android.apps.maps")
+                            try {
+                                context.startActivity(mapIntent)
+                            } catch (e: Exception) {
+                                val webIntent = android.content.Intent(
+                                    android.content.Intent.ACTION_VIEW,
+                                    android.net.Uri.parse("https://www.google.com/maps/@?api=1&map_action=pano&viewpoint=${waypoint.latitude},${waypoint.longitude}")
+                                )
+                                context.startActivity(webIntent)
+                            }
+                        },
+                        colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF0284C7)),
+                        shape = RoundedCornerShape(8.dp),
+                        contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 12.dp, vertical = 6.dp),
+                        modifier = Modifier.height(32.dp)
+                    ) {
+                        Text("🧭 Street View", fontSize = 11.sp, color = Color.White, fontWeight = FontWeight.Bold)
+                    }
+                }
                 
                 Box(
                     modifier = Modifier
@@ -1789,14 +1993,47 @@ fun WaypointDetailDialog(
                 
                 Spacer(modifier = Modifier.height(24.dp))
                 
-                // Action Button
-                Button(
-                    onClick = onDismiss,
-                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF334155)),
-                    shape = RoundedCornerShape(8.dp),
-                    modifier = Modifier.align(Alignment.End)
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
                 ) {
-                    Text("Dismiss", color = Color.White)
+                    if (appMode == AppMode.IMPORT_EDIT) {
+                        val isStartOrFinish = waypoint.id.contains("start", ignoreCase = true) || 
+                                waypoint.id.contains("finish", ignoreCase = true) ||
+                                waypoint.name.contains("Start", ignoreCase = true) ||
+                                waypoint.name.contains("Finish", ignoreCase = true)
+                        
+                        Row {
+                            Button(
+                                onClick = onEditClick,
+                                colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF3B82F6)),
+                                shape = RoundedCornerShape(8.dp)
+                            ) {
+                                Text("Edit", color = Color.White)
+                            }
+                            if (!isStartOrFinish) {
+                                Spacer(modifier = Modifier.width(8.dp))
+                                Button(
+                                    onClick = onRemoveClick,
+                                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFEF4444)),
+                                    shape = RoundedCornerShape(8.dp)
+                                ) {
+                                    Text("Remove", color = Color.White)
+                                }
+                            }
+                        }
+                    } else {
+                        Spacer(modifier = Modifier.weight(1f))
+                    }
+                    
+                    Button(
+                        onClick = onDismiss,
+                        colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF334155)),
+                        shape = RoundedCornerShape(8.dp)
+                    ) {
+                        Text("Dismiss", color = Color.White)
+                    }
                 }
             }
         }
@@ -1860,5 +2097,526 @@ fun formatWindSpeed(kmh: Double, system: String): String {
         String.format(java.util.Locale.US, "%.1f mph", mph)
     } else {
         String.format(java.util.Locale.US, "%.1f km/h", kmh)
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun AddWaypointDialog(
+    latLng: LatLng,
+    onDismiss: () -> Unit,
+    onSave: (
+        name: String,
+        symbol: String,
+        water: Boolean,
+        food: Boolean,
+        toilets: Boolean,
+        medical: Boolean,
+        crew: Boolean,
+        dropBag: Boolean
+    ) -> Unit
+) {
+    var name by remember { mutableStateOf("") }
+    var symbol by remember { mutableStateOf("icons/aid_station.svg") }
+    
+    var water by remember { mutableStateOf(false) }
+    var food by remember { mutableStateOf(false) }
+    var toilets by remember { mutableStateOf(false) }
+    var medical by remember { mutableStateOf(false) }
+    
+    var crew by remember { mutableStateOf(false) }
+    var dropBag by remember { mutableStateOf(false) }
+
+    Dialog(onDismissRequest = onDismiss) {
+        Card(
+            colors = CardDefaults.cardColors(containerColor = Color(0xFF0F172A)),
+            shape = RoundedCornerShape(16.dp),
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(16.dp)
+        ) {
+            Column(
+                modifier = Modifier
+                    .padding(24.dp)
+                    .verticalScroll(rememberScrollState()),
+                horizontalAlignment = Alignment.Start
+            ) {
+                Text(
+                    text = "➕ Add Custom Waypoint",
+                    color = Color.White,
+                    fontWeight = FontWeight.Bold,
+                    fontSize = 18.sp,
+                    modifier = Modifier.padding(bottom = 16.dp)
+                )
+
+                OutlinedTextField(
+                    value = name,
+                    onValueChange = { name = it },
+                    label = { Text("Waypoint Name", color = Color.LightGray) },
+                    singleLine = true,
+                    colors = TextFieldDefaults.colors(
+                        focusedTextColor = Color.White,
+                        unfocusedTextColor = Color.White,
+                        focusedContainerColor = Color.Transparent,
+                        unfocusedContainerColor = Color.Transparent,
+                        focusedIndicatorColor = Color(0xFF3B82F6),
+                        unfocusedIndicatorColor = Color.Gray
+                    ),
+                    modifier = Modifier.fillMaxWidth()
+                )
+
+                Spacer(modifier = Modifier.height(16.dp))
+
+                Text("Select Marker Icon:", color = Color.White, fontWeight = FontWeight.SemiBold, fontSize = 14.sp)
+                Spacer(modifier = Modifier.height(8.dp))
+                
+                val presetIcons = listOf(
+                    "↩️" to "Turn",
+                    "⛰️" to "Summit",
+                    "👁️" to "View",
+                    "🌉" to "Bridge",
+                    "⛺" to "Camp",
+                    "⚠️" to "Hazard",
+                    "💧" to "Water",
+                    "🍞" to "Food",
+                    "🚽" to "Restroom",
+                    "🏥" to "Medical",
+                    "🧭" to "Junction",
+                    "🏁" to "Finish",
+                    "icons/aid_station.svg" to "Aid AS",
+                    "icons/waypoint.svg" to "POI"
+                )
+                
+                presetIcons.chunked(4).forEach { rowItems ->
+                    Row(
+                        modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        rowItems.forEach { (symPath, label) ->
+                            val isSelected = symbol == symPath
+                            Button(
+                                onClick = { symbol = symPath },
+                                colors = ButtonDefaults.buttonColors(
+                                    containerColor = if (isSelected) Color(0xFF3B82F6) else Color(0xFF1E293B)
+                                ),
+                                shape = RoundedCornerShape(8.dp),
+                                contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 6.dp, vertical = 6.dp),
+                                modifier = Modifier.weight(1f).height(36.dp)
+                            ) {
+                                val textLabel = if (symPath.startsWith("icons/")) label else "$symPath $label"
+                                Text(textLabel, color = Color.White, fontSize = 10.sp, maxLines = 1)
+                            }
+                        }
+                        if (rowItems.size < 4) {
+                            repeat(4 - rowItems.size) {
+                                Spacer(modifier = Modifier.weight(1f))
+                            }
+                        }
+                    }
+                }
+                
+                Spacer(modifier = Modifier.height(12.dp))
+                
+                var customSymbolInput by remember { mutableStateOf("") }
+                OutlinedTextField(
+                    value = customSymbolInput,
+                    onValueChange = {
+                        customSymbolInput = it
+                        if (it.isNotEmpty()) {
+                            symbol = it
+                        }
+                    },
+                    label = { Text("Or Type Custom Symbol (Emoji / Text)", color = Color.LightGray) },
+                    singleLine = true,
+                    colors = TextFieldDefaults.colors(
+                        focusedTextColor = Color.White,
+                        unfocusedTextColor = Color.White,
+                        focusedContainerColor = Color.Transparent,
+                        unfocusedContainerColor = Color.Transparent,
+                        focusedIndicatorColor = Color(0xFF3B82F6),
+                        unfocusedIndicatorColor = Color.Gray
+                    ),
+                    modifier = Modifier.fillMaxWidth()
+                )
+
+                if (symbol == "icons/aid_station.svg") {
+                    Spacer(modifier = Modifier.height(12.dp))
+                    Text("Amenities / Services:", color = Color.White, fontWeight = FontWeight.SemiBold, fontSize = 14.sp)
+                    
+                    Row(
+                        modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text("Water (💧)", color = Color.LightGray, fontSize = 13.sp)
+                        Switch(checked = water, onCheckedChange = { water = it })
+                    }
+                    Row(
+                        modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text("Food (🍞)", color = Color.LightGray, fontSize = 13.sp)
+                        Switch(checked = food, onCheckedChange = { food = it })
+                    }
+                    Row(
+                        modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text("Toilets (🚽)", color = Color.LightGray, fontSize = 13.sp)
+                        Switch(checked = toilets, onCheckedChange = { toilets = it })
+                    }
+                    Row(
+                        modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text("Medical (🏥)", color = Color.LightGray, fontSize = 13.sp)
+                        Switch(checked = medical, onCheckedChange = { medical = it })
+                    }
+
+                    Spacer(modifier = Modifier.height(8.dp))
+                    Text("Access rules:", color = Color.White, fontWeight = FontWeight.SemiBold, fontSize = 14.sp)
+                    Row(
+                        modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text("Crew Allowed (👥)", color = Color.LightGray, fontSize = 13.sp)
+                        Switch(checked = crew, onCheckedChange = { crew = it })
+                    }
+                    Row(
+                        modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text("Drop Bag Allowed (💼)", color = Color.LightGray, fontSize = 13.sp)
+                        Switch(checked = dropBag, onCheckedChange = { dropBag = it })
+                    }
+                }
+
+                Spacer(modifier = Modifier.height(24.dp))
+
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.End
+                ) {
+                    TextButton(onClick = onDismiss) {
+                        Text("Cancel", color = Color.LightGray)
+                    }
+                    Spacer(modifier = Modifier.width(16.dp))
+                    Button(
+                        onClick = {
+                            val finalName = name.ifEmpty { 
+                                if (symbol == "icons/aid_station.svg") "Aid Station" else "Waypoint"
+                            }
+                            onSave(finalName, symbol, water, food, toilets, medical, crew, dropBag)
+                        },
+                        colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF10B981)),
+                        shape = RoundedCornerShape(8.dp)
+                    ) {
+                        Text("Save", color = Color.White)
+                    }
+                }
+            }
+        }
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun EditWaypointDialog(
+    waypoint: Waypoint,
+    onDismiss: () -> Unit,
+    onSave: (
+        name: String,
+        symbol: String,
+        water: Boolean,
+        food: Boolean,
+        toilets: Boolean,
+        medical: Boolean,
+        crew: Boolean,
+        dropBag: Boolean
+    ) -> Unit
+) {
+    val station = waypoint.extensions?.station
+    val services = station?.services
+    val access = station?.accessibility
+    
+    var name by remember { mutableStateOf(waypoint.name) }
+    var symbol by remember { mutableStateOf(waypoint.symbol) }
+    
+    var water by remember { mutableStateOf(services?.water ?: false) }
+    var food by remember { mutableStateOf(services?.food ?: false) }
+    var toilets by remember { mutableStateOf(services?.toilets ?: false) }
+    var medical by remember { mutableStateOf(services?.medical ?: false) }
+    
+    var crew by remember { mutableStateOf(access?.crewAllowed ?: false) }
+    var dropBag by remember { mutableStateOf(access?.dropBagAllowed ?: false) }
+
+    Dialog(onDismissRequest = onDismiss) {
+        Card(
+            colors = CardDefaults.cardColors(containerColor = Color(0xFF0F172A)),
+            shape = RoundedCornerShape(16.dp),
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(16.dp)
+        ) {
+            Column(
+                modifier = Modifier
+                    .padding(24.dp)
+                    .verticalScroll(rememberScrollState()),
+                horizontalAlignment = Alignment.Start
+            ) {
+                Text(
+                    text = "✏️ Edit Waypoint",
+                    color = Color.White,
+                    fontWeight = FontWeight.Bold,
+                    fontSize = 18.sp,
+                    modifier = Modifier.padding(bottom = 16.dp)
+                )
+
+                OutlinedTextField(
+                    value = name,
+                    onValueChange = { name = it },
+                    label = { Text("Waypoint Name", color = Color.LightGray) },
+                    singleLine = true,
+                    colors = TextFieldDefaults.colors(
+                        focusedTextColor = Color.White,
+                        unfocusedTextColor = Color.White,
+                        focusedContainerColor = Color.Transparent,
+                        unfocusedContainerColor = Color.Transparent,
+                        focusedIndicatorColor = Color(0xFF3B82F6),
+                        unfocusedIndicatorColor = Color.Gray
+                    ),
+                    modifier = Modifier.fillMaxWidth()
+                )
+
+                Spacer(modifier = Modifier.height(16.dp))
+
+                Text("Select Marker Icon:", color = Color.White, fontWeight = FontWeight.SemiBold, fontSize = 14.sp)
+                Spacer(modifier = Modifier.height(8.dp))
+                
+                val presetIcons = listOf(
+                    "↩️" to "Turn",
+                    "⛰️" to "Summit",
+                    "👁️" to "View",
+                    "🌉" to "Bridge",
+                    "⛺" to "Camp",
+                    "⚠️" to "Hazard",
+                    "💧" to "Water",
+                    "🍞" to "Food",
+                    "🚽" to "Restroom",
+                    "🏥" to "Medical",
+                    "🧭" to "Junction",
+                    "🏁" to "Finish",
+                    "icons/aid_station.svg" to "Aid AS",
+                    "icons/waypoint.svg" to "POI"
+                )
+                
+                presetIcons.chunked(4).forEach { rowItems ->
+                    Row(
+                        modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        rowItems.forEach { (symPath, label) ->
+                            val isSelected = symbol == symPath
+                            Button(
+                                onClick = { symbol = symPath },
+                                colors = ButtonDefaults.buttonColors(
+                                    containerColor = if (isSelected) Color(0xFF3B82F6) else Color(0xFF1E293B)
+                                ),
+                                shape = RoundedCornerShape(8.dp),
+                                contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 6.dp, vertical = 6.dp),
+                                modifier = Modifier.weight(1f).height(36.dp)
+                            ) {
+                                val textLabel = if (symPath.startsWith("icons/")) label else "$symPath $label"
+                                Text(textLabel, color = Color.White, fontSize = 10.sp, maxLines = 1)
+                            }
+                        }
+                        if (rowItems.size < 4) {
+                            repeat(4 - rowItems.size) {
+                                Spacer(modifier = Modifier.weight(1f))
+                            }
+                        }
+                    }
+                }
+                
+                Spacer(modifier = Modifier.height(12.dp))
+                
+                var customSymbolInput by remember { mutableStateOf("") }
+                OutlinedTextField(
+                    value = customSymbolInput,
+                    onValueChange = {
+                        customSymbolInput = it
+                        if (it.isNotEmpty()) {
+                            symbol = it
+                        }
+                    },
+                    label = { Text("Or Type Custom Symbol (Emoji / Text)", color = Color.LightGray) },
+                    singleLine = true,
+                    colors = TextFieldDefaults.colors(
+                        focusedTextColor = Color.White,
+                        unfocusedTextColor = Color.White,
+                        focusedContainerColor = Color.Transparent,
+                        unfocusedContainerColor = Color.Transparent,
+                        focusedIndicatorColor = Color(0xFF3B82F6),
+                        unfocusedIndicatorColor = Color.Gray
+                    ),
+                    modifier = Modifier.fillMaxWidth()
+                )
+
+                if (symbol == "icons/aid_station.svg") {
+                    Spacer(modifier = Modifier.height(12.dp))
+                    Text("Amenities / Services:", color = Color.White, fontWeight = FontWeight.SemiBold, fontSize = 14.sp)
+                    
+                    Row(
+                        modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text("Water (💧)", color = Color.LightGray, fontSize = 13.sp)
+                        Switch(checked = water, onCheckedChange = { water = it })
+                    }
+                    Row(
+                        modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text("Food (🍞)", color = Color.LightGray, fontSize = 13.sp)
+                        Switch(checked = food, onCheckedChange = { food = it })
+                    }
+                    Row(
+                        modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text("Toilets (🚽)", color = Color.LightGray, fontSize = 13.sp)
+                        Switch(checked = toilets, onCheckedChange = { toilets = it })
+                    }
+                    Row(
+                        modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text("Medical (🏥)", color = Color.LightGray, fontSize = 13.sp)
+                        Switch(checked = medical, onCheckedChange = { medical = it })
+                    }
+
+                    Spacer(modifier = Modifier.height(8.dp))
+                    Text("Access rules:", color = Color.White, fontWeight = FontWeight.SemiBold, fontSize = 14.sp)
+                    Row(
+                        modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text("Crew Allowed (👥)", color = Color.LightGray, fontSize = 13.sp)
+                        Switch(checked = crew, onCheckedChange = { crew = it })
+                    }
+                    Row(
+                        modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text("Drop Bag Allowed (💼)", color = Color.LightGray, fontSize = 13.sp)
+                        Switch(checked = dropBag, onCheckedChange = { dropBag = it })
+                    }
+                }
+
+                Spacer(modifier = Modifier.height(24.dp))
+
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.End
+                ) {
+                    TextButton(onClick = onDismiss) {
+                        Text("Cancel", color = Color.LightGray)
+                    }
+                    Spacer(modifier = Modifier.width(16.dp))
+                    Button(
+                        onClick = {
+                            val finalName = name.ifEmpty { 
+                                if (symbol == "icons/aid_station.svg") "Aid Station" else "Waypoint"
+                            }
+                            onSave(finalName, symbol, water, food, toilets, medical, crew, dropBag)
+                        },
+                        colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF10B981)),
+                        shape = RoundedCornerShape(8.dp)
+                    ) {
+                        Text("Save", color = Color.White)
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+fun MapTypeDialog(
+    currentType: String,
+    onDismiss: () -> Unit,
+    onSelect: (String) -> Unit
+) {
+    Dialog(onDismissRequest = onDismiss) {
+        Card(
+            colors = CardDefaults.cardColors(containerColor = Color(0xFF0F172A)),
+            shape = RoundedCornerShape(16.dp),
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(16.dp)
+        ) {
+            Column(
+                modifier = Modifier.padding(24.dp),
+                horizontalAlignment = Alignment.Start
+            ) {
+                Text(
+                    text = "🗺️ Select Map Type",
+                    color = Color.White,
+                    fontWeight = FontWeight.Bold,
+                    fontSize = 18.sp,
+                    modifier = Modifier.padding(bottom = 16.dp)
+                )
+
+                val options = listOf(
+                    "NORMAL" to "Regular Map",
+                    "SATELLITE" to "Satellite View",
+                    "HYBRID" to "Hybrid View"
+                )
+
+                options.forEach { (key, label) ->
+                    val isSelected = currentType == key
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clickable { onSelect(key) }
+                            .padding(vertical = 12.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        androidx.compose.material3.RadioButton(
+                            selected = isSelected,
+                            onClick = { onSelect(key) },
+                            colors = androidx.compose.material3.RadioButtonDefaults.colors(
+                                selectedColor = Color(0xFF3B82F6),
+                                unselectedColor = Color.Gray
+                            )
+                        )
+                        Spacer(modifier = Modifier.width(12.dp))
+                        Text(text = label, color = Color.White, fontSize = 14.sp)
+                    }
+                }
+
+                Spacer(modifier = Modifier.height(16.dp))
+
+                Button(
+                    onClick = onDismiss,
+                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF334155)),
+                    shape = RoundedCornerShape(8.dp),
+                    modifier = Modifier.align(Alignment.End)
+                ) {
+                    Text("Cancel", color = Color.White)
+                }
+            }
+        }
     }
 }

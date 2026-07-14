@@ -23,6 +23,12 @@ import com.sphericalchickens.ruffterrain.data.model.AppMode
 import com.sphericalchickens.ruffterrain.data.model.CourseData
 import com.sphericalchickens.ruffterrain.data.model.MapMode
 import com.sphericalchickens.ruffterrain.data.model.ClimbInfo
+import com.sphericalchickens.ruffterrain.data.model.Waypoint
+import com.sphericalchickens.ruffterrain.data.model.Services
+import com.sphericalchickens.ruffterrain.data.model.Accessibility
+import com.sphericalchickens.ruffterrain.data.model.StationExtensions
+import com.sphericalchickens.ruffterrain.data.model.Station
+import com.sphericalchickens.ruffterrain.data.model.Pass
 import com.sphericalchickens.ruffterrain.util.Haversine
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
@@ -66,8 +72,27 @@ data class MainScreenUiState(
     val showCriticalOffCourseDialog: Boolean = false,
     val cutoffAlertMessage: String? = null,
     val paceAlertMessage: String? = null,
-    val userLocationTimestampMs: Long? = null
+    val userLocationTimestampMs: Long? = null,
+
+    // Advanced projected arrival & battery-saving location fields
+    val locationAccuracyMode: LocationAccuracyMode = LocationAccuracyMode.AUTO,
+    val expectedPauseTimeMinutes: Int = 2,
+    val nextWaypointEtaMinSeconds: Long? = null,
+    val nextWaypointEtaMaxSeconds: Long? = null,
+    val finishEtaMinSeconds: Long? = null,
+    val finishEtaMaxSeconds: Long? = null,
+    val nextWaypointDurationMin: Long? = null,
+    val nextWaypointDurationMax: Long? = null,
+    val finishDurationMin: Long? = null,
+    val finishDurationMax: Long? = null
 )
+
+enum class LocationAccuracyMode {
+    HIGH_PERFORMANCE,
+    BALANCED,
+    ULTRA_SAVER,
+    AUTO
+}
 
 /**
  * ViewModel responsible for orchestrating course state, scrubber operations, and data loading.
@@ -80,6 +105,7 @@ class MainScreenViewModel(private val dataRepository: DataRepository) : ViewMode
     private var playbackJob: Job? = null
     private var simulationJob: Job? = null
     private var raceStartTimestampMs: Long? = null
+    private var lastResolvedIndex: Int? = null
 
     /**
      * Loads a course from an input stream. Reads the bytes synchronously to prevent closure issues.
@@ -103,6 +129,7 @@ class MainScreenViewModel(private val dataRepository: DataRepository) : ViewMode
             val result = dataRepository.loadCourse(bytes.inputStream())
             result.fold(
                 onSuccess = { course ->
+                    lastResolvedIndex = null
                     _uiState.update {
                         val updatedState = it.copy(
                             courseData = course,
@@ -178,6 +205,7 @@ class MainScreenViewModel(private val dataRepository: DataRepository) : ViewMode
      * Updates the active scrubber tracking position (coerced within 0.0 to 1.0).
      */
     fun updateScrubberProgress(progress: Double) {
+        lastResolvedIndex = null
         val cleanProgress = progress.coerceIn(0.0..1.0)
         _uiState.update {
             val course = it.courseData
@@ -299,40 +327,114 @@ class MainScreenViewModel(private val dataRepository: DataRepository) : ViewMode
             val currentDist = nextProgress * totalDist
             var cutoffAlert: String? = null
             
-            // Find the next checkpoint waypoint with a cutoff
+            // Find the next checkpoint waypoint
             val nextWaypoint = course.waypoints
                 .filter { it.distanceMeters > currentDist }
                 .minByOrNull { it.distanceMeters }
             
-            val pass = nextWaypoint?.extensions?.station?.passes?.firstOrNull()
-            // To ensure scenario 3 triggers warning regardless of which course is loaded,
-            // we mock a cutoff of 15 mins at the first waypoint if it doesn't have one during simulation
-            val mockCutoffSeconds = if (state.activeSimulationScenario == "Cutoff" && nextWaypoint != null) {
-                900L // 15 mins cutoff
+            val elapsedSeconds = if (state.activeSimulationScenario != null) {
+                state.elapsedSimulationTimeSeconds
             } else {
-                null
-            }
-            
-            val cutoffLimitSeconds = mockCutoffSeconds ?: pass?.let { p ->
-                val timeStr = p.cutoffElapsed ?: p.cutoffClock
-                timeStr?.let { parseTimeStringToSeconds(it) }
+                ((timestampMs - (raceStartTimestampMs ?: timestampMs)) / 1000)
             }
 
-            if (cutoffLimitSeconds != null && nextWaypoint != null) {
-                val distToWpt = nextWaypoint.distanceMeters - currentDist
-                val projSpeed = if (speed > 0.1) speed else 1.38 // fallback to 5 km/h hiking speed
-                val timeToWptSeconds = distToWpt / projSpeed
+            var nextWptEtaMin: Long? = null
+            var nextWptEtaMax: Long? = null
+            var finishEtaMin: Long? = null
+            var finishEtaMax: Long? = null
+            var nextWptDurationMin: Long? = null
+            var nextWptDurationMax: Long? = null
+            var finishDurationMin: Long? = null
+            var finishDurationMax: Long? = null
+
+            val currentPtIdx = (nextProgress * (course.points.size - 1)).toInt().coerceIn(0, course.points.size - 1)
+            val currentPt = course.points.getOrNull(currentPtIdx)
+            val currentGain = currentPt?.climb ?: 0.0
+
+            if (course.totalDistance > 0.0) {
+                val currentSpeed = if (speed > 0.1) speed else 1.38 // ~5 km/h hiking fallback
                 
-                val elapsedSeconds = if (state.activeSimulationScenario != null) {
-                    state.elapsedSimulationTimeSeconds
+                // 1. Next Waypoint Range
+                if (nextWaypoint != null) {
+                    val distToWpt = nextWaypoint.distanceMeters - currentDist
+                    val etaMinSec = (distToWpt / currentSpeed).toLong()
+                    nextWptEtaMin = elapsedSeconds + etaMinSec
+                    nextWptDurationMin = etaMinSec
+
+                    // Fatigue slowdown coefficient over remaining distance (avg of start and end progress)
+                    val startProgress = nextProgress
+                    val endProgress = (nextWaypoint.distanceMeters / course.totalDistance).coerceIn(0.0..1.0)
+                    val avgProgress = (startProgress + endProgress) / 2.0
+                    val fatigueFactor = 1.0 + 0.15 * avgProgress
+
+                    // Uphill terrain grade multiplier
+                    val nextWptPtIdx = nextWaypoint.closestTrackpointIndex.coerceIn(0, course.points.size - 1)
+                    val nextWptPt = course.points.getOrNull(nextWptPtIdx)
+                    val gainToWpt = ((nextWptPt?.climb ?: 0.0) - currentGain).coerceAtLeast(0.0)
+                    val avgGradeToWpt = if (distToWpt > 10.0) gainToWpt / distToWpt else 0.0
+                    val gradeSlowdown = 1.0 + 3.0 * avgGradeToWpt
+
+                    val speedConservative = (currentSpeed / (fatigueFactor * gradeSlowdown)).coerceAtLeast(0.5)
+                    val etaMaxSec = (distToWpt / speedConservative).toLong()
+
+                    // Sum pause times for intermediate aid stations
+                    val intermediateStations = course.waypoints.count {
+                        it.distanceMeters > currentDist && 
+                        it.distanceMeters < nextWaypoint.distanceMeters && 
+                        isAidStation(it)
+                    }
+                    val totalPauseSec = intermediateStations * state.expectedPauseTimeMinutes * 60L
+
+                    nextWptEtaMax = elapsedSeconds + etaMaxSec + totalPauseSec
+                    nextWptDurationMax = etaMaxSec + totalPauseSec
+                }
+
+                // 2. Finish Range
+                val distToFinish = (course.totalDistance - currentDist).coerceAtLeast(0.0)
+                val etaMinSec = (distToFinish / currentSpeed).toLong()
+                finishEtaMin = elapsedSeconds + etaMinSec
+                finishDurationMin = etaMinSec
+
+                // Conservative finish estimate
+                val avgProgress = (nextProgress + 1.0) / 2.0
+                val fatigueFactor = 1.0 + 0.15 * avgProgress
+
+                val gainToFinish = (course.elevationGain - currentGain).coerceAtLeast(0.0)
+                val avgGradeToFinish = if (distToFinish > 10.0) gainToFinish / distToFinish else 0.0
+                val gradeSlowdown = 1.0 + 3.0 * avgGradeToFinish
+
+                val speedConservative = (currentSpeed / (fatigueFactor * gradeSlowdown)).coerceAtLeast(0.5)
+                val etaMaxSec = (distToFinish / speedConservative).toLong()
+
+                // Sum pause times for remaining aid stations to finish
+                val remainingStations = course.waypoints.count {
+                    it.distanceMeters > currentDist && isAidStation(it)
+                }
+                val totalPauseSec = remainingStations * state.expectedPauseTimeMinutes * 60L
+
+                finishEtaMax = elapsedSeconds + etaMaxSec + totalPauseSec
+                finishDurationMax = etaMaxSec + totalPauseSec
+            }
+
+            // Cutoff Warning Check using conservative eta max
+            if (nextWaypoint != null) {
+                val pass = nextWaypoint.extensions?.station?.passes?.firstOrNull()
+                val mockCutoffSeconds = if (state.activeSimulationScenario == "Cutoff") {
+                    900L // 15 mins cutoff
                 } else {
-                    ((timestampMs - (raceStartTimestampMs ?: timestampMs)) / 1000)
+                    null
                 }
                 
-                val projectedArrivalSeconds = elapsedSeconds + timeToWptSeconds
-                if (projectedArrivalSeconds > cutoffLimitSeconds) {
-                    val diffMins = ((projectedArrivalSeconds - cutoffLimitSeconds) / 60.0).toInt()
-                    cutoffAlert = "⚠️ CUTOFF WARNING: Projected to miss cutoff at ${nextWaypoint.name} by $diffMins min!"
+                val cutoffLimitSeconds = mockCutoffSeconds ?: pass?.let { p ->
+                    val timeStr = p.cutoffElapsed ?: p.cutoffClock
+                    timeStr?.let { parseTimeStringToSeconds(it) }
+                }
+
+                if (cutoffLimitSeconds != null && nextWptEtaMax != null) {
+                    if (nextWptEtaMax > cutoffLimitSeconds) {
+                        val diffMins = ((nextWptEtaMax - cutoffLimitSeconds) / 60.0).toInt()
+                        cutoffAlert = "⚠️ CUTOFF WARNING: Projected to miss cutoff at ${nextWaypoint.name} by $diffMins min!"
+                    }
                 }
             }
 
@@ -361,7 +463,15 @@ class MainScreenViewModel(private val dataRepository: DataRepository) : ViewMode
                 isOffCourseWarningMuted = isMuted,
                 showCriticalOffCourseDialog = showDialog,
                 cutoffAlertMessage = cutoffAlert,
-                paceAlertMessage = paceAlert
+                paceAlertMessage = paceAlert,
+                nextWaypointEtaMinSeconds = nextWptEtaMin,
+                nextWaypointEtaMaxSeconds = nextWptEtaMax,
+                finishEtaMinSeconds = finishEtaMin,
+                finishEtaMaxSeconds = finishEtaMax,
+                nextWaypointDurationMin = nextWptDurationMin,
+                nextWaypointDurationMax = nextWptDurationMax,
+                finishDurationMin = finishDurationMin,
+                finishDurationMax = finishDurationMax
             )
         }
     }
@@ -384,15 +494,26 @@ class MainScreenViewModel(private val dataRepository: DataRepository) : ViewMode
     data class ProjectionResult(val progressDistance: Double, val deviation: Double, val bearing: Double)
 
     /**
-     * Projects GPS coordinates to the closest trail segment.
+     * Projects GPS coordinates to the closest trail segment. Uses a sliding search window to
+     * avoid out-and-back or tight switchback snapping errors.
      */
     fun projectUserToTrail(userLat: Double, userLon: Double, course: CourseData): ProjectionResult {
         if (course.points.isEmpty()) return ProjectionResult(0.0, 0.0, 0.0)
 
-        // 1. Find closest trackpoint index
-        var closestIdx = 0
+        // 1. Determine search window around the last resolved trackpoint index
+        val lastIdx = lastResolvedIndex
+        val searchIndices = if (lastIdx != null) {
+            val start = (lastIdx - 60).coerceAtLeast(0)
+            val end = (lastIdx + 60).coerceAtMost(course.points.size - 1)
+            start..end
+        } else {
+            course.points.indices
+        }
+
+        // Find closest trackpoint index inside the search window
+        var closestIdx = searchIndices.first
         var minDist = Double.MAX_VALUE
-        for (i in course.points.indices) {
+        for (i in searchIndices) {
             val pt = course.points[i]
             val d = Haversine.distance(userLat, userLon, pt.latitude, pt.longitude)
             if (d < minDist) {
@@ -400,6 +521,22 @@ class MainScreenViewModel(private val dataRepository: DataRepository) : ViewMode
                 closestIdx = i
             }
         }
+
+        // Global fallback: if the runner is too far from the search window (e.g. > 75 meters deviation),
+        // scan the entire route to re-acquire their position.
+        if (lastIdx != null && minDist > 75.0) {
+            for (i in course.points.indices) {
+                val pt = course.points[i]
+                val d = Haversine.distance(userLat, userLon, pt.latitude, pt.longitude)
+                if (d < minDist) {
+                    minDist = d
+                    closestIdx = i
+                }
+            }
+        }
+
+        // Update the resolved index for the next update
+        lastResolvedIndex = closestIdx
 
         // 2. Project onto adjacent segments to find cross-track error
         var bestDist = minDist
@@ -548,6 +685,7 @@ class MainScreenViewModel(private val dataRepository: DataRepository) : ViewMode
 
     fun startSimulation(scenarioName: String) {
         stopSimulation()
+        lastResolvedIndex = null
         val course = _uiState.value.courseData ?: return
         if (course.points.isEmpty()) return
 
@@ -629,5 +767,167 @@ class MainScreenViewModel(private val dataRepository: DataRepository) : ViewMode
         super.onCleared()
         playbackJob?.cancel()
         simulationJob?.cancel()
+    }
+
+    fun updateLocationAccuracyMode(mode: LocationAccuracyMode) {
+        _uiState.update { it.copy(locationAccuracyMode = mode) }
+    }
+
+    fun updateExpectedPauseTimeMinutes(minutes: Int) {
+        _uiState.update { it.copy(expectedPauseTimeMinutes = minutes) }
+    }
+
+    fun addCustomWaypoint(
+        name: String,
+        latitude: Double,
+        longitude: Double,
+        symbol: String,
+        water: Boolean = false,
+        food: Boolean = false,
+        toilets: Boolean = false,
+        medical: Boolean = false,
+        crewAllowed: Boolean = false,
+        dropBagAllowed: Boolean = false
+    ) {
+        val currentCourse = _uiState.value.courseData ?: return
+        val points = currentCourse.points
+        if (points.isEmpty()) return
+
+        // Snap to closest trackpoint index and compute distance
+        var closestIdx = 0
+        var minSpatialDist = Double.MAX_VALUE
+        for (idx in points.indices) {
+            val trk = points[idx]
+            val d = Haversine.distance(latitude, longitude, trk.latitude, trk.longitude)
+            if (d < minSpatialDist) {
+                minSpatialDist = d
+                closestIdx = idx
+            }
+        }
+        val finalDist = points.getOrNull(closestIdx)?.distance ?: 0.0
+
+        val services = Services(
+            water = water,
+            unmanagedWater = false,
+            food = food,
+            hotFood = false,
+            toilets = toilets,
+            medical = medical,
+            sleepArea = false
+        )
+        val accessibility = Accessibility(
+            crewAllowed = crewAllowed,
+            pacerAllowed = false,
+            vehicleTier = "none",
+            dropBagAllowed = dropBagAllowed
+        )
+        
+        val stationExtensions = StationExtensions(
+            station = Station(
+                id = "station-custom-${System.currentTimeMillis()}",
+                type = if (water || food || toilets) "aid_station" else "informational",
+                subtype = if (water || food || toilets) "aid_station" else "checkpoint",
+                passes = listOf(Pass(num = 1, distM = finalDist, label = name)),
+                accessibility = accessibility,
+                services = services
+            )
+        )
+
+        val newWpt = Waypoint(
+            id = "wpt-custom-${System.currentTimeMillis()}",
+            name = name,
+            latitude = latitude,
+            longitude = longitude,
+            elevation = points[closestIdx].elevation,
+            symbol = symbol,
+            description = "Custom Waypoint",
+            closestTrackpointIndex = closestIdx,
+            distanceMeters = finalDist,
+            extensions = stationExtensions
+        )
+
+        val newWaypoints = (currentCourse.waypoints + newWpt).sortedBy { it.distanceMeters }
+        val updatedCourse = currentCourse.copy(waypoints = newWaypoints)
+        _uiState.update { it.copy(courseData = updatedCourse) }
+    }
+
+    fun removeWaypoint(waypointId: String) {
+        val currentCourse = _uiState.value.courseData ?: return
+        val newWaypoints = currentCourse.waypoints.filter { it.id != waypointId }
+        val updatedCourse = currentCourse.copy(waypoints = newWaypoints)
+        _uiState.update { it.copy(courseData = updatedCourse) }
+    }
+
+    fun editWaypoint(
+        waypointId: String,
+        name: String,
+        symbol: String,
+        water: Boolean,
+        food: Boolean,
+        toilets: Boolean,
+        medical: Boolean,
+        crew: Boolean,
+        dropBag: Boolean
+    ) {
+        val currentCourse = _uiState.value.courseData ?: return
+        val newWaypoints = currentCourse.waypoints.map { wpt ->
+            if (wpt.id == waypointId) {
+                val services = Services(
+                    water = water,
+                    unmanagedWater = false,
+                    food = food,
+                    hotFood = false,
+                    toilets = toilets,
+                    medical = medical,
+                    sleepArea = false
+                )
+                val accessibility = Accessibility(
+                    crewAllowed = crew,
+                    pacerAllowed = false,
+                    vehicleTier = "none",
+                    dropBagAllowed = dropBag
+                )
+                
+                val stationExtensions = StationExtensions(
+                    station = Station(
+                        id = wpt.extensions?.station?.id ?: "station-${System.currentTimeMillis()}",
+                        type = if (water || food || toilets) "aid_station" else "informational",
+                        subtype = if (water || food || toilets) "aid_station" else "checkpoint",
+                        passes = listOf(Pass(num = 1, distM = wpt.distanceMeters, label = name)),
+                        accessibility = accessibility,
+                        services = services
+                    )
+                )
+
+                wpt.copy(
+                    name = name,
+                    symbol = symbol,
+                    extensions = stationExtensions
+                )
+            } else {
+                wpt
+            }
+        }
+        val updatedCourse = currentCourse.copy(waypoints = newWaypoints)
+        _uiState.update { it.copy(courseData = updatedCourse) }
+    }
+
+    companion object {
+        fun isAidStation(wpt: Waypoint): Boolean {
+            val station = wpt.extensions?.station
+            val services = station?.services
+            return wpt.name.contains("Aid", ignoreCase = true) ||
+                    wpt.name.contains("Water", ignoreCase = true) ||
+                    wpt.name.contains("Medical", ignoreCase = true) ||
+                    wpt.name.contains(Regex("(?i)\\bAS\\d*\\b")) ||
+                    wpt.symbol.contains("aid", ignoreCase = true) ||
+                    station?.subtype == "aid_station" ||
+                    station?.subtype == "water_source" ||
+                    services?.water == true ||
+                    services?.unmanagedWater == true ||
+                    services?.food == true ||
+                    services?.hotFood == true ||
+                    services?.medical == true
+        }
     }
 }

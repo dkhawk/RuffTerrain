@@ -63,7 +63,13 @@ class RunningAlertsTest {
                 extensions = StationExtensions(station = station)
             )
         )
-        return CourseData(name = "Alert test course", points = points, waypoints = waypoints)
+        return CourseData(
+            name = "Alert test course",
+            points = points,
+            waypoints = waypoints,
+            totalDistance = 3333.0,
+            elevationGain = 30.0
+        )
     }
 
     @Test
