@@ -38,6 +38,7 @@ import com.google.android.gms.maps3d.model.Polyline
 import com.google.android.gms.maps3d.model.PolylineOptions
 import com.google.android.gms.maps3d.model.camera
 import com.google.android.gms.maps3d.model.latLngAltitude
+import com.google.android.gms.maps3d.model.markerOptions
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.delay
 
@@ -114,6 +115,14 @@ fun Map3DViewport(
                     val scrubberIndex = (progress * (points.size - 1)).toInt().coerceIn(0, points.size - 1)
                     val scrubberPoint = points.getOrNull(scrubberIndex)
                     if (scrubberPoint != null && coroutineScope.isActive) {
+                        // Add or update the runner marker using the same ID to prevent duplication and JNI race conditions
+                        val runnerOpts = markerOptions {
+                            id = "runner_marker"
+                            position = LatLngAltitude(scrubberPoint.latitude, scrubberPoint.longitude, scrubberPoint.elevation + 8.0)
+                            label = "Runner Position"
+                        }
+                        map.addMarker(runnerOpts)
+
                         // Center the 3D map camera on the runner position
                         val currentCam = map.getCamera()
                         if (currentCam != null && coroutineScope.isActive) {
