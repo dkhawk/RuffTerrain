@@ -27,6 +27,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.layout.width
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
@@ -34,10 +35,14 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.graphics.BlendMode
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.text.TextStyle
+import androidx.compose.ui.text.drawText
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.rememberTextMeasurer
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.sphericalchickens.ruffterrain.data.model.CourseData
@@ -98,56 +103,63 @@ fun RetroGradientBarGraph(
     currentGrade: Double,
     modifier: Modifier = Modifier
 ) {
-    val tier = remember(currentGrade) { classifyGradient(currentGrade) }
-
-    // Format gradient string with directional indicator arrow
-    val gradeText = remember(currentGrade, tier) {
-        val arrow = when {
-            currentGrade > 2.0 -> "▲"
-            currentGrade < -2.0 -> "▼"
-            else -> "■"
-        }
-        String.format(Locale.US, "%s %+.1f%% %s", arrow, currentGrade, tier.label)
+    // 1. Dampen the reading using Compose's Animatable to prevent visual bounce
+    val animatedGrade = remember { androidx.compose.animation.core.Animatable(currentGrade.toFloat()) }
+    
+    androidx.compose.runtime.LaunchedEffect(currentGrade) {
+        animatedGrade.animateTo(
+            targetValue = currentGrade.toFloat(),
+            animationSpec = androidx.compose.animation.core.spring(
+                dampingRatio = androidx.compose.animation.core.Spring.DampingRatioNoBouncy,
+                stiffness = androidx.compose.animation.core.Spring.StiffnessLow
+            )
+        )
     }
 
-    Column(
+    val smoothedGrade = animatedGrade.value.toDouble()
+    val tier = classifyGradient(smoothedGrade)
+
+    // Formatted percentage string shown in a fixed-width container on the left
+    val formattedPercentage = remember(smoothedGrade) {
+        String.format(Locale.US, "%+.1f%%", smoothedGrade)
+    }
+
+    // Text Measurer for scale labels embedded inside the bar
+    val textMeasurer = rememberTextMeasurer()
+
+    Row(
         modifier = modifier
             .fillMaxWidth()
-            .background(Color(0xFF0B1120), RoundedCornerShape(12.dp))
-            .padding(12.dp)
+            .background(Color(0xFF0B1120), RoundedCornerShape(8.dp))
+            .padding(horizontal = 8.dp, vertical = 6.dp),
+        verticalAlignment = Alignment.CenterVertically
     ) {
-        // Digital retro header readout
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.Center,
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            Text(
-                text = gradeText,
-                fontSize = 12.sp,
-                fontWeight = FontWeight.Bold,
-                color = tier.color,
-                fontFamily = FontFamily.Monospace
-            )
-        }
+        // Percentage Value at a fixed space on the left
+        Text(
+            text = formattedPercentage,
+            fontSize = 11.sp,
+            fontWeight = FontWeight.Bold,
+            color = tier.color,
+            fontFamily = FontFamily.Monospace,
+            modifier = Modifier.width(52.dp)
+        )
 
-        Spacer(modifier = Modifier.height(4.dp))
+        Spacer(modifier = Modifier.width(6.dp))
 
-        // 80s / 90s Stereo Volume LED Bar Graph Canvas
+        // Single Line LED Visualizer + Embedded Scales
         Canvas(
             modifier = Modifier
-                .fillMaxWidth()
+                .weight(1f)
                 .height(14.dp)
         ) {
             val canvasWidth = size.width
             val canvasHeight = size.height
 
             // We design a center-zero segmented bar graph spanning from -16% (left) to +24% (right).
-            // Total span = 40 percentage points. Let's create 40 discrete LED blocks (each block = 1%).
             val minGradeSpan = -16.0
             val maxGradeSpan = 24.0
             val totalBlocks = 40
-            val gapPx = 2.dp.toPx()
+            val gapPx = 1.5f.dp.toPx()
 
             // Calculate exact width of each discrete LED block
             val availableWidth = canvasWidth - (gapPx * (totalBlocks - 1))
@@ -163,44 +175,70 @@ fun RetroGradientBarGraph(
                 // Determine the classification color of this specific block
                 val blockColor = classifyGradient(blockGrade).color
 
-                // Determine if this LED block is currently active (illuminated) based on currentGrade.
-                // - If currentGrade > 0: light up blocks between zero and currentGrade.
-                // - If currentGrade < 0: light up blocks between currentGrade and zero.
-                // - If currentGrade is near 0: light up only the zero block.
+                // Determine if this LED block is currently active (illuminated) based on smoothedGrade.
                 val isIlluminated = when {
-                    currentGrade > 0.5 -> i in zeroBlockIndex..ceil(currentGrade - minGradeSpan).toInt().coerceAtMost(totalBlocks - 1)
-                    currentGrade < -0.5 -> i in ceil(currentGrade - minGradeSpan).toInt().coerceAtLeast(0)..zeroBlockIndex
+                    smoothedGrade > 0.5 -> i in zeroBlockIndex..ceil(smoothedGrade - minGradeSpan).toInt().coerceAtMost(totalBlocks - 1)
+                    smoothedGrade < -0.5 -> i in ceil(smoothedGrade - minGradeSpan).toInt().coerceAtLeast(0)..zeroBlockIndex
                     else -> i == zeroBlockIndex
                 }
 
                 // Draw the discrete LED block
                 drawRect(
                     color = if (isIlluminated) blockColor else blockColor.copy(alpha = 0.15f),
-                    topLeft = Offset(x, 1.dp.toPx()),
-                    size = Size(blockWidthPx, canvasHeight - 2.dp.toPx())
+                    topLeft = Offset(x, 0f),
+                    size = Size(blockWidthPx, canvasHeight)
                 )
             }
 
             // Draw crisp Zero (0%) indicator mark over the zero block
             val zeroX = zeroBlockIndex * (blockWidthPx + gapPx) + (blockWidthPx / 2f)
             drawLine(
-                color = Color.White,
+                color = Color.White.copy(alpha = 0.6f),
                 start = Offset(zeroX, 0f),
                 end = Offset(zeroX, canvasHeight),
                 strokeWidth = 1.5.dp.toPx()
             )
-        }
 
-        // Axis threshold labels indicating Negative, Zero, and Positive gradient sectors
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(top = 2.dp),
-            horizontalArrangement = Arrangement.SpaceBetween
-        ) {
-            Text("-16%", fontSize = 8.sp, color = Color(0xFF10B981), fontFamily = FontFamily.Monospace)
-            Text("0%", fontSize = 9.sp, fontWeight = FontWeight.Bold, color = Color.White, fontFamily = FontFamily.Monospace)
-            Text("+24%", fontSize = 8.sp, color = Color(0xFFEF4444), fontFamily = FontFamily.Monospace)
+            // Measure and draw scale labels directly on top of the visualizer bar
+            val labelStyle = TextStyle(
+                color = Color.White,
+                fontSize = 8.5.sp,
+                fontWeight = FontWeight.Bold,
+                fontFamily = FontFamily.Monospace
+            )
+
+            // 1. Draw "-16%" label (Left-aligned, inset slightly)
+            val leftLabelResult = textMeasurer.measure("-16%", style = labelStyle)
+            drawText(
+                textLayoutResult = leftLabelResult,
+                topLeft = Offset(
+                    x = 4.dp.toPx(),
+                    y = (canvasHeight - leftLabelResult.size.height) / 2f
+                ),
+                blendMode = BlendMode.Difference
+            )
+
+            // 2. Draw "0%" label (Centered on the zero baseline)
+            val centerLabelResult = textMeasurer.measure("0%", style = labelStyle)
+            drawText(
+                textLayoutResult = centerLabelResult,
+                topLeft = Offset(
+                    x = zeroX - (centerLabelResult.size.width / 2f),
+                    y = (canvasHeight - centerLabelResult.size.height) / 2f
+                ),
+                blendMode = BlendMode.Difference
+            )
+
+            // 3. Draw "+24%" label (Right-aligned, inset slightly)
+            val rightLabelResult = textMeasurer.measure("+24%", style = labelStyle)
+            drawText(
+                textLayoutResult = rightLabelResult,
+                topLeft = Offset(
+                    x = canvasWidth - rightLabelResult.size.width - 4.dp.toPx(),
+                    y = (canvasHeight - rightLabelResult.size.height) / 2f
+                ),
+                blendMode = BlendMode.Difference
+            )
         }
     }
 }
