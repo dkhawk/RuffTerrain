@@ -190,11 +190,17 @@ fun RetroGradientBarGraph(
                 )
             }
 
-            // Draw crisp Zero (0%) indicator mark over the zero block
+            // Draw zero indicator ticks at the top and bottom of the zero block to leave the center text clean
             val zeroX = zeroBlockIndex * (blockWidthPx + gapPx) + (blockWidthPx / 2f)
             drawLine(
                 color = Color.White.copy(alpha = 0.6f),
                 start = Offset(zeroX, 0f),
+                end = Offset(zeroX, 2.dp.toPx()),
+                strokeWidth = 1.5.dp.toPx()
+            )
+            drawLine(
+                color = Color.White.copy(alpha = 0.6f),
+                start = Offset(zeroX, canvasHeight - 2.dp.toPx()),
                 end = Offset(zeroX, canvasHeight),
                 strokeWidth = 1.5.dp.toPx()
             )
