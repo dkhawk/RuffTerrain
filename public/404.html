@@ -369,10 +369,22 @@
             </div>
             
             <div style="display: flex; justify-content: space-between; align-items: center; gap: 8px;">
-              <div class="poi-quick-metrics" style="display: flex; gap: 12px;">
+              <div class="poi-quick-metrics" style="display: flex; gap: 12px; flex-wrap: wrap;">
                 <div class="metric-group">
-                  <span class="lbl">ARRIVE</span>
-                  <span id="poi-val-arrive" class="val">-</span>
+                  <span class="lbl">DIST</span>
+                  <span id="poi-val-dist" class="val">-</span>
+                </div>
+                <div class="metric-group">
+                  <span class="lbl">ELAPSED</span>
+                  <span id="poi-val-elapsed" class="val" style="color: #60a5fa;">-</span>
+                </div>
+                <div class="metric-group">
+                  <span class="lbl">EST. ARRIVAL</span>
+                  <span id="poi-val-eta" class="val" style="color: #f59e0b;">-</span>
+                </div>
+                <div class="metric-group">
+                  <span class="lbl">EST. ARRIVAL RANGE</span>
+                  <span id="poi-val-eta-range" class="val" style="color: #10b981;">-</span>
                 </div>
                 <div class="metric-group">
                   <span class="lbl">PREV</span>
@@ -433,9 +445,12 @@
                 <thead>
                   <tr>
                     <th>PASS</th>
-                    <th>ARRIVE AT</th>
+                    <th>DIST</th>
+                    <th>ELAPSED</th>
+                    <th>EST. TIME</th>
                     <th>FROM PREV</th>
                     <th>TO NEXT</th>
+                    <th>WEATHER</th>
                     <th>CUT-OFF</th>
                   </tr>
                 </thead>

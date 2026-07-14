@@ -93,3 +93,105 @@ export function getWeatherConditionStyle(type) {
 
   return mappings[normalizedType] || { emoji: "🌡️", label: normalizedType.replace(/_/g, " ") };
 }
+
+/**
+ * Calculates the elapsed hours up to a given cumulative distance.
+ * Leverages the execution plan if generated, otherwise falls back to a linear duration estimate.
+ * @param {Object} route Active route details
+ * @param {number} dist_m Cumulative distance in meters
+ * @param {number} durationHrs Fallback duration in hours
+ * @returns {number} Expected elapsed hours
+ */
+export function getElapsedHoursAtDistance(route, dist_m, durationHrs = 4.0) {
+  if (!route) return 0;
+  if (route.executionPlan && route.executionPlan.sectors && route.executionPlan.sectors.length > 0) {
+    let elapsedHrs = 0;
+    const sectors = route.executionPlan.sectors.slice().sort((a, b) => a.start_dist_m - b.start_dist_m);
+    for (const sec of sectors) {
+      if (dist_m > sec.end_dist_m) {
+        const secDistMi = (sec.end_dist_m - sec.start_dist_m) / 1609.344;
+        const secHrs = secDistMi * (sec.target_pace_min / 60);
+        elapsedHrs += secHrs;
+      } else if (dist_m >= sec.start_dist_m) {
+        const partialDistMi = (dist_m - sec.start_dist_m) / 1609.344;
+        const partialHrs = partialDistMi * (sec.target_pace_min / 60);
+        elapsedHrs += partialHrs;
+        return elapsedHrs;
+      }
+    }
+    // If the distance exceeds the final sector's end distance, project the remaining distance using the final sector's pace
+    const lastSec = sectors[sectors.length - 1];
+    if (dist_m > lastSec.end_dist_m) {
+      const extraDistMi = (dist_m - lastSec.end_dist_m) / 1609.344;
+      const extraHrs = extraDistMi * (lastSec.target_pace_min / 60);
+      elapsedHrs += extraHrs;
+    }
+    return elapsedHrs;
+  } else {
+    const progressFraction = route.totalDistance > 0 ? Math.min(1, Math.max(0, dist_m / route.totalDistance)) : 0;
+    return progressFraction * durationHrs;
+  }
+}
+
+/**
+ * Calculates the weather display data including expected condition and temperature range for a window.
+ * @param {Object} activeRoute Active route
+ * @param {number} dist_m Distance of the waypoint/pass
+ * @param {Object} forecastData Forecast hours list from API
+ * @param {number} arrivalMs Expected arrival time in ms
+ * @returns {Object} Selected hour, display hours subset, and temperature range
+ */
+export function getWeatherWindowDetails(activeRoute, dist_m, forecastData, arrivalMs) {
+  if (!forecastData || !forecastData.forecastHours || forecastData.forecastHours.length === 0) {
+    return null;
+  }
+  
+  const totalDist = activeRoute && activeRoute.totalDistance > 0 ? activeRoute.totalDistance : 1;
+  const progress = Math.min(1, Math.max(0, dist_m / totalDist));
+  
+  // Window size W scales linearly from 2 hours at start to 5 hours at end of the course
+  const W = Math.round(2 + progress * 3); // 2 to 5 hours
+  
+  // Find selected hour closest to arrivalMs
+  let selectedHour = forecastData.forecastHours[0];
+  let minDiff = Infinity;
+  let selectedIdx = 0;
+  
+  forecastData.forecastHours.forEach((hr, idx) => {
+    let hrMs = Date.now();
+    if (hr.time) {
+      hrMs = new Date(hr.time).getTime();
+    } else if (hr.displayDateTime) {
+      const dt = hr.displayDateTime;
+      const arrivalDate = new Date(arrivalMs);
+      hrMs = new Date(dt.year || arrivalDate.getFullYear(), (dt.month || arrivalDate.getMonth() + 1) - 1, dt.day || arrivalDate.getDate(), dt.hours || 0).getTime();
+    }
+    const diff = Math.abs(hrMs - arrivalMs);
+    if (diff < minDiff) {
+      minDiff = diff;
+      selectedHour = hr;
+      selectedIdx = idx;
+    }
+  });
+  
+  // Slice W hours centered on selectedIdx
+  const halfBefore = Math.floor((W - 1) / 2);
+  const startIdx = Math.max(0, selectedIdx - halfBefore);
+  const displayHours = forecastData.forecastHours.slice(startIdx, Math.min(forecastData.forecastHours.length, startIdx + W));
+  
+  let minTemp = Infinity;
+  let maxTemp = -Infinity;
+  displayHours.forEach(hr => {
+    const t = hr.temperature?.degrees ?? 0;
+    if (t < minTemp) minTemp = t;
+    if (t > maxTemp) maxTemp = t;
+  });
+  
+  return {
+    selectedHour,
+    minTemp,
+    maxTemp,
+    displayHours,
+    windowSize: W
+  };
+}

@@ -1,0 +1,2257 @@
+/*
+ * Copyright 2026 Google LLC
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     https://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
+/**
+ * Calculates the spatial distance between two lat/lon pairs using the Haversine formula.
+ * @param {number} lat1 Latitude 1
+ * @param {number} lon1 Longitude 1
+ * @param {number} lat2 Latitude 2
+ * @param {number} lon2 Longitude 2
+ * @returns {number} Distance in meters
+ */
+export function haversine(lat1, lon1, lat2, lon2) {
+  const R = 6371000; // Earth radius in meters
+  const phi1 = (lat1 * Math.PI) / 180;
+  const phi2 = (lat2 * Math.PI) / 180;
+  const deltaPhi = ((lat2 - lat1) * Math.PI) / 180;
+  const deltaLambda = ((lon2 - lon1) * Math.PI) / 180;
+
+  const a =
+    Math.sin(deltaPhi / 2) * Math.sin(deltaPhi / 2) +
+    Math.cos(phi1) * Math.cos(phi2) * Math.sin(deltaLambda / 2) * Math.sin(deltaLambda / 2);
+  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+  return R * c;
+}
+
+/**
+ * Snaps a lat/lng position to the nearest segment of a route's trackpoints.
+ */
+export function snapToRouteSegments(route, pos, nominalDistM = null) {
+  const pts = route.trackpoints;
+  if (!pts || pts.length === 0) return null;
+  if (pts.length === 1) {
+    return {
+      lat: pts[0].lat,
+      lon: pts[0].lon,
+      ele: pts[0].ele,
+      dist_m: pts[0].dist_m,
+      closestTrackpointIndex: 0
+    };
+  }
+
+  const search = (windowLimit) => {
+    let minSqDist = Infinity;
+    let result = null;
+    const latToMeters = 111320;
+
+    for (let i = 0; i < pts.length - 1; i++) {
+      const A = pts[i];
+      const B = pts[i + 1];
+
+      if (windowLimit !== null && nominalDistM !== null) {
+        const avgDist = (A.dist_m + B.dist_m) / 2;
+        if (Math.abs(avgDist - nominalDistM) > windowLimit) {
+          continue;
+        }
+      }
+
+      const cosLat = Math.cos((A.lat + B.lat) * Math.PI / 360);
+      const ax = A.lon * cosLat;
+      const ay = A.lat;
+      const bx = B.lon * cosLat;
+      const by = B.lat;
+      const px = pos.lng * cosLat;
+      const py = pos.lat;
+
+      const vx = bx - ax;
+      const vy = by - ay;
+      const wx = px - ax;
+      const wy = py - ay;
+
+      const lensq = vx * vx + vy * vy;
+      let t = 0;
+      if (lensq > 0) {
+        t = (wx * vx + wy * vy) / lensq;
+        t = Math.max(0, Math.min(1, t));
+      }
+
+      const cx = ax + t * vx;
+      const cy = ay + t * vy;
+
+      const projLon = cx / cosLat;
+      const projLat = cy;
+
+      const dx = (px - cx) * latToMeters;
+      const dy = (py - cy) * latToMeters;
+      const sqDist = dx * dx + dy * dy;
+
+      if (sqDist < minSqDist) {
+        minSqDist = sqDist;
+        result = {
+          lat: projLat,
+          lon: projLon,
+          ele: A.ele + t * (B.ele - A.ele),
+          dist_m: A.dist_m + t * (B.dist_m - A.dist_m),
+          closestTrackpointIndex: Math.round(i + t),
+          fractionalIndex: i + t
+        };
+      }
+    }
+    return result;
+  };
+
+  let snapped = null;
+  if (nominalDistM !== null) {
+    snapped = search(3000); // Try ±3km window first to preserve correct pass (outbound vs inbound)
+  }
+  if (!snapped) {
+    snapped = search(null); // Fallback to full course search
+  }
+  return snapped;
+}
+
+/**
+ * Re-calculates indices, cumulative distances, elevations and snap links on course modifications.
+ */
+export function recalculateRouteMetrics(route) {
+  const pts = route.trackpoints;
+  if (!pts || pts.length === 0) return;
+
+  let totalDistance = 0;
+  let totalElevationGain = 0;
+  let totalElevationLoss = 0;
+  let minElevation = Infinity;
+  let maxElevation = -Infinity;
+
+  for (let i = 0; i < pts.length; i++) {
+    const pt = pts[i];
+    pt.index = i;
+    
+    if (pt.ele < minElevation) minElevation = pt.ele;
+    if (pt.ele > maxElevation) maxElevation = pt.ele;
+
+    let grade = 0;
+    if (i > 0) {
+      const prev = pts[i - 1];
+      const segmentDist = haversine(prev.lat, prev.lon, pt.lat, pt.lon);
+      totalDistance += segmentDist;
+
+      const eleDiff = pt.ele - prev.ele;
+      if (eleDiff > 0) {
+        totalElevationGain += eleDiff;
+      } else {
+        totalElevationLoss += Math.abs(eleDiff);
+      }
+
+      let j = i - 1;
+      while (j > 0 && totalDistance - pts[j].dist_m < 30) {
+        j--;
+      }
+      const basePt = pts[j];
+      if (basePt) {
+        const runDist = totalDistance - basePt.dist_m;
+        const riseEle = pt.ele - basePt.ele;
+        if (runDist > 5) {
+          grade = (riseEle / runDist) * 100;
+        }
+      }
+    }
+
+    pt.dist_m = totalDistance;
+    pt.grade = grade;
+  }
+
+  route.totalDistance = totalDistance;
+  route.totalElevationGain = totalElevationGain;
+  route.totalElevationLoss = totalElevationLoss;
+  route.minElevation = minElevation === Infinity ? 0 : minElevation;
+  route.maxElevation = maxElevation === -Infinity ? 0 : maxElevation;
+  route.avgSpacing = pts.length > 0 ? (totalDistance / pts.length) : 0;
+
+  if (route.segments && route.segments.length === 1) {
+    route.segments[0].startIndex = 0;
+    route.segments[0].endIndex = pts.length - 1;
+    route.segments[0].startDist = 0;
+    route.segments[0].endDist = totalDistance;
+  }
+
+  // Re-snap waypoints
+  route.waypoints.forEach((wpt) => {
+    const snapped = snapToRouteSegments(route, { lat: wpt.lat, lng: wpt.lon });
+    if (snapped) {
+      wpt.ele = snapped.ele;
+      wpt.dist_m = snapped.dist_m;
+      wpt.closestTrackpointIndex = snapped.closestTrackpointIndex;
+    }
+  });
+
+  route.waypoints.sort((a, b) => a.dist_m - b.dist_m);
+}
+
+
+/**
+ * Parses GPX XML content into a structured route object.
+ * @param {string} gpxText Raw GPX XML string
+ * @returns {Object} Structured route data
+ */
+export function parseGPX(gpxText, units = "imperial", desertThresholdMiles = 8.0) {
+  // Get route name and description from metadata if available, otherwise first name/desc tags
+  let routeName = "Imported Route";
+  const metadataNameMatch = gpxText.match(/<metadata>[\s\S]*?<name>([\s\S]*?)<\/name>[\s\S]*?<\/metadata>/);
+  if (metadataNameMatch) {
+    routeName = metadataNameMatch[1].trim();
+  } else {
+    const nameMatch = gpxText.match(/<name>([\s\S]*?)<\/name>/);
+    if (nameMatch) routeName = nameMatch[1].trim();
+  }
+  
+  let routeDesc = "No description provided.";
+  const metadataDescMatch = gpxText.match(/<metadata>[\s\S]*?<desc>([\s\S]*?)<\/desc>[\s\S]*?<\/metadata>/);
+  if (metadataDescMatch) {
+    routeDesc = metadataDescMatch[1].trim();
+  } else {
+    const descMatch = gpxText.match(/<desc>([\s\S]*?)<\/desc>/);
+    if (descMatch) routeDesc = descMatch[1].trim();
+  }
+  
+  const rawPts = [];
+  const segments = [];
+  const rawTrackSegments = [];
+  let match;
+  
+  // Try to parse multiple tracks (<trk>)
+  const trkRegex = /<trk\b[^>]*>([\s\S]*?)<\/trk>/g;
+  let trkMatch;
+  while ((trkMatch = trkRegex.exec(gpxText)) !== null) {
+    const trkInner = trkMatch[1];
+    
+    const sNameMatch = trkInner.match(/<name>([\s\S]*?)<\/name>/);
+    const sName = sNameMatch ? sNameMatch[1].trim() : `Segment ${rawTrackSegments.length + 1}`;
+    
+    const sDescMatch = trkInner.match(/<desc>([\s\S]*?)<\/desc>/);
+    const sDesc = sDescMatch ? sDescMatch[1].trim() : "";
+    
+    // Extract trackpoints inside this track
+    const pts = [];
+    const trkptRegex = /<trkpt\s+lat="([^"]+)"\s+lon="([^"]+)"(?:\s*\/|>([\s\S]*?)<\/trkpt>)/g;
+    let ptMatch;
+    while ((ptMatch = trkptRegex.exec(trkInner)) !== null) {
+      const lat = parseFloat(ptMatch[1]);
+      const lon = parseFloat(ptMatch[2]);
+      const inner = ptMatch[3] || "";
+      
+      const eleMatch = inner.match(/<ele>([^<]+)<\/ele>/);
+      const ele = eleMatch ? parseFloat(eleMatch[1]) : 0;
+      
+      const timeMatch = inner.match(/<time>([^<]+)<\/time>/);
+      const time = timeMatch ? timeMatch[1] : null;
+      
+      pts.push({ lat, lon, ele, time });
+    }
+    
+    if (pts.length > 0) {
+      rawTrackSegments.push({
+        name: sName,
+        desc: sDesc,
+        pts
+      });
+    }
+  }
+
+  // Fallback: If no tracks (<trk>) with trackpoints were found, check flat trackpoints or routepoints
+  if (rawTrackSegments.length === 0) {
+    const pts = [];
+    const trkptRegex = /<trkpt\s+lat="([^"]+)"\s+lon="([^"]+)"(?:\s*\/|>([\s\S]*?)<\/trkpt>)/g;
+    let match;
+    while ((match = trkptRegex.exec(gpxText)) !== null) {
+      const lat = parseFloat(match[1]);
+      const lon = parseFloat(match[2]);
+      const inner = match[3] || "";
+      
+      const eleMatch = inner.match(/<ele>([^<]+)<\/ele>/);
+      const ele = eleMatch ? parseFloat(eleMatch[1]) : 0;
+      
+      const timeMatch = inner.match(/<time>([^<]+)<\/time>/);
+      const time = timeMatch ? timeMatch[1] : null;
+
+      pts.push({ lat, lon, ele, time });
+    }
+    
+    // If no trackpoints, check routepoints (<rtept>)
+    if (pts.length === 0) {
+      const rteptRegex = /<rtept\s+lat="([^"]+)"\s+lon="([^"]+)"(?:\s*\/|>([\s\S]*?)<\/rtept>)/g;
+      while ((match = rteptRegex.exec(gpxText)) !== null) {
+        const lat = parseFloat(match[1]);
+        const lon = parseFloat(match[2]);
+        const inner = match[3] || "";
+        
+        const eleMatch = inner.match(/<ele>([^<]+)<\/ele>/);
+        const ele = eleMatch ? parseFloat(eleMatch[1]) : 0;
+        
+        const timeMatch = inner.match(/<time>([^<]+)<\/time>/);
+        const time = timeMatch ? timeMatch[1] : null;
+
+        pts.push({ lat, lon, ele, time });
+      }
+    }
+    
+    if (pts.length > 0) {
+      rawTrackSegments.push({
+        name: routeName,
+        desc: routeDesc,
+        pts
+      });
+    }
+  }
+
+  // Populate rawPts and segment indices
+  rawTrackSegments.forEach((seg) => {
+    const startIndex = rawPts.length;
+    
+    seg.pts.forEach((pt) => {
+      rawPts.push({
+        index: rawPts.length,
+        lat: pt.lat,
+        lon: pt.lon,
+        ele: pt.ele,
+        time: pt.time
+      });
+    });
+    
+    const endIndex = rawPts.length - 1;
+    segments.push({
+      name: seg.name,
+      desc: seg.desc,
+      startIndex,
+      endIndex,
+      startDist: 0,
+      endDist: 0
+    });
+  });
+
+  // Apply an 11-point moving average elevation smoothing pass (5 points on each side)
+  if (rawPts.length >= 3) {
+    const temp = rawPts.map(p => p.ele);
+    const windowSize = 5;
+    for (let k = 0; k < rawPts.length; k++) {
+      let sum = 0;
+      let count = 0;
+      const start = Math.max(0, k - windowSize);
+      const end = Math.min(rawPts.length - 1, k + windowSize);
+      for (let j = start; j <= end; j++) {
+        sum += temp[j];
+        count++;
+      }
+      rawPts[k].ele = sum / count;
+    }
+  }
+
+  const trackpoints = [];
+  let totalDistance = 0;
+  let totalElevationGain = 0;
+  let totalElevationLoss = 0;
+
+  for (let i = 0; i < rawPts.length; i++) {
+    const pt = rawPts[i];
+    let segmentDist = 0;
+    let grade = 0;
+
+    if (i > 0) {
+      const prev = rawPts[i - 1];
+      segmentDist = haversine(prev.lat, prev.lon, pt.lat, pt.lon);
+      totalDistance += segmentDist;
+
+      const eleDiff = pt.ele - prev.ele;
+      if (eleDiff > 0) {
+        totalElevationGain += eleDiff;
+      } else {
+        totalElevationLoss += Math.abs(eleDiff);
+      }
+
+      // Calculate a stable slope grade over a 30-meter baseline to filter out GPS noise
+      let j = i - 1;
+      while (j > 0 && totalDistance - trackpoints[j].dist_m < 30) {
+        j--;
+      }
+      const basePt = trackpoints[j];
+      if (basePt) {
+        const runDist = totalDistance - basePt.dist_m;
+        const riseEle = pt.ele - basePt.ele;
+        if (runDist > 5) {
+          grade = (riseEle / runDist) * 100;
+        }
+      }
+    }
+
+    trackpoints.push({
+      index: i,
+      lat: pt.lat,
+      lon: pt.lon,
+      ele: pt.ele,
+      dist_m: totalDistance,
+      grade,
+      time: pt.time,
+    });
+  }
+
+  // Waypoints
+  const waypoints = [];
+  const wptRegex = /<wpt\s+lat="([^"]+)"\s+lon="([^"]+)"(?:\s*\/|>([\s\S]*?)<\/wpt>)/g;
+  let wptIdx = 0;
+  while ((match = wptRegex.exec(gpxText)) !== null) {
+    const lat = parseFloat(match[1]);
+    const lon = parseFloat(match[2]);
+    const inner = match[3] || "";
+    
+    const nMatch = inner.match(/<name>([^<]*)<\/name>/);
+    const name = nMatch ? nMatch[1].trim() : `Waypoint ${wptIdx + 1}`;
+    
+    const eMatch = inner.match(/<ele>([^<]*)<\/ele>/);
+    const ele = eMatch ? parseFloat(eMatch[1]) : 0;
+    
+    const sMatch = inner.match(/<sym>([^<]*)<\/sym>/);
+    let sym = sMatch ? sMatch[1].trim() : "icons/services.svg";
+    
+    const dMatch = inner.match(/<desc>([^<]*)<\/desc>/);
+    const desc = dMatch ? dMatch[1].trim() : "";
+
+    let customExtension = null;
+    const stationMatch = inner.match(/<(?:ca:)?station([^>]*)>([\s\S]*?)<\/(?:ca:)?station>/);
+    if (stationMatch) {
+      const attrs = stationMatch[1];
+      const stationInner = stationMatch[2];
+      
+      const typeMatch = attrs.match(/type="([^"]+)"/);
+      const idMatch = attrs.match(/id="([^"]+)"/);
+      const subtypeMatch = attrs.match(/subtype="([^"]+)"/);
+      
+      const type = typeMatch ? typeMatch[1] : null;
+      const id = idMatch ? idMatch[1] : `station-${wptIdx}`;
+      const subtype = subtypeMatch ? subtypeMatch[1] : null;
+
+      const passes = [];
+      const passRegex = /<(?:ca:)?pass\b([^>]*)\/?>/g;
+      let pMatch;
+      while ((pMatch = passRegex.exec(stationInner)) !== null) {
+        const pAttrs = pMatch[1];
+        const numM = pAttrs.match(/num="([^"]+)"/);
+        const distM = pAttrs.match(/dist_m="([^"]+)"/);
+        const labelM = pAttrs.match(/label="([^"]+)"/);
+        const cutoffClockM = pAttrs.match(/cutoff_clock="([^"]+)"/);
+        const cutoffElapsedM = pAttrs.match(/cutoff_elapsed="([^"]+)"/);
+        const targetArrivalM = pAttrs.match(/target_arrival="([^"]+)"/);
+        const etaEarliestM = pAttrs.match(/eta_earliest="([^"]+)"/);
+        const etaLatestM = pAttrs.match(/eta_latest="([^"]+)"/);
+        const weatherCondM = pAttrs.match(/weather_cond="([^"]+)"/);
+        const weatherTempM = pAttrs.match(/weather_temp_c="([^"]+)"/);
+        
+        passes.push({
+          num: parseInt(numM ? numM[1] : "1"),
+          dist_m: parseFloat(distM ? distM[1] : "0"),
+          label: labelM ? labelM[1] : "",
+          cutoff_clock: cutoffClockM ? cutoffClockM[1] : "",
+          cutoff_elapsed: cutoffElapsedM ? cutoffElapsedM[1] : "",
+          target_arrival: targetArrivalM ? targetArrivalM[1] : "",
+          eta_earliest: etaEarliestM ? etaEarliestM[1] : "",
+          eta_latest: etaLatestM ? etaLatestM[1] : "",
+          weather_cond: weatherCondM ? weatherCondM[1] : "",
+          weather_temp_c: weatherTempM ? parseFloat(weatherTempM[1]) : null
+        });
+      }
+
+      let accessibility = {};
+      const accessMatch = stationInner.match(/<(?:ca:)?accessibility([^>]*)\/?>/);
+      if (accessMatch) {
+        const aAttrs = accessMatch[1];
+        accessibility = {
+          crew_allowed: /crew_allowed="true"/.test(aAttrs),
+          pacer_allowed: /pacer_allowed="true"/.test(aAttrs),
+          vehicle_tier: (aAttrs.match(/vehicle_tier="([^"]+)"/) || [])[1] || "none",
+          drop_bag_allowed: /drop_bag_allowed="true"/.test(aAttrs)
+        };
+      }
+
+      let services = {};
+      const servMatch = stationInner.match(/<(?:ca:)?services([^>]*)\/?>/);
+      if (servMatch) {
+        const sAttrs = servMatch[1];
+        services = {
+          water: /water="true"/.test(sAttrs),
+          unmanaged_water: /unmanaged_water="true"/.test(sAttrs),
+          food: /food="true"/.test(sAttrs),
+          hot_food: /hot_food="true"/.test(sAttrs),
+          toilets: /toilets="true"/.test(sAttrs),
+          medical: /medical="true"/.test(sAttrs),
+          sleep_area: /sleep_area="true"/.test(sAttrs)
+        };
+      }
+
+      let navigation_alert = null;
+      const navMatch = stationInner.match(/<(?:ca:)?navigation_alert([^>]*)\/?>/);
+      if (navMatch) {
+        const nAttrs = navMatch[1];
+        navigation_alert = {
+          severity: (nAttrs.match(/severity="([^"]+)"/) || [])[1] || "info",
+          turn_type: (nAttrs.match(/turn_type="([^"]+)"/) || [])[1] || "straight",
+          prompt: (nAttrs.match(/prompt="([^"]+)"/) || [])[1] || ""
+        };
+      }
+
+      let photo_url = null;
+      const photoUrlMatch = stationInner.match(/<(?:ca:)?photo_url>([^<]+)<\/(?:ca:)?photo_url>/) || inner.match(/<link[^>]+href="([^"]+)"/);
+      if (photoUrlMatch) {
+        photo_url = photoUrlMatch[1];
+      }
+
+      customExtension = {
+        station: {
+          id, type, subtype, passes, accessibility, services, navigation_alert, photo_url
+        }
+      };
+    }
+
+    let closestIdx = 0;
+    let minSpatialDist = Infinity;
+    const nameLower = name.toLowerCase();
+    const symLower = sym.toLowerCase();
+    const isFinish = nameLower.includes("finish") || nameLower.includes("end") || symLower.includes("finish") || symLower.includes("end");
+    const startIndex = isFinish ? Math.floor(trackpoints.length / 2) : 0;
+
+    for (let idx = startIndex; idx < trackpoints.length; idx++) {
+      const trk = trackpoints[idx];
+      const dist = haversine(lat, lon, trk.lat, trk.lon);
+      if (dist < minSpatialDist) {
+        minSpatialDist = dist;
+        closestIdx = idx;
+      }
+    }
+
+    // Fallback: If no custom station extension exists, infer one from description/name keywords
+    if (!customExtension) {
+      const descLower = desc.toLowerCase();
+      const hasWater = descLower.includes("water") || descLower.includes("spring") || descLower.includes("creek") || nameLower.includes("water") || nameLower.includes("spring") || nameLower.includes("creek");
+      const hasFood = descLower.includes("food") || descLower.includes("aid") || descLower.includes("station") || nameLower.includes("food") || nameLower.includes("aid") || nameLower.includes("station");
+      const hasToilets = descLower.includes("bathroom") || descLower.includes("toilet") || descLower.includes("wc") || nameLower.includes("bathroom") || nameLower.includes("toilet") || nameLower.includes("wc");
+      const hasMedical = descLower.includes("medical") || descLower.includes("first aid") || nameLower.includes("medical") || nameLower.includes("first aid");
+
+      let type = "informational";
+      let subtype = "navigation";
+
+      if (hasWater || hasFood || hasToilets || hasMedical) {
+        type = "segmenting";
+        subtype = "aid_station";
+      } else if (nameLower.includes("pass") || nameLower.includes("col") || nameLower.includes("summit") || nameLower.includes("peak") || nameLower.includes("saddle") || nameLower.includes("tête") || nameLower.includes("posettes")) {
+        subtype = "summit";
+      } else if (nameLower.includes("bridge") || descLower.includes("bridge")) {
+        subtype = "scenic";
+      }
+
+      const services = {
+        water: hasWater,
+        unmanaged_water: false,
+        food: hasFood,
+        hot_food: false,
+        toilets: hasToilets,
+        medical: hasMedical,
+        sleep_area: false
+      };
+
+      const wptDistM = trackpoints[closestIdx]?.dist_m || 0;
+      const passes = [{
+        num: 1,
+        dist_m: wptDistM,
+        label: nameLower.includes("start") ? "Start" : (isFinish ? "End" : "")
+      }];
+
+      customExtension = {
+        station: {
+          id: `station-${wptIdx}`,
+          type,
+          subtype,
+          passes,
+          accessibility: {},
+          services,
+          navigation_alert: null
+        }
+      };
+
+      // Refine default symbol to match subtype
+      if (sym === "icons/services.svg") {
+        if (nameLower.includes("start")) {
+          sym = "icons/start.svg";
+        } else if (isFinish) {
+          sym = "icons/finish.svg";
+        } else if (subtype === "aid_station") {
+          if (hasWater && !hasFood && !hasMedical) {
+            sym = "icons/water.svg";
+            customExtension.station.subtype = "water_source";
+            customExtension.station.type = "informational";
+          } else {
+            sym = "icons/aid_station.svg";
+          }
+        } else if (subtype === "summit") {
+          sym = "icons/summit.svg";
+        } else if (subtype === "scenic") {
+          sym = "icons/scenic.svg";
+        }
+      }
+    }
+
+    if (customExtension?.station && customExtension.station.passes.length === 0) {
+      customExtension.station.passes.push({
+        num: 1,
+        dist_m: trackpoints[closestIdx]?.dist_m || 0,
+        label: name
+      });
+    }
+
+    waypoints.push({
+      id: customExtension?.station?.id || `wpt-${wptIdx}`,
+      name,
+      lat,
+      lon,
+      ele,
+      sym,
+      desc,
+      closestTrackpointIndex: closestIdx,
+      dist_m: trackpoints[closestIdx]?.dist_m || 0,
+      extensions: customExtension
+    });
+    wptIdx++;
+  }
+
+  // Sort waypoints by course distance
+  waypoints.sort((a, b) => a.dist_m - b.dist_m);
+
+  if (trackpoints.length > 0) {
+    if (!waypoints.some(w => w.closestTrackpointIndex === 0 || w.dist_m < 100 || w.name?.toLowerCase().includes("start") || w.sym?.toLowerCase().includes("start"))) {
+      const firstPt = trackpoints[0];
+      waypoints.unshift({
+        id: "wpt-start",
+        name: "Course Start",
+        lat: firstPt.lat,
+        lon: firstPt.lon,
+        ele: firstPt.ele,
+        sym: "icons/start.svg",
+        desc: "Starting Line",
+        closestTrackpointIndex: 0,
+        dist_m: 0,
+        extensions: {
+          station: {
+            id: "station-start",
+            type: "start",
+            subtype: "start",
+            passes: [{ num: 1, dist_m: 0, target_arrival: "00:00", label: "Start" }],
+            services: {},
+            accessibility: {}
+          }
+        }
+      });
+    }
+
+    const lastIdx = trackpoints.length - 1;
+    const lastPt = trackpoints[lastIdx];
+    if (!waypoints.some(w => w.closestTrackpointIndex === lastIdx || Math.abs(lastPt.dist_m - w.dist_m) < 100 || w.name?.toLowerCase().includes("finish") || w.sym?.toLowerCase().includes("finish"))) {
+      waypoints.push({
+        id: "wpt-finish",
+        name: "Course Finish",
+        lat: lastPt.lat,
+        lon: lastPt.lon,
+        ele: lastPt.ele,
+        sym: "icons/finish.svg",
+        desc: "Finish Line",
+        closestTrackpointIndex: lastIdx,
+        dist_m: lastPt.dist_m,
+        extensions: {
+          station: {
+            id: "station-finish",
+            type: "finish",
+            subtype: "finish",
+            passes: [{ num: 1, dist_m: lastPt.dist_m, label: "Finish" }],
+            services: {},
+            accessibility: {}
+          }
+        }
+      });
+    }
+    waypoints.sort((a, b) => a.dist_m - b.dist_m);
+  }
+
+  // Map segment distances using the final snapped trackpoint distances
+  segments.forEach((seg) => {
+    seg.startDist = trackpoints[seg.startIndex]?.dist_m || 0;
+    seg.endDist = trackpoints[seg.endIndex]?.dist_m || 0;
+  });
+
+  let minElevation = Infinity;
+  let maxElevation = -Infinity;
+  trackpoints.forEach(pt => {
+    if (pt.ele < minElevation) minElevation = pt.ele;
+    if (pt.ele > maxElevation) maxElevation = pt.ele;
+  });
+  if (minElevation === Infinity) {
+    minElevation = 0;
+    maxElevation = 0;
+  }
+
+  let executionPlan = {
+    startTime: null,
+    targetDurationHrs: null,
+    sectors: []
+  };
+
+  const planAttrsMatch = gpxText.match(/<(?:ca:)?race_plan\b([^>]*)\/?>/);
+  if (planAttrsMatch) {
+    const pAttrs = planAttrsMatch[1];
+    const stM = pAttrs.match(/start_time="([^"]+)"/);
+    const tdM = pAttrs.match(/target_duration_hrs="([^"]+)"/);
+    if (stM) executionPlan.startTime = stM[1];
+    if (tdM) executionPlan.targetDurationHrs = parseFloat(tdM[1]);
+  }
+
+  const execPlanMatch = gpxText.match(/<(?:ca:)?execution_plan[^>]*>([\s\S]*?)<\/(?:ca:)?execution_plan>/);
+  if (execPlanMatch) {
+    const execInner = execPlanMatch[1];
+    const sectorRegex = /<(?:ca:)?sector\b([^>]*)>([\s\S]*?)<\/(?:ca:)?sector>/g;
+    let sMatch;
+    while ((sMatch = sectorRegex.exec(execInner)) !== null) {
+      const sAttrs = sMatch[1];
+      const sInner = sMatch[2];
+
+      const startDistM = sAttrs.match(/start_dist_m="([^"]+)"/);
+      const endDistM = sAttrs.match(/end_dist_m="([^"]+)"/);
+      const nameM = sAttrs.match(/name="([^"]+)"/);
+      const targetPaceM = sAttrs.match(/target_pace_min="([^"]+)"/);
+      const terrainM = sAttrs.match(/terrain="([^"]+)"/);
+
+      const stratM = sInner.match(/<(?:ca:)?strategy>([\s\S]*?)<\/(?:ca:)?strategy>/);
+      const nutM = sInner.match(/<(?:ca:)?nutrition>([\s\S]*?)<\/(?:ca:)?nutrition>/);
+
+      let terrainVal = terrainM ? terrainM[1] : "flat";
+      if (!terrainM) {
+        const txt = `${nameM?.[1] || ""} ${stratM?.[1] || ""}`.toLowerCase();
+        if (txt.includes("climb") || txt.includes("ascent") || txt.includes("uphill") || txt.includes("hike")) terrainVal = "climb";
+        else if (txt.includes("descent") || txt.includes("descend") || txt.includes("downhill")) terrainVal = "descend";
+      }
+
+      executionPlan.sectors.push({
+        start_dist_m: parseFloat(startDistM ? startDistM[1] : "0"),
+        end_dist_m: parseFloat(endDistM ? endDistM[1] : "0"),
+        name: nameM ? nameM[1] : "Sector",
+        terrain: terrainVal,
+        target_pace_min: parseFloat(targetPaceM ? targetPaceM[1] : "10"),
+        strategy: stratM ? stratM[1].trim() : "",
+        nutrition: nutM ? nutM[1].trim() : ""
+      });
+    }
+  }
+
+  const parsedRoute = {
+    name: routeName,
+    description: routeDesc,
+    trackpoints,
+    waypoints,
+    segments,
+    totalDistance,
+    totalElevationGain,
+    totalElevationLoss,
+    minElevation,
+    maxElevation,
+    warnings: [],
+    executionPlan
+  };
+
+  calculateWarnings(parsedRoute, [], units, desertThresholdMiles);
+  return parsedRoute;
+}
+
+/**
+ * Parses KML content into a structured route object matching the GPX schema.
+ * @param {string} kmlText Raw KML XML string
+ * @param {string} units Measurement units ("imperial" or "metric")
+ * @returns {Object} Structured route data
+ */
+export function parseKML(kmlText, units = "imperial") {
+  // Extract Document name
+  const docNameMatch = kmlText.match(/<Document>[\s\S]*?<name>([^<]+)<\/name>/);
+  const routeName = docNameMatch ? docNameMatch[1].trim() : "Imported KML Route";
+
+  const descMatch = kmlText.match(/<Document>[\s\S]*?<description>([^<]+)<\/description>/);
+  const routeDesc = descMatch ? descMatch[1].trim() : "No description provided.";
+
+  const coordsMatch = kmlText.match(/<coordinates>([\s\S]*?)<\/coordinates>/);
+  if (!coordsMatch) {
+    throw new Error("No coordinates/path coordinates found in KML file.");
+  }
+  
+  const coordsStr = coordsMatch[1].trim();
+  const rawPts = [];
+  const coordTokens = coordsStr.split(/\s+/);
+  let idx = 0;
+  for (const token of coordTokens) {
+    if (!token) continue;
+    const parts = token.split(",");
+    if (parts.length >= 2) {
+      const lon = parseFloat(parts[0]);
+      const lat = parseFloat(parts[1]);
+      const ele = parts[2] ? parseFloat(parts[2]) : 0;
+      rawPts.push({
+        index: idx++,
+        lat,
+        lon,
+        ele,
+        time: null
+      });
+    }
+  }
+
+  // Waypoints (Placemarks with Point coordinates, ignoring LineString tracks)
+  const waypoints = [];
+  const placemarkRegex = /<Placemark>([\s\S]*?)<\/Placemark>/g;
+  let match;
+  let wptIdx = 0;
+  while ((match = placemarkRegex.exec(kmlText)) !== null) {
+    const inner = match[1];
+    if (inner.includes("<LineString>")) continue;
+
+    const ptMatch = inner.match(/<Point>([\s\S]*?)<\/Point>/);
+    if (!ptMatch) continue;
+
+    const coordMatch = ptMatch[1].match(/<coordinates>([^<]+)<\/coordinates>/);
+    if (!coordMatch) continue;
+
+    const parts = coordMatch[1].trim().split(",");
+    if (parts.length < 2) continue;
+
+    const lon = parseFloat(parts[0]);
+    const lat = parseFloat(parts[1]);
+    const ele = parts[2] ? parseFloat(parts[2]) : 0;
+
+    const nameMatch = inner.match(/<name>([^<]+)<\/name>/);
+    const name = nameMatch ? nameMatch[1].trim() : `Waypoint ${wptIdx + 1}`;
+
+    const descMatch = inner.match(/<description>([^<]+)<\/description>/);
+    const desc = descMatch ? descMatch[1].trim() : "";
+
+    waypoints.push({
+      id: `kml-wpt-${wptIdx}`,
+      name,
+      lat,
+      lon,
+      ele,
+      sym: "icons/services.svg",
+      desc,
+      dist_m: 0,
+      closestTrackpointIndex: 0,
+      extensions: {}
+    });
+    wptIdx++;
+  }
+
+  // Calculate cumulative distances & smooth elevations
+  const trackpoints = [];
+  let totalDistance = 0;
+  let totalElevationGain = 0;
+  let totalElevationLoss = 0;
+
+  // Apply 11-point moving average elevation smoothing
+  if (rawPts.length >= 3) {
+    const temp = rawPts.map(p => p.ele);
+    const windowSize = 5;
+    for (let k = 0; k < rawPts.length; k++) {
+      const start = Math.max(0, k - windowSize);
+      const end = Math.min(rawPts.length - 1, k + windowSize);
+      let sum = 0;
+      for (let j = start; j <= end; j++) {
+        sum += temp[j];
+      }
+      rawPts[k].ele = sum / (end - start + 1);
+    }
+  }
+
+  for (let i = 0; i < rawPts.length; i++) {
+    const pt = rawPts[i];
+    let segmentDist = 0;
+    let grade = 0;
+
+    if (i > 0) {
+      const prev = rawPts[i - 1];
+      segmentDist = haversine(prev.lat, prev.lon, pt.lat, pt.lon);
+      totalDistance += segmentDist;
+
+      const dEle = pt.ele - prev.ele;
+      if (dEle > 0) {
+        totalElevationGain += dEle;
+      } else {
+        totalElevationLoss += Math.abs(dEle);
+      }
+      if (segmentDist > 0) {
+        grade = (dEle / segmentDist) * 100;
+      }
+    }
+
+    trackpoints.push({
+      index: pt.index,
+      lat: pt.lat,
+      lon: pt.lon,
+      ele: pt.ele,
+      dist_m: totalDistance,
+      grade,
+      time: pt.time
+    });
+  }
+
+  // Snap waypoints to closest trackpoints
+  waypoints.forEach((wpt) => {
+    let minDiff = Infinity;
+    let closestIdx = 0;
+    for (let idx = 0; idx < trackpoints.length; idx++) {
+      const pt = trackpoints[idx];
+      const dist = haversine(wpt.lat, wpt.lon, pt.lat, pt.lon);
+      if (dist < minDiff) {
+        minDiff = dist;
+        closestIdx = idx;
+      }
+    }
+    wpt.closestTrackpointIndex = closestIdx;
+    wpt.dist_m = trackpoints[closestIdx]?.dist_m || 0;
+  });
+
+  // Sort waypoints by course distance
+  waypoints.sort((a, b) => a.dist_m - b.dist_m);
+
+  if (trackpoints.length > 0) {
+    if (!waypoints.some(w => w.closestTrackpointIndex === 0 || w.dist_m < 100 || w.name?.toLowerCase().includes("start") || w.sym?.toLowerCase().includes("start"))) {
+      const firstPt = trackpoints[0];
+      waypoints.unshift({
+        id: "wpt-start",
+        name: "Course Start",
+        lat: firstPt.lat,
+        lon: firstPt.lon,
+        ele: firstPt.ele,
+        sym: "icons/start.svg",
+        desc: "Starting Line",
+        closestTrackpointIndex: 0,
+        dist_m: 0,
+        extensions: {
+          station: {
+            id: "station-start",
+            type: "start",
+            subtype: "start",
+            passes: [{ num: 1, dist_m: 0, target_arrival: "00:00", label: "Start" }],
+            services: {},
+            accessibility: {}
+          }
+        }
+      });
+    }
+
+    const lastIdx = trackpoints.length - 1;
+    const lastPt = trackpoints[lastIdx];
+    if (!waypoints.some(w => w.closestTrackpointIndex === lastIdx || Math.abs(lastPt.dist_m - w.dist_m) < 100 || w.name?.toLowerCase().includes("finish") || w.sym?.toLowerCase().includes("finish"))) {
+      waypoints.push({
+        id: "wpt-finish",
+        name: "Course Finish",
+        lat: lastPt.lat,
+        lon: lastPt.lon,
+        ele: lastPt.ele,
+        sym: "icons/finish.svg",
+        desc: "Finish Line",
+        closestTrackpointIndex: lastIdx,
+        dist_m: lastPt.dist_m,
+        extensions: {
+          station: {
+            id: "station-finish",
+            type: "finish",
+            subtype: "finish",
+            passes: [{ num: 1, dist_m: lastPt.dist_m, label: "Finish" }],
+            services: {},
+            accessibility: {}
+          }
+        }
+      });
+    }
+    waypoints.sort((a, b) => a.dist_m - b.dist_m);
+  }
+
+  let minElevation = Infinity;
+  let maxElevation = -Infinity;
+  trackpoints.forEach(pt => {
+    if (pt.ele < minElevation) minElevation = pt.ele;
+    if (pt.ele > maxElevation) maxElevation = pt.ele;
+  });
+  if (minElevation === Infinity) {
+    minElevation = 0;
+    maxElevation = 0;
+  }
+
+  const parsedRoute = {
+    name: routeName,
+    description: routeDesc,
+    trackpoints,
+    waypoints,
+    totalDistance,
+    totalElevationGain,
+    totalElevationLoss,
+    minElevation,
+    maxElevation,
+    warnings: []
+  };
+
+  calculateWarnings(parsedRoute, [], units);
+  return parsedRoute;
+}
+
+/**
+ * Calculates safety warnings (Resource Deserts, Difficult Climbs, Exposure Risk) for a parsed route.
+ * Modifies the route object directly by populating `route.warnings`.
+ * @param {Object} route The parsed route object
+ */
+export function calculateWarnings(route, extraWarnings = [], units = "imperial", desertThresholdMiles = 8.0) {
+  const isImperial = units === "imperial";
+  const distMultiplier = isImperial ? 1 / 1609.344 : 1 / 1000;
+  const distName = isImperial ? "miles" : "km";
+  const elevMultiplier = isImperial ? 3.28084 : 1;
+  const elevName = isImperial ? "ft" : "m";
+
+  const warnings = [...extraWarnings];
+  const trackpoints = route.trackpoints;
+  if (!trackpoints || trackpoints.length === 0) return;
+
+  // 1. RESOURCE DESERTS
+  // Define water/food resources. We filter waypoints that have water or food services, or are classified as aid/water.
+  const resourceWaypoints = (route.waypoints || []).filter((wpt) => {
+    const isWaterSym = wpt.sym.includes("water") || wpt.name.toLowerCase().includes("water") || wpt.name.toLowerCase().includes("spring") || wpt.name.toLowerCase().includes("creek");
+    const isAidSym = wpt.sym.includes("aid") || wpt.name.toLowerCase().includes("aid") || wpt.name.toLowerCase().includes("station") || wpt.name.toLowerCase().includes("checkpoint");
+    
+    const hasWater = wpt.extensions?.station?.services?.water || wpt.extensions?.station?.services?.unmanaged_water;
+    const hasFood = wpt.extensions?.station?.services?.food;
+    
+    return isWaterSym || isAidSym || hasWater || hasFood;
+  });
+
+  // Flatten resource waypoints into individual passes
+  const resourcePasses = [];
+  resourceWaypoints.forEach((wpt) => {
+    const passes = wpt.extensions?.station?.passes || [];
+    if (passes.length > 0) {
+      passes.forEach((p) => {
+        resourcePasses.push({
+          name: wpt.name + (passes.length > 1 ? ` (${p.label || `Pass ${p.num}`})` : ""),
+          dist_m: p.dist_m
+        });
+      });
+    } else {
+      resourcePasses.push({
+        name: wpt.name,
+        dist_m: wpt.dist_m
+      });
+    }
+  });
+
+  // Sort resource passes by cumulative distance along the track
+  resourcePasses.sort((a, b) => a.dist_m - b.dist_m);
+
+  // Gaps threshold: Dynamic setting (default 8.0 miles)
+  const DESERT_THRESHOLD_M = (parseFloat(desertThresholdMiles) || 8.0) * 1609.344;
+
+  // Check start of route to first resource pass
+  if (resourcePasses.length > 0) {
+    const firstDist = resourcePasses[0].dist_m;
+    if (firstDist > DESERT_THRESHOLD_M) {
+      warnings.push({
+        id: "desert-start",
+        type: "RESOURCE_DESERT",
+        message: `Resource Desert: No water/food for first ${(firstDist * distMultiplier).toFixed(1)} ${distName} of course.`,
+        startDist: 0,
+        endDist: firstDist,
+        approved: true,
+      });
+    }
+  } else {
+    // No resources at all!
+    warnings.push({
+      id: "desert-full",
+      type: "RESOURCE_DESERT",
+      message: `Resource Desert: No water or aid stations configured on this ${(route.totalDistance * distMultiplier).toFixed(1)} ${distName} route!`,
+      startDist: 0,
+      endDist: route.totalDistance,
+      approved: true,
+    });
+  }
+
+  // Check gaps between resource passes
+  for (let i = 0; i < resourcePasses.length - 1; i++) {
+    const startPass = resourcePasses[i];
+    const endPass = resourcePasses[i + 1];
+    const gap = endPass.dist_m - startPass.dist_m;
+
+    if (gap > DESERT_THRESHOLD_M) {
+      warnings.push({
+        id: `desert-gap-${i}`,
+        type: "RESOURCE_DESERT",
+        message: `Resource Desert: ${(gap * distMultiplier).toFixed(1)} ${distName} between "${startPass.name}" and "${endPass.name}".`,
+        startDist: startPass.dist_m,
+        endDist: endPass.dist_m,
+        approved: true,
+      });
+    }
+  }
+
+  // Check from last resource pass to finish
+  if (resourcePasses.length > 0) {
+    const lastDist = resourcePasses[resourcePasses.length - 1].dist_m;
+    const finalGap = route.totalDistance - lastDist;
+    if (finalGap > DESERT_THRESHOLD_M) {
+      warnings.push({
+        id: "desert-end",
+        type: "RESOURCE_DESERT",
+        message: `Resource Desert: No water/food for final ${(finalGap * distMultiplier).toFixed(1)} ${distName} to finish.`,
+        startDist: lastDist,
+        endDist: route.totalDistance,
+        approved: true,
+      });
+    }
+  }  // 2. DIFFICULT CLIMBS
+  let inClimb = false;
+  let climbStartIdx = -1;
+  let maxEle = -Infinity;
+  let maxEleIdx = -1;
+  let lastPositiveGradeDist = 0;
+
+  for (let i = 0; i < trackpoints.length; i++) {
+    const tp = trackpoints[i];
+    const grade = tp.grade;
+
+    if (!inClimb) {
+      if (grade > 3.5) {
+        inClimb = true;
+        climbStartIdx = i;
+        maxEle = tp.ele;
+        maxEleIdx = i;
+        lastPositiveGradeDist = tp.dist_m;
+      }
+    } else {
+      if (tp.ele > maxEle) {
+        maxEle = tp.ele;
+        maxEleIdx = i;
+      }
+      if (grade > 3.5) {
+        lastPositiveGradeDist = tp.dist_m;
+      }
+      const descendedTooMuch = tp.ele < maxEle - 20;
+      const flatTooLong = tp.dist_m - lastPositiveGradeDist > 200;
+
+      if (descendedTooMuch || flatTooLong || i === trackpoints.length - 1) {
+        const endIdx = descendedTooMuch || flatTooLong ? maxEleIdx : i;
+        const startPt = trackpoints[climbStartIdx];
+        const endPt = trackpoints[endIdx];
+        const climbDist = endPt.dist_m - startPt.dist_m;
+        const climbGain = endPt.ele - startPt.ele;
+
+        if (climbDist >= 400 && climbGain > 0) {
+          const avgGrade = (climbGain / climbDist) * 100;
+          const score = Math.round(climbGain * avgGrade);
+
+          if (score >= 100) {
+            const startDist = (startPt.dist_m * distMultiplier).toFixed(1);
+            const endDist = (endPt.dist_m * distMultiplier).toFixed(1);
+            let difficultyLabel = "Moderate";
+            if (score > 1500) difficultyLabel = "Extreme";
+            else if (score > 600) difficultyLabel = "Severe";
+            else if (score > 250) difficultyLabel = "Difficult";
+
+            const cls = classifyGradient(avgGrade);
+
+            warnings.push({
+              id: `climb-${climbStartIdx}`,
+              type: "DIFFICULT_CLIMB",
+              message: `Difficult Climb (${difficultyLabel}, Score: ${score}): Climb from ${startDist} to ${endDist} ${distName} (+${Math.round(climbGain * elevMultiplier)}${elevName} gain, avg grade: ${avgGrade.toFixed(1)}%).`,
+              startDist: startPt.dist_m,
+              endDist: endPt.dist_m,
+              climbScore: score,
+              avgGrade: parseFloat(avgGrade.toFixed(1)),
+              colorHex: cls.hex,
+              colorBg: cls.bg,
+              approved: true,
+            });
+          }
+        }
+
+        inClimb = false;
+        climbStartIdx = -1;
+        maxEle = -Infinity;
+        maxEleIdx = -1;
+        if (descendedTooMuch || flatTooLong) {
+          i = endIdx;
+        }
+      }
+    }
+  }
+
+  // 3. STEEP DESCENTS
+  let inDescent = false;
+  let descStartIdx = -1;
+  let minEle = Infinity;
+  let minEleIdx = -1;
+  let lastNegativeGradeDist = 0;
+
+  for (let i = 0; i < trackpoints.length; i++) {
+    const tp = trackpoints[i];
+    const grade = tp.grade || 0;
+
+    if (!inDescent) {
+      if (grade < -3.5) {
+        inDescent = true;
+        descStartIdx = i;
+        minEle = tp.ele;
+        minEleIdx = i;
+        lastNegativeGradeDist = tp.dist_m;
+      }
+    } else {
+      if (tp.ele < minEle) {
+        minEle = tp.ele;
+        minEleIdx = i;
+      }
+      if (grade < -3.5) {
+        lastNegativeGradeDist = tp.dist_m;
+      }
+      const climbedTooMuch = tp.ele > minEle + 20;
+      const flatTooLongD = tp.dist_m - lastNegativeGradeDist > 200;
+
+      if (climbedTooMuch || flatTooLongD || i === trackpoints.length - 1) {
+        const endIdx = climbedTooMuch || flatTooLongD ? minEleIdx : i;
+        const startPt = trackpoints[descStartIdx];
+        const endPt = trackpoints[endIdx];
+        const descDist = endPt.dist_m - startPt.dist_m;
+        const descDrop = startPt.ele - endPt.ele; // positive drop
+
+        if (descDist >= 400 && descDrop > 0) {
+          const avgGrade = -(descDrop / descDist) * 100; // negative grade
+          const score = Math.round(descDrop * Math.abs(avgGrade));
+
+          if (score >= 100) {
+            const startDist = (startPt.dist_m * distMultiplier).toFixed(1);
+            const endDist = (endPt.dist_m * distMultiplier).toFixed(1);
+            let diffLabel = "Moderate";
+            if (score > 1500) diffLabel = "Extreme";
+            else if (score > 600) diffLabel = "Severe";
+            else if (score > 250) diffLabel = "Difficult";
+
+            const cls = classifyGradient(avgGrade);
+
+            warnings.push({
+              id: `desc-${descStartIdx}`,
+              type: "STEEP_DESCENT",
+              message: `Steep Descent (${diffLabel}, Score: ${score}): Descent from ${startDist} to ${endDist} ${distName} (-${Math.round(descDrop * elevMultiplier)}${elevName} drop, avg grade: ${avgGrade.toFixed(1)}%).`,
+              startDist: startPt.dist_m,
+              endDist: endPt.dist_m,
+              climbScore: score,
+              avgGrade: parseFloat(avgGrade.toFixed(1)),
+              colorHex: cls.hex,
+              colorBg: cls.bg,
+              approved: true,
+            });
+          }
+        }
+
+        inDescent = false;
+        descStartIdx = -1;
+        minEle = Infinity;
+        minEleIdx = -1;
+        if (climbedTooMuch || flatTooLongD) {
+          i = endIdx;
+        }
+      }
+    }
+  }
+
+  // Attach colors to deserts and spatial mismatches
+  warnings.forEach(w => {
+    if (w.type === "RESOURCE_DESERT") {
+      w.colorHex = "#ef4444";
+      w.colorBg = "rgba(239, 68, 68, 0.15)";
+    } else if (w.type === "SPATIAL_MISMATCH") {
+      w.colorHex = "#a855f7";
+      w.colorBg = "rgba(168, 85, 247, 0.15)";
+    }
+  });
+
+  warnings.sort((a, b) => (a.startDist || 0) - (b.startDist || 0));
+  route.warnings = warnings;
+}
+
+/**
+ * Snaps nominal distances to actual GPX trackpoint indices.
+ * @param {Array} cumulativeDistances Cumulative distance list in meters
+ * @param {number} targetDist Target nominal distance in meters
+ * @returns {number} Closest trackpoint index
+ */
+function findClosestIndex(cumulativeDistances, targetDist) {
+  let minDiff = Infinity;
+  let closestIdx = 0;
+  for (let idx = 0; idx < cumulativeDistances.length; idx++) {
+    const diff = Math.abs(cumulativeDistances[idx] - targetDist);
+    if (diff < minDiff) {
+      minDiff = diff;
+      closestIdx = idx;
+    }
+  }
+  return closestIdx;
+}
+
+/**
+ * Snaps turnarounds to the midpoint of the course (furthest point/turnaround).
+ * @param {Array} cumulativeDistances Cumulative distance list in meters
+ * @returns {number} Turnaround index
+ */
+function findTurnaroundPoint(cumulativeDistances) {
+  const totalDist = cumulativeDistances[cumulativeDistances.length - 1];
+  const targetDist = totalDist / 2.0;
+  return findClosestIndex(cumulativeDistances, targetDist);
+}
+
+/**
+ * Port of Python's multi-pass intersection snapping.
+ * Finds a trackpoint near the first pass that minimizes the spatial distance
+ * to the trackpoints in the neighborhoods of the other passes.
+ */
+function findMultiPassIntersection(trackpoints, cumulativeDistances, passNominalDistancesM, scaleFactor, maxDeviationM = 1500) {
+  if (!passNominalDistancesM || passNominalDistancesM.length < 2) {
+    return 0;
+  }
+
+  const N = trackpoints.length;
+  const scaledDistances = passNominalDistancesM.map((d) => d * scaleFactor);
+
+  // Initial estimate for first pass
+  const I1 = findClosestIndex(cumulativeDistances, scaledDistances[0]);
+
+  // Determine spatial search boundaries for first pass
+  let startSearch = 0;
+  let endSearch = N - 1;
+  for (let i = 0; i < N; i++) {
+    if (cumulativeDistances[i] >= scaledDistances[0] - maxDeviationM) {
+      startSearch = i;
+      break;
+    }
+  }
+  for (let i = N - 1; i >= 0; i--) {
+    if (cumulativeDistances[i] <= scaledDistances[0] + maxDeviationM) {
+      endSearch = i;
+      break;
+    }
+  }
+
+  let bestIdx = I1;
+  let minTotalScore = Infinity;
+
+  // Set up search ranges for subsequent passes
+  const otherRanges = [];
+  for (let k = 1; k < scaledDistances.length; k++) {
+    const d = scaledDistances[k];
+    let oStart = 0;
+    let oEnd = N - 1;
+    for (let i = 0; i < N; i++) {
+      if (cumulativeDistances[i] >= d - maxDeviationM) {
+        oStart = i;
+        break;
+      }
+    }
+    for (let i = N - 1; i >= 0; i--) {
+      if (cumulativeDistances[i] <= d + maxDeviationM) {
+        oEnd = i;
+        break;
+      }
+    }
+    otherRanges.push({ start: oStart, end: oEnd });
+  }
+
+  // Optimize search
+  for (let cIdx = startSearch; cIdx <= endSearch; cIdx++) {
+    const cPt = trackpoints[cIdx];
+    let totalScore = 0.0;
+
+    for (let rIdx = 0; rIdx < otherRanges.length; rIdx++) {
+      const range = otherRanges[rIdx];
+      let minODist = Infinity;
+
+      for (let j = range.start; j <= range.end; j++) {
+        const oPt = trackpoints[j];
+        const dist = haversine(cPt.lat, cPt.lon, oPt.lat, oPt.lon);
+        if (dist < minODist) {
+          minODist = dist;
+        }
+      }
+      totalScore += minODist;
+    }
+
+    if (totalScore < minTotalScore) {
+      minTotalScore = totalScore;
+      bestIdx = cIdx;
+    }
+  }
+
+  return bestIdx;
+}
+
+/**
+ * Reconciles the route object by snapping new stations payload (from LLM) onto the trackpoints.
+ * Modifies route.waypoints in place.
+ * @param {Object} route The in-memory route object
+ * @param {Object} extractionPayload JSON containing parsed stations list
+ * @param {number} nominalDistanceM Optional nominal distance of course in meters
+ */
+export function reconcileCourse(route, extractionPayload, units = "imperial", nominalDistanceM = null) {
+  const trackpoints = route.trackpoints;
+  const cumulativeDistances = trackpoints.map((t) => t.dist_m);
+  const actualDistanceM = route.totalDistance;
+
+  let scaleFactor = 1.0;
+  if (nominalDistanceM) {
+    scaleFactor = actualDistanceM / nominalDistanceM;
+  }
+
+  const stations = extractionPayload.stations || [];
+  const updatedWaypoints = [...route.waypoints];
+  const spatialWarnings = [];
+
+  stations.forEach((station) => {
+    const stationId = station.id;
+    const name = station.name;
+    const type = station.type;
+    const subtype = station.subtype;
+    let passes = station.passes || [];
+
+    // Deduplicate passes that are at the same distance and have the same pass number
+    const uniquePasses = [];
+    passes.forEach((p) => {
+      const duplicate = uniquePasses.find(
+        (up) => up.num === p.num && Math.abs(up.dist_m - p.dist_m) < 10
+      );
+      if (!duplicate) {
+        uniquePasses.push(p);
+      } else {
+        if (!duplicate.label && p.label) duplicate.label = p.label;
+        if (!duplicate.cutoff_clock && p.cutoff_clock) duplicate.cutoff_clock = p.cutoff_clock;
+        if (!duplicate.cutoff_elapsed && p.cutoff_elapsed) duplicate.cutoff_elapsed = p.cutoff_elapsed;
+      }
+    });
+    passes = uniquePasses;
+
+    if (passes.length === 0) return;
+
+    let closestIdx = 0;
+    let lat = 0;
+    let lon = 0;
+    let useExactOverride = false;
+
+    const override = station.coordinate_override;
+    if (override) {
+      const overrideLat = parseFloat(override.lat);
+      const overrideLon = parseFloat(override.lon);
+
+      // Automatic Multi-Pass Detection along the trackpoints
+      const distances = trackpoints.map(pt => haversine(overrideLat, overrideLon, pt.lat, pt.lon));
+      const detectedPasses = [];
+      const thresholdM = 200;
+
+      for (let i = 1; i < distances.length - 1; i++) {
+        const prev = distances[i - 1];
+        const curr = distances[i];
+        const next = distances[i + 1];
+
+        if (curr < prev && curr < next && curr < thresholdM) {
+          detectedPasses.push({
+            idx: i,
+            dist_m: trackpoints[i].dist_m,
+            spatial_dist: curr
+          });
+        }
+      }
+
+      // Collapse duplicate/adjacent passes within 2000m
+      const mergedPasses = [];
+      detectedPasses.forEach(p => {
+        if (mergedPasses.length === 0) {
+          mergedPasses.push(p);
+        } else {
+          const last = mergedPasses[mergedPasses.length - 1];
+          if (p.dist_m - last.dist_m < 2000) {
+            if (p.spatial_dist < last.spatial_dist) {
+              mergedPasses[mergedPasses.length - 1] = p;
+            }
+          } else {
+            mergedPasses.push(p);
+          }
+        }
+      });
+
+      // Update passes array using the detected passes
+      if (mergedPasses.length > 0) {
+        passes = mergedPasses.map((mp, index) => {
+          const originalPass = station.passes?.[index];
+          return {
+            num: index + 1,
+            dist_m: mp.dist_m,
+            label: originalPass?.label || (mergedPasses.length > 1 ? (index === 0 ? "Outbound" : "Inbound") : ""),
+            cutoff_clock: originalPass?.cutoff_clock || null,
+            cutoff_elapsed: originalPass?.cutoff_elapsed || null
+          };
+        });
+        
+        closestIdx = mergedPasses[0].idx;
+      } else {
+        // Fallback to absolute closest if no local minimum under 200m was found
+        let minSpatialDist = Infinity;
+        trackpoints.forEach((pt, idx) => {
+          const dist = haversine(overrideLat, overrideLon, pt.lat, pt.lon);
+          if (dist < minSpatialDist) {
+            minSpatialDist = dist;
+            closestIdx = idx;
+          }
+        });
+      }
+
+      // Calculate spatial mismatch warning using the final selected closestIdx
+      const finalSpatialDist = haversine(overrideLat, overrideLon, trackpoints[closestIdx].lat, trackpoints[closestIdx].lon);
+
+      lat = overrideLat;
+      lon = overrideLon;
+      useExactOverride = true;
+
+      if (finalSpatialDist > 2000) {
+        const distName = units === "imperial" ? "miles" : "km";
+        const distVal = units === "imperial" ? finalSpatialDist / 1609.344 : finalSpatialDist / 1000;
+        spatialWarnings.push({
+          id: `spatial-mismatch-${stationId}`,
+          type: "SPATIAL_MISMATCH",
+          message: `Spatial Mismatch: Station "${name}" coordinate override is ${distVal.toFixed(1)} ${distName} from the nearest trackpoint.`,
+          startDist: trackpoints[closestIdx].dist_m,
+          endDist: trackpoints[closestIdx].dist_m,
+          approved: true,
+        });
+      }
+    } else {
+      // Heuristic: check if turnaround
+      let isTurnaround = false;
+      passes.forEach((p) => {
+        const label = (p.label || "").toLowerCase();
+        if (label.includes("turnaround") || label.includes("turn-around")) {
+          isTurnaround = true;
+        }
+      });
+
+      if (isTurnaround) {
+        closestIdx = findTurnaroundPoint(cumulativeDistances);
+      } else if (passes.length > 1) {
+        const passNominalDistancesM = passes.map((p) => p.dist_m);
+        closestIdx = findMultiPassIntersection(
+          trackpoints,
+          cumulativeDistances,
+          passNominalDistancesM,
+          scaleFactor
+        );
+      } else {
+        const firstPass = passes[0];
+        const nominalPassDistM = firstPass.dist_m;
+        const snappedPassDistM = nominalPassDistM * scaleFactor;
+        closestIdx = findClosestIndex(cumulativeDistances, snappedPassDistM);
+      }
+
+      const targetPt = trackpoints[closestIdx];
+      lat = targetPt.lat;
+      lon = targetPt.lon;
+    }
+
+    const targetPt = trackpoints[closestIdx];
+    const ele = targetPt.ele;
+
+    // Symbol configuration
+    let sym = "icons/services.svg";
+    const nameL = name.toLowerCase();
+    if (nameL.includes("start")) {
+      sym = "icons/start.svg";
+    } else if (nameL.includes("finish") || nameL.includes("(end)")) {
+      sym = "icons/finish.svg";
+    } else if (subtype === "aid_station" || nameL.includes("aid") || nameL.includes("station") || nameL.includes("checkpoint")) {
+      sym = "icons/aid_station.svg";
+    } else if (subtype === "water_source" || nameL.includes("creek") || nameL.includes("spring") || nameL.includes("water") || nameL.includes("well") || nameL.includes("stream")) {
+      sym = "icons/water.svg";
+    } else if (subtype === "scenic" || nameL.includes("viewpoint") || nameL.includes("vista") || nameL.includes("lookout")) {
+      sym = "icons/scenic.svg";
+    } else if (subtype === "campground" || nameL.includes("camp") || nameL.includes("campsite")) {
+      sym = "icons/campground.svg";
+    } else if (subtype === "refuge" || nameL.includes("refuge") || nameL.includes("rifugio") || nameL.includes("shelter")) {
+      sym = "icons/refuge.svg";
+    } else if (subtype === "summit" || nameL.includes("pass") || nameL.includes("col") || nameL.includes("summit") || nameL.includes("peak")) {
+      sym = "icons/summit.svg";
+    }
+
+    // Build description
+    const descParts = passes.map((p) => `Pass ${p.num} at ${(p.dist_m / 1000).toFixed(2)}km (${p.label || ""})`);
+    const desc = descParts.join(" | ");
+
+    // Build standard extension dictionary format
+    const customExtension = {
+      station: {
+        id: stationId,
+        type,
+        subtype,
+        passes,
+        accessibility: station.accessibility || {},
+        services: station.services || {},
+        navigation_alert: station.navigation_alert || null,
+      },
+    };
+
+    // Remove old waypoint with same ID if exists to prevent duplicate addition
+    const existingIndex = updatedWaypoints.findIndex((w) => w.id === stationId);
+    const newWaypoint = {
+      id: stationId,
+      name,
+      lat,
+      lon,
+      ele,
+      sym,
+      desc,
+      dist_m: targetPt.dist_m,
+      closestTrackpointIndex: closestIdx,
+      extensions: customExtension,
+    };
+
+    if (existingIndex !== -1) {
+      updatedWaypoints[existingIndex] = newWaypoint;
+    } else {
+      updatedWaypoints.push(newWaypoint);
+    }
+  });
+
+  route.waypoints = updatedWaypoints;
+  
+  // Ensure every waypoint has a corresponding trackpoint detour
+  route.waypoints.forEach((wpt) => {
+    const pts = route.trackpoints;
+    const matchIdx = pts.findIndex(
+      (pt) => Math.abs(pt.lat - wpt.lat) < 0.000001 && Math.abs(pt.lon - wpt.lon) < 0.000001
+    );
+    if (matchIdx === -1) {
+      // No trackpoint exists at the waypoint's exact coordinates.
+      // Find the closest segment and insert a detour
+      const snapped = snapToRouteSegments(route, { lat: wpt.lat, lng: wpt.lon }, wpt.dist_m);
+      if (snapped) {
+        const insertIdx = snapped.closestTrackpointIndex;
+        const newTrackPt = {
+          lat: wpt.lat,
+          lon: wpt.lon,
+          ele: snapped.ele,
+          dist_m: snapped.dist_m,
+          time: pts[insertIdx]?.time || null,
+        };
+        if (insertIdx === 0 && snapped.dist_m === 0) {
+          pts.unshift(newTrackPt);
+        } else if (insertIdx === pts.length - 2 && Math.abs(snapped.dist_m - pts[pts.length - 1].dist_m) < 0.1) {
+          pts.push(newTrackPt);
+        } else {
+          pts.splice(insertIdx + 1, 0, newTrackPt);
+        }
+      }
+    }
+  });
+
+  // Recalculate route metrics (gains, distances, grades) after modifying trackpoints
+  recalculateRouteMetrics(route);
+  
+  // Recalculate warnings because adding resources resolves resource deserts
+  calculateWarnings(route, spatialWarnings, units);
+}
+
+/**
+ * Calculates metrics from a specific trackpoint index to the next aid station and active climb.
+ * @param {Object} route The route object
+ * @param {number} currentIdx Current trackpoint index
+ * @returns {Object} Metric data
+ */
+export function getMetricsForPoint(route, currentIdx) {
+  const pts = route.trackpoints;
+  if (!pts || pts.length === 0 || currentIdx < 0 || currentIdx >= pts.length) {
+    return { nextAid: null, activeClimb: null };
+  }
+
+  const currentPt = pts[currentIdx];
+  const currentDist = currentPt.dist_m;
+
+  // 1. Find Next Aid Station / POI
+  // We sort waypoints by distance and find the first one past currentDist that is an aid station or segmenting POI
+  const nextAidWpt = route.waypoints
+    .filter(w => w.dist_m > currentDist + 1 && (w.extensions?.station?.type === "segmenting" || w.sym.includes("aid_station")))
+    .sort((a, b) => a.dist_m - b.dist_m)[0];
+
+  let nextAid = null;
+  if (nextAidWpt) {
+    const endIdx = nextAidWpt.closestTrackpointIndex;
+    
+    // Calculate gain/loss between currentIdx and endIdx
+    let gain = 0;
+    let loss = 0;
+    
+    const limit = Math.min(endIdx, pts.length - 1);
+    for (let i = currentIdx + 1; i <= limit; i++) {
+      const diff = pts[i].ele - pts[i - 1].ele;
+      if (diff > 0) gain += diff;
+      else loss += Math.abs(diff);
+    }
+
+    nextAid = {
+      name: nextAidWpt.name,
+      dist_m: nextAidWpt.dist_m - currentDist,
+      absolute_dist_m: nextAidWpt.dist_m,
+      gain_m: gain,
+      loss_m: loss,
+      cutoff_clock: nextAidWpt.extensions?.station?.passes?.[0]?.cutoff_clock || null
+    };
+  }
+
+  // 2. Find Active Long Climb
+  // Check if currentDist falls inside any DIFFICULT_CLIMB warning
+  let activeClimb = null;
+  if (route.warnings) {
+    const activeClimbWarn = route.warnings.find(
+      w => w.type === "DIFFICULT_CLIMB" && w.approved && currentDist >= w.startDist && currentDist <= w.endDist
+    );
+
+    if (activeClimbWarn) {
+      // Find remaining distance
+      const remainingDist = activeClimbWarn.endDist - currentDist;
+
+      // Find max elevation within this climb warning segment to calculate remaining vertical gain
+      let maxEle = currentPt.ele;
+      let startIdx = 0;
+      let endIdx = pts.length - 1;
+
+      // Locate indices matching the warning distances
+      for (let i = 0; i < pts.length; i++) {
+        if (pts[i].dist_m >= activeClimbWarn.startDist) {
+          startIdx = i;
+          break;
+        }
+      }
+      for (let i = pts.length - 1; i >= 0; i--) {
+        if (pts[i].dist_m <= activeClimbWarn.endDist) {
+          endIdx = i;
+          break;
+        }
+      }
+
+      // Find maximum elevation from current position to end of climb
+      for (let i = currentIdx; i <= endIdx; i++) {
+        if (pts[i].ele > maxEle) {
+          maxEle = pts[i].ele;
+        }
+      }
+
+      const remainingGain = Math.max(0, maxEle - currentPt.ele);
+
+      activeClimb = {
+        dist_m: remainingDist,
+        gain_m: remainingGain
+      };
+    }
+  }
+
+  return { nextAid, activeClimb };
+}
+
+export function serializeGPX(route) {
+  let xml = `<?xml version="1.0" encoding="utf-8"?>\n`;
+  xml += `<gpx version="1.1" creator="RuffTerrain Explorer" xmlns="http://www.topografix.com/GPX/1/1" xmlns:ca="http://coursearchitect.com/schema/v1">\n`;
+  xml += `  <metadata>\n`;
+  xml += `    <name>${escapeXml(route.name || "Course")}</name>\n`;
+  xml += `  </metadata>\n`;
+
+  // Write Waypoints
+  (route.waypoints || []).forEach((w) => {
+    xml += `  <wpt lat="${w.lat}" lon="${w.lon}">\n`;
+    if (w.ele !== undefined) xml += `    <ele>${w.ele}</ele>\n`;
+    xml += `    <name>${escapeXml(w.name)}</name>\n`;
+    if (w.sym) xml += `    <sym>${escapeXml(w.sym)}</sym>\n`;
+    if (w.desc) xml += `    <desc>${escapeXml(w.desc)}</desc>\n`;
+
+    const station = w.extensions?.station;
+    if (station) {
+      xml += `    <extensions>\n`;
+      xml += `      <ca:station type="${escapeXml(station.type || "segmenting")}" id="${escapeXml(w.id || station.id)}"${station.subtype ? ` subtype="${escapeXml(station.subtype)}"` : ""}>\n`;
+      
+      const passes = station.passes || [];
+      if (passes.length > 0) {
+        xml += `        <ca:passes>\n`;
+        passes.forEach((p) => {
+          xml += `          <ca:pass num="${p.num}" dist_m="${p.dist_m.toFixed(1)}"${p.label ? ` label="${escapeXml(p.label)}"` : ""}${p.cutoff_clock ? ` cutoff_clock="${escapeXml(p.cutoff_clock)}"` : ""}${p.cutoff_elapsed ? ` cutoff_elapsed="${escapeXml(p.cutoff_elapsed)}"` : ""}/>\n`;
+        });
+        xml += `        </ca:passes>\n`;
+      }
+
+      const services = station.services || {};
+      if (Object.keys(services).length > 0) {
+        xml += `        <ca:services`;
+        Object.entries(services).forEach(([k, v]) => {
+          xml += ` ${k}="${v}"`;
+        });
+        xml += `/>\n`;
+      }
+
+      const access = station.accessibility || {};
+      if (Object.keys(access).length > 0) {
+        xml += `        <ca:accessibility`;
+        Object.entries(access).forEach(([k, v]) => {
+          xml += ` ${k}="${v}"`;
+        });
+        xml += `/>\n`;
+      }
+
+      const navAlert = station.navigation_alert || {};
+      if (Object.keys(navAlert).length > 0) {
+        xml += `        <ca:navigation_alert`;
+        Object.entries(navAlert).forEach(([k, v]) => {
+          xml += ` ${k}="${escapeXml(String(v))}"`;
+        });
+        xml += `/>\n`;
+      }
+
+      if (station.photo_url) {
+        xml += `        <ca:photo_url>${escapeXml(station.photo_url)}</ca:photo_url>\n`;
+      }
+
+      xml += `      </ca:station>\n`;
+      xml += `    </extensions>\n`;
+    }
+    xml += `  </wpt>\n`;
+  });
+
+  // Write Track
+  xml += `  <trk>\n`;
+  xml += `    <name>${escapeXml(route.name || "Track")}</name>\n`;
+  xml += `    <trkseg>\n`;
+  (route.trackpoints || []).forEach((pt) => {
+    xml += `      <trkpt lat="${pt.lat}" lon="${pt.lon}">\n`;
+    if (pt.ele !== undefined) xml += `        <ele>${pt.ele}</ele>\n`;
+    if (pt.time) xml += `        <time>${pt.time}</time>\n`;
+    xml += `      </trkpt>\n`;
+  });
+  xml += `    </trkseg>\n`;
+  xml += `  </trk>\n`;
+  xml += `</gpx>\n`;
+
+  return xml;
+}
+
+function escapeXml(unsafe) {
+  if (!unsafe) return "";
+  return unsafe.replace(/[<>&'"]/g, (c) => {
+    switch (c) {
+      case '<': return '&lt;';
+      case '>': return '&gt;';
+      case '&': return '&amp;';
+      case '\'': return '&apos;';
+      case '"': return '&quot;';
+      default: return c;
+    }
+  });
+}
+
+/**
+ * Resolves gradient category upper-bound thresholds from user settings or defaults.
+ */
+export function getGradientThresholds() {
+  let flatMax = 2.0, modMax = 5.0, steepMax = 8.0, vSteepMax = 10.0;
+  if (typeof localStorage !== "undefined") {
+    const f = parseFloat(localStorage.getItem("grad_thresh_flat"));
+    const m = parseFloat(localStorage.getItem("grad_thresh_mod"));
+    const s = parseFloat(localStorage.getItem("grad_thresh_steep"));
+    const v = parseFloat(localStorage.getItem("grad_thresh_vsteep"));
+    if (!isNaN(f) && f >= 0) flatMax = f;
+    if (!isNaN(m) && m > flatMax) modMax = m;
+    if (!isNaN(s) && s > modMax) steepMax = s;
+    if (!isNaN(v) && v > steepMax) vSteepMax = v;
+  }
+  return { flatMax, modMax, steepMax, vSteepMax };
+}
+
+/**
+ * Classifies gradient (%) into tier styling info (key, label, hex, bg).
+ */
+export function classifyGradient(grade) {
+  if (grade === null || grade === undefined || isNaN(grade)) {
+    return { key: "flat", label: "FLAT", hex: "#3b82f6", bg: "rgba(59, 130, 246, 0.15)" };
+  }
+  const { flatMax, modMax, steepMax, vSteepMax } = getGradientThresholds();
+  if (grade < -flatMax) {
+    return { key: "descent", label: "DESCENT", hex: "#10b981", bg: "rgba(16, 185, 129, 0.15)" };
+  } else if (grade <= flatMax) {
+    return { key: "flat", label: "FLAT", hex: "#3b82f6", bg: "rgba(59, 130, 246, 0.15)" };
+  } else if (grade <= modMax) {
+    return { key: "moderate", label: "MODERATE CLIMB", hex: "#f59e0b", bg: "rgba(245, 158, 11, 0.15)" };
+  } else if (grade <= steepMax) {
+    return { key: "steep", label: "STEEP CLIMB", hex: "#f97316", bg: "rgba(249, 115, 22, 0.15)" };
+  } else if (grade <= vSteepMax) {
+    return { key: "verysteep", label: "VERY STEEP", hex: "#ef4444", bg: "rgba(239, 68, 68, 0.15)" };
+  }
+  return { key: "extreme", label: "EXTREME CLIMB", hex: "#b91c1c", bg: "rgba(185, 28, 28, 0.25)" };
+}
+
+/**
+ * Computes average gradient (%) for a route sector.
+ */
+export function computeSectorGradient(route, sec) {
+  if (sec && typeof sec.avg_grade === "number" && !isNaN(sec.avg_grade)) return sec.avg_grade;
+  if (!route || !route.trackpoints || route.trackpoints.length === 0 || !sec) return 0;
+  const pts = route.trackpoints;
+  const sDist = sec.start_dist_m || 0;
+  const eDist = sec.end_dist_m || 0;
+  if (eDist <= sDist) return 0;
+  
+  let sEle = pts[0].ele || 0;
+  let eEle = pts[pts.length - 1].ele || 0;
+  let foundS = false;
+  for (let i = 0; i < pts.length; i++) {
+    if (!foundS && pts[i].dist_m >= sDist) { sEle = pts[i].ele || 0; foundS = true; }
+    if (pts[i].dist_m >= eDist) { eEle = pts[i].ele || 0; break; }
+  }
+  const grade = ((eEle - sEle) / (eDist - sDist)) * 100;
+  if (sec) sec.avg_grade = grade; // cache
+  return grade;
+}
+
+// ==========================================
+// DAY ARCHITECT & RUNNER PACING ENGINE
+// ==========================================
+
+export const DEFAULT_RUNNER_PROFILES = [
+  {
+    id: "profile_hawk_pro",
+    name: "Dan Hawk (Mountain Ultra Pro)",
+    basePaces: {
+      descent: 8.5,
+      flat: 9.5,
+      moderate: 12.5,
+      steep: 16.0,
+      verysteep: 20.0,
+      extreme: 26.0
+    },
+    restDurationMin: 15
+  },
+  {
+    id: "profile_casual",
+    name: "Casual Adventurer",
+    basePaces: {
+      descent: 11.0,
+      flat: 12.0,
+      moderate: 16.0,
+      steep: 21.0,
+      verysteep: 27.0,
+      extreme: 35.0
+    },
+    restDurationMin: 20
+  }
+];
+
+export const GOAL_PRESETS = {
+  hard_race: { label: "⚡ Hard Race", mult: 0.90, restMult: 0.5 },
+  training_run: { label: "🏃 Training Run", mult: 1.05, restMult: 1.0 },
+  moderate_workout: { label: "💪 Moderate Workout", mult: 1.15, restMult: 1.0 },
+  fun_day_out: { label: "🥾 Easy / Fun Day Out", mult: 1.25, restMult: 1.5 }
+};
+
+let activeProfilesList = null;
+
+export function getRunnerProfiles() {
+  if (typeof localStorage !== "undefined") {
+    try {
+      const stored = JSON.parse(localStorage.getItem("kokopelli_runner_profiles"));
+      if (Array.isArray(stored) && stored.length > 0) return stored;
+    } catch(e) {}
+  }
+  if (!activeProfilesList) {
+    activeProfilesList = DEFAULT_RUNNER_PROFILES.map(p => ({ ...p, basePaces: { ...p.basePaces } }));
+  }
+  return activeProfilesList;
+}
+
+export function getActiveRunnerProfile() {
+  const profiles = getRunnerProfiles();
+  if (typeof localStorage !== "undefined") {
+    const actId = localStorage.getItem("kokopelli_active_profile_id");
+    const found = profiles.find(p => p.id === actId);
+    if (found) return found;
+  }
+  return profiles[0];
+}
+
+export function saveRunnerProfile(newProfile) {
+  if (!newProfile || !newProfile.id) return;
+  const profiles = getRunnerProfiles();
+  const existingIdx = profiles.findIndex(p => p.id === newProfile.id || p.name === newProfile.name);
+  if (existingIdx !== -1) {
+    profiles[existingIdx] = newProfile;
+  } else {
+    profiles.push(newProfile);
+  }
+  if (typeof localStorage !== "undefined") {
+    localStorage.setItem("kokopelli_runner_profiles", JSON.stringify(profiles));
+    localStorage.setItem("kokopelli_active_profile_id", newProfile.id);
+  } else {
+    activeProfilesList = profiles;
+  }
+}
+
+export function deleteRunnerProfile(profileId) {
+  if (!profileId) return;
+  let profiles = getRunnerProfiles().filter(p => p.id !== profileId);
+  if (profiles.length === 0) {
+    profiles = DEFAULT_RUNNER_PROFILES.map(p => ({ ...p, basePaces: { ...p.basePaces } }));
+  }
+  if (typeof localStorage !== "undefined") {
+    localStorage.setItem("kokopelli_runner_profiles", JSON.stringify(profiles));
+    const curActive = localStorage.getItem("kokopelli_active_profile_id");
+    if (curActive === profileId || !profiles.find(p => p.id === curActive)) {
+      localStorage.setItem("kokopelli_active_profile_id", profiles[0].id);
+    }
+  } else {
+    activeProfilesList = profiles;
+  }
+}
+
+export function getActiveGoalPreset() {
+  let key = "training_run";
+  if (typeof localStorage !== "undefined") {
+    key = localStorage.getItem("kokopelli_goal_preset") || "training_run";
+  }
+  return GOAL_PRESETS[key] || GOAL_PRESETS.training_run;
+}
+
+/**
+ * Automatically slices a course into pacing sectors at major terrain inflections and POIs.
+ */
+export function autoSegmentCourse(route) {
+  if (!route || !route.trackpoints || route.trackpoints.length === 0) return [];
+  const pts = route.trackpoints;
+  const totalDist = route.totalDistance || pts[pts.length - 1].dist_m;
+  const profile = getActiveRunnerProfile();
+  const goal = getActiveGoalPreset();
+
+  const splits = new Set([0, Math.round(totalDist)]);
+
+  (route.waypoints || []).forEach(wpt => {
+    if (wpt.dist_m > 50 && wpt.dist_m < totalDist - 50) {
+      splits.add(Math.round(wpt.dist_m));
+    }
+  });
+
+  if (route.executionPlan && route.executionPlan.customSplits) {
+    route.executionPlan.customSplits.forEach(d => {
+      if (d > 50 && d < totalDist - 50) splits.add(Math.round(d));
+    });
+  }
+
+  let currMode = classifyGradient(pts[0].grade || 0).key;
+  let modeStartDist = 0;
+  for (let i = 1; i < pts.length; i++) {
+    const d = pts[i].dist_m;
+    const mode = classifyGradient(pts[i].grade || 0).key;
+    if (mode !== currMode) {
+      if (d - modeStartDist >= 600 && d > 100 && d < totalDist - 100) {
+        splits.add(Math.round(d));
+        currMode = mode;
+        modeStartDist = d;
+      }
+    }
+  }
+
+  const sorted = Array.from(splits).sort((a, b) => a - b);
+  const deduped = [sorted[0]];
+  for (let i = 1; i < sorted.length; i++) {
+    if (sorted[i] - deduped[deduped.length - 1] >= 250) {
+      deduped.push(sorted[i]);
+    } else if (sorted[i] === Math.round(totalDist)) {
+      deduped[deduped.length - 1] = Math.round(totalDist);
+    }
+  }
+
+  const sectors = [];
+  for (let i = 0; i < deduped.length - 1; i++) {
+    const sDist = deduped[i];
+    const eDist = deduped[i+1];
+    const sPt = pts.find(p => p.dist_m >= sDist) || pts[0];
+    const ePt = pts.find(p => p.dist_m >= eDist) || pts[pts.length - 1];
+    const gain = (ePt.ele || 0) - (sPt.ele || 0);
+    const grade = ((gain) / (eDist - sDist)) * 100;
+    const cls = classifyGradient(grade);
+    const basePace = profile.basePaces[cls.key] || profile.basePaces.flat || 10.0;
+    const targetPace = parseFloat((basePace * goal.mult).toFixed(1));
+
+    const endWpt = (route.waypoints || []).find(w => Math.abs(w.dist_m - eDist) < 150);
+    const sName = endWpt ? `➔ ${endWpt.name}` : `${cls.label} Segment`;
+
+    sectors.push({
+      start_dist_m: sDist,
+      end_dist_m: eDist,
+      name: sName,
+      terrain: cls.key === "descent" ? "descend" : (cls.key === "flat" ? "flat" : "climb"),
+      avg_grade: grade,
+      target_pace_min: targetPace,
+      strategy: `${cls.label} (${grade.toFixed(1)}%). Target ${targetPace} min/mi effort.`,
+      nutrition: endWpt ? `Rest break (~${Math.round(profile.restDurationMin * goal.restMult)} mins at ${endWpt.name}).` : "Regular hydration."
+    });
+  }
+
+  return sectors;
+}
+
+/**
+ * Backward Taxi Deadline solver: scales climb/flat paces to meet mandatory curfew while locking descents.
+ */
+export function solveBackwardPacing(targetTotalHrs, route, unitsMode = "imperial") {
+  if (!route || !route.executionPlan || !route.executionPlan.sectors || targetTotalHrs <= 0) return;
+  const sectors = route.executionPlan.sectors;
+  const profile = getActiveRunnerProfile();
+  const goal = getActiveGoalPreset();
+  const restMin = profile.restDurationMin * goal.restMult;
+  const mult = unitsMode === "metric" ? 1000 : 1609.344;
+
+  let aidCount = 0;
+  sectors.forEach(sec => { if (sec.name && sec.name.startsWith("➔")) aidCount++; });
+  const totalRestHrs = (aidCount * restMin) / 60;
+  const availRunHrs = targetTotalHrs - totalRestHrs;
+  if (availRunHrs <= 0) return;
+
+  let descHrs = 0;
+  let workDistNomHrs = 0;
+  sectors.forEach(sec => {
+    const distMi = (sec.end_dist_m - sec.start_dist_m) / mult;
+    if (sec.terrain === "descend") {
+      descHrs += (distMi * sec.target_pace_min) / 60;
+    } else {
+      workDistNomHrs += (distMi * sec.target_pace_min) / 60;
+    }
+  });
+
+  const reqWorkHrs = availRunHrs - descHrs;
+  const ratio = workDistNomHrs > 0 ? (reqWorkHrs / workDistNomHrs) : 1.0;
+
+  sectors.forEach(sec => {
+    if (sec.terrain !== "descend") {
+      sec.target_pace_min = parseFloat((sec.target_pace_min * Math.max(0.4, ratio)).toFixed(1));
+    }
+  });
+
+  route.executionPlan.targetDurationHrs = targetTotalHrs;
+}
+
+/**
+ * Diurnal Pacing Triangle Triad solver.
+ * Given 2 locked facets (from 'start', 'finish', 'pacing'), calculates the 3rd.
+ */
+export function solvePacingTriangle(lockedFacets, startMs, finishMs, route, unitsMode = "imperial") {
+  if (!route || !route.executionPlan) return null;
+  const locked = new Set(lockedFacets || ["start", "pacing"]);
+  const mult = unitsMode === "metric" ? 1000 : 1609.344;
+  
+  const nominalSectors = autoSegmentCourse(route);
+  if (!nominalSectors || nominalSectors.length === 0) return null;
+
+  const profile = getActiveRunnerProfile();
+  const goal = getActiveGoalPreset();
+  const restMin = (profile?.restDurationMin || 15) * (goal?.restMult || 1);
+
+  let aidCount = 0;
+  nominalSectors.forEach(sec => { if (sec.name && sec.name.startsWith("➔")) aidCount++; });
+  const totalRestHrs = (aidCount * restMin) / 60;
+
+  let nomRunHrs = 0;
+  let nomDescHrs = 0;
+  let nomWorkHrs = 0;
+
+  nominalSectors.forEach(sec => {
+    const distMi = (sec.end_dist_m - sec.start_dist_m) / mult;
+    const secHrs = (distMi * sec.target_pace_min) / 60;
+    nomRunHrs += secHrs;
+    if (sec.terrain === "descend") {
+      nomDescHrs += secHrs;
+    } else {
+      nomWorkHrs += secHrs;
+    }
+  });
+
+  const nomTotalHrs = nomRunHrs + totalRestHrs;
+
+  if (!locked.has("finish")) {
+    route.executionPlan.sectors = nominalSectors;
+    route.executionPlan.startTime = startMs ? new Date(startMs).toISOString() : (route.executionPlan.startTime || new Date().toISOString());
+    route.executionPlan.targetDurationHrs = parseFloat(nomTotalHrs.toFixed(2));
+    const solvedFinishMs = (startMs || Date.now()) + nomTotalHrs * 3600 * 1000;
+    return {
+      startMs: startMs || Date.now(),
+      finishMs: solvedFinishMs,
+      proportionalFactor: 1.0,
+      durationHrs: parseFloat(nomTotalHrs.toFixed(2))
+    };
+  }
+
+  if (!locked.has("start")) {
+    route.executionPlan.sectors = nominalSectors;
+    const solvedStartMs = (finishMs || (Date.now() + nomTotalHrs * 3600 * 1000)) - nomTotalHrs * 3600 * 1000;
+    route.executionPlan.startTime = new Date(solvedStartMs).toISOString();
+    route.executionPlan.targetDurationHrs = parseFloat(nomTotalHrs.toFixed(2));
+    return {
+      startMs: solvedStartMs,
+      finishMs: finishMs || (solvedStartMs + nomTotalHrs * 3600 * 1000),
+      proportionalFactor: 1.0,
+      durationHrs: parseFloat(nomTotalHrs.toFixed(2))
+    };
+  }
+
+  const reqTotalHrs = ((finishMs || Date.now()) - (startMs || Date.now())) / (3600 * 1000);
+  if (reqTotalHrs <= 0) {
+    throw new Error("Finish time must be chronologically after start time.");
+  }
+  const availRunHrs = reqTotalHrs - totalRestHrs;
+  if (availRunHrs <= 0) {
+    throw new Error("Time window is too narrow for scheduled aid break rest stops.");
+  }
+
+  const reqWorkHrs = Math.max(0.01, availRunHrs - nomDescHrs);
+  const gamma = nomWorkHrs > 0 ? (reqWorkHrs / nomWorkHrs) : 1.0;
+  const propFactor = parseFloat(gamma.toFixed(2));
+
+  nominalSectors.forEach(sec => {
+    if (sec.terrain !== "descend") {
+      sec.target_pace_min = Math.max(3.0, parseFloat((sec.target_pace_min * gamma).toFixed(1)));
+      sec.strategy = `${sec.terrain === "flat" ? "Flat" : "Climb"} (${sec.avg_grade ? sec.avg_grade.toFixed(1) : 0}%). Scaled ${sec.target_pace_min} min/mi (${propFactor}x effort).`;
+    }
+  });
+
+  route.executionPlan.sectors = nominalSectors;
+  route.executionPlan.startTime = new Date(startMs || Date.now()).toISOString();
+  route.executionPlan.targetDurationHrs = parseFloat(reqTotalHrs.toFixed(2));
+
+  return {
+    startMs: startMs || Date.now(),
+    finishMs: finishMs || Date.now(),
+    proportionalFactor: propFactor,
+    durationHrs: parseFloat(reqTotalHrs.toFixed(2))
+  };
+}
+

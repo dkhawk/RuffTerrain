@@ -885,8 +885,6 @@ This journal records all design decisions, architecture patterns, development st
     *   Set tabular numerals styles in `src/style.css`.
     *   Rebuilt production bundle successfully via `npm run build`.
 
----
-
 ### 🚀 Session 62: Implicit Start & Finish Waypoint Generation on Course Import
 *   **Goal**: Ensure every imported route automatically includes explicit Course Start and Course Finish milestones if they are not defined in the GPX/KML source.
 *   **Decisions & Rationale**:
@@ -1007,6 +1005,272 @@ This journal records all design decisions, architecture patterns, development st
     *   Added `HaversineTest.kt` and `MainScreenViewModelLocationTest.kt` verifying math and snap projections.
     *   Updated `Map2DViewport.kt` and `Map3DViewport.kt` to dynamically center the map camera viewport on the runner position marker as the scrubber or GPS coordinates progress.
     *   Ran `./gradlew :app:testDebugUnitTest` and confirmed all unit tests pass successfully.
+
+---
+
+## 📅 June 19, 2026
+
+### 🚀 Session 72: Stuck Weather Predictions & Pacing Distance Overflow Fix
+*   **Goal**: Resolve the issue where weather predictions got stuck at the end of the course (beyond Dry Fork), and show temperature ranges in the scrubber hover preview.
+*   **Decisions & Rationale**:
+    *   **Increased Forecast Query Range**: Raised the hours parameter inside `fetchWeatherForecast` calls from `24` or `48` to `96` hours (4 days). This ensures that even for long courses starting tomorrow or later, the arrival timestamps at all aid stations fall within the queried forecast range.
+    *   **Pacing Distance Overflow Projection**: Updated `getElapsedHoursAtDistance()` to project remaining durations using the final sector's target pace when the requested distance exceeds the final sector's end boundary, preventing flat stuck times at the end of the course.
+    *   **Interactive Scrubber Forecast Ranges**: Refactored the scrubber hover preview panel (`showPreviewPoiBanner`) to leverage the `getWeatherWindowDetails` helper and display temperature ranges (e.g., `15°C (12°C-17°C)`) instead of flat temperatures.
+*   **Key Actions Taken**:
+    *   Modified `main.js` to change forecast lookup hours to `96` and integrated `getWeatherWindowDetails` with temperature range formatting inside `showPreviewPoiBanner`.
+    *   Updated `getElapsedHoursAtDistance` in `src/fetch-weather.js` to handle distance overflow.
+    *   Added dedicated unit test case in `test/gpx.test.js` to verify pacing behavior beyond the final sector.
+    *   Verified all unit tests pass successfully and ran production Vite builds.
+
+---
+
+### 🚀 Session 72B: Dialog Dismissibility & Corner Close Button Visibility Refinements
+*   **Goal**: Enable dismissing floating aid station preview banners and waypoint dialogs (which previously lacked close buttons or trapped playback on startup), and elevate course importer close button aesthetics and corner positioning.
+*   **Decisions & Rationale**:
+    *   **Passing Aid Station Dialog Dismissal**: Added explicit close buttons (`#close-preview-poi-btn`) and Escape hotkey handling to `#preview-poi-banner`. Clicking or pressing Escape hides the banner, cancels pending pause timers (`autoResumeTimeout`), and immediately resumes fly-through simulation.
+    *   **Waypoint Details Dialog Dismissal**: Added explicit header (`#poi-dialog-close-header`) and bottom (`#poi-dialog-close-bottom`) dismiss buttons to `#poi-detail-dialog` inside the course studio, bridging existing click listeners in `src/main.js`.
+    *   **Corner Dismiss Aesthetics**: Upgraded `.close-card-btn` with `position: absolute; top: 12px; right: 12px;`, circular glassmorphic pill boundaries (`border-radius: 50%`), high-contrast white iconography, and vibrant ruby red hover states (`rgba(239, 68, 68, 0.85)`). Added right padding to `.card-header` titles to prevent text collision.
+*   **Key Actions Taken**:
+    *   Updated `#card-importer`, `#poi-detail-dialog`, and `#preview-poi-banner` markup in `index.html`.
+    *   Added event listeners and Escape key checks in `src/main.js`.
+    *   Refined `.close-card-btn` and `.card-header` in `src/style.css`.
+    *   Rebuilt production bundle successfully via `npm run build`.
+
+---
+
+### 🚀 Session 73: Intelligent Diurnal Race Planning Engine, Granular Terrain Subsegments & Live Pacing Box
+*   **Goal**: Replace simplistic hardcoded pacing math with a physiological and environmental race planning engine that models climbs/descents piecewise gradient energy scaling, continuous arrival windows, diurnal mountain weather predictions across time ranges, thermal throttling penalties ($>70^\circ\text{F}$), goal time conflict resolution, and real-time flight simulation tracking.
+*   **Decisions & Rationale**:
+    *   **Unified Intelligent Engine (`computeIntelligentPacingAndWeatherPlan`)**: Designed a master pacing computation helper in `src/main.js` utilized by both `#generate-race-plan-btn` (Course Studio) and `#wiz-generate-plan-btn` (Wizard Modal).
+    *   **Physiological & Terrain Physics**: Replaced crude flat grade thresholds with piecewise gradient scaling (Minetti curves), steep mountain power-hiking penalties ($>12\%$ grade), swift gravity descent boosts, technical muscular braking on steep drops ($<-12\%$), and altitude hypoxia slowdowns ($>7,500\text{ ft}$).
+    *   **Diurnal Weather & Continuous Windows**: Modeled arrival prediction as a continuous time range (e.g. `06:00 - 08:45`). Integrated a diurnal mountain temperature sine curve ($58^\circ\text{F}-84^\circ\text{F}+$) alongside wind vectors, sky condition tags, and convective afternoon thunderstorm probabilities.
+    *   **Thermal Runner Throttling**: Applied physiological heat degradation directly tied to average window temp ($>70^\circ\text{F}$ adds $+8\%$ slowdown, $>78^\circ\text{F}$ adds $+16\%$, $>85^\circ\text{F}$ extreme thermal throttling adds $+25\%$).
+    *   **Goal Time vs Pace Conflict Resolution**: Added proactive conflict detection banners. If calculated environmental finishing time exceeds user goal cutoff limits, a prominent ruby alert highlights the pace deficit and advises speed adjustments.
+    *   **Granular Terrain Subsegments**: Scanned intermediate trackpoints between major aid stations to extract continuous steep climbs and drops, rendering them as nested subsegment breakdowns inside each sector card.
+    *   **Dedicated Live Race Plan Preview Box**: Created `#live-race-plan-preview-box` floating cleanly at the top center of the 3D viewport, equipped with a `#toggle-live-plan-btn` in the HUD actions bar. As the camera flies along the trail in simulation, this quest-tracker box dynamically updates current sector progress, active subsegment hazards, simulated arrival windows, and real-time pace strategy.
+*   **Key Actions Taken**:
+    *   Added `#live-race-plan-preview-box` and `#toggle-live-plan-btn` to `index.html`.
+    *   Implemented `computeIntelligentPacingAndWeatherPlan`, refactored wizard/studio button listeners, and updated `updateHUD` live tracker loop in `src/main.js`.
+    *   Rebuilt production bundle successfully via `npm run build`.
+
+---
+
+### 🚀 Session 74: Repository Continuity Standardization & Multi-Computer Agent Onboarding Protocol
+*   **Goal**: Establish top-level workspace continuity documentation (`CONTINUITY.md`) and standardize agent onboarding artifacts across Git worktrees so developer and AI agent experiences remain 100% consistent across different workstations.
+*   **Decisions & Rationale**:
+    *   **Top-Level Continuity Architecture (`CONTINUITY.md`)**: Created an authoritative continuity manual in the workspace container root and localized worktrees detailing the Build Journal four-pillar anatomy, multi-platform Git worktree isolation rules, and local secret provisioning (`local.properties` / UI dialog input).
+    *   **Worktree Context Synchronization**: Copied `CONTINUITY.md`, `PROJECTS.md`, and `AGENT_CONTEXT.md` into active feature worktrees (`feature-ai-race-planner` and `android-port`) and committed them to version control. When cloning or checking out any repository branch on a fresh machine, AI coding agents immediately encounter standardized onboarding instructions in their root directory.
+*   **Key Actions Taken**:
+    *   Created `CONTINUITY.md` in workspace container root, `feature-ai-race-planner`, and `android-port`.
+    *   Updated `AGENT_CONTEXT.md` with multi-computer continuity directives.
+    *   Synchronized and committed context files across `feature/web-dialog-fixes` and `android-port` branches.
+
+---
+
+### 🚀 Session 75: Synchronizing Remote Tracking Branches & Worktrees
+*   **Goal**: Synchronize all remote tracking branches (`origin/*`) to local branches and Git worktrees across the `RuffTerrain` multi-platform workspace.
+*   **Decisions & Rationale (*The Why*)**:
+    *   **Authoritative Remote Synchronization**: Executed `git fetch --all --prune` across the container workspace to ensure remote references are completely current and pruned of stale refs.
+    *   **Fast-Forward Release Parity**: Verified tracking status across all active worktrees (`main/`, `android-port/`, `feature-ai-race-planner/`). Detected local `main` behind upstream `origin/main` by 1 commit (`8846cec`), and fast-forward merged local `main` to maintain production release parity without history divergence.
+*   **Key Actions & Verification**:
+    *   Fetched all remote branches from `origin`.
+    *   Fast-forwarded `main` worktree branch to commit `8846cec`.
+    *   Verified `android-port` (`3d67ccd`), `feature/ai-race-planner` (`87c8051`), and `feature/web-dialog-fixes` (`07164d3`) are completely synchronized with their remote tracking branches.
+
+---
+
+### 🚀 Session 76: Authoritative Repository Consolidation & Waypoint ETA Range Presentation
+*   **Goal**: Consolidate all completed web features into `main` via PR rebase merging, prune stale branches/worktrees, and clearly display predicted arrival time windows in the POI waypoint details dialog.
+*   **Decisions & Rationale (*The Why*)**:
+    *   **Repository Consolidation & Branch Sweep**: Merged PR #9 (`feature/web-dialog-fixes`) into `main` via rebase strategy (`gh pr merge 9 --rebase`) to maintain a clean linear commit history. Pruned stale local and remote feature branches (`feature/ai-race-planner` and `feature/web-dialog-fixes`) and decommissioned the `feature-ai-race-planner` worktree so only authoritative production `main` and `android-port` remain.
+    *   **Waypoint ETA Range Presentation**: In the waypoint details dialog (`#poi-detail-dialog`), the top header quick metric labeled `ARRIVE` was previously displaying distance (e.g., `14.2 mi`), causing cognitive friction for users seeking their predicted arrival schedule. Renamed this metric to `DIST` and added a prominent dedicated `EST. ARRIVAL RANGE` header badge displaying the simulated earliest (85% elapsed pace) and latest (115% elapsed pace) arrival window (e.g., `Fri 01:50 PM - 02:40 PM`). Also enriched the pass table cell (`renderEstTimeCell`) to explicitly render weekday names when fast/slow range projections span across midnight.
+*   **Key Actions & Verification**:
+    *   Merged PR #9 and pruned stale branches/worktrees across the repository.
+    *   Updated `index.html` and `public/404.html` quick metrics header layout.
+    *   Updated `showPoiDetailDialog` and `renderEstTimeCell` in `src/main.js` with formatted range calculations.
+    *   Verified all 11 unit tests passing cleanly (`npm test`) and rebuilt production web bundle (`npm run build`).
+
+---
+
+### 🚀 Session 77: Dialog Split Durations, Autosave File Recovery, & GPX Weather/ETA Extensions
+*   **Goal**: Enrich POI details dialog with elapsed and sector split travel durations, restore full active visual state on browser reload, and persist weather and arrival windows in GPX `<extensions>`.
+*   **Decisions & Rationale (*The Why*)**:
+    *   **Dialog Split & Elapsed Durations**: Added an `ELAPSED` badge to the POI dialog header and table columns to display total elapsed hours from course start. Enriched the `PREV` and `NEXT` neighbor badges to explicitly format travel duration between consecutive stations (e.g., `+2.4 mi (21m, Twin Lakes)`), giving runners immediate insight into sector travel difficulty.
+    *   **Autosave Active Route Recovery**: Previously, `restoreSessionState()` recovered `activeRoute` into memory on reload but omitted running the UI activation sequence (`cardStats`, charts, map drawing), leaving the screen blank. Extracted `activateRouteUI(route, filename)` in `src/main.js` and hooked it into recovery so refreshing the browser preserves 100% of the active visual interface.
+    *   **GPX Extensions Persistence**: Updated `writeGPX` and `parseGPX` to serialize and parse `target_arrival`, `eta_earliest`, `eta_latest`, `weather_cond`, and `weather_temp_c` within `<ca:pass>` XML extensions, ensuring exported race plans retain full simulation context.
+*   **Key Actions & Verification**:
+    *   Updated `index.html` and `public/404.html` with `ELAPSED` badges and columns.
+    *   Updated `showPoiDetailDialog` in `src/main.js` with `formatSplitTime` calculations.
+    *   Extracted `activateRouteUI` and wired into `restoreSessionState`.
+    *   Updated `gpx-writer.js` and `gpx-parser.js` schema handling and added unit test in `test/gpx.test.js`.
+    *   Verified all 12 unit tests passing (`npm test`) and production bundle verified (`npm run build`).
+
+---
+
+### 🚀 Session 78: POI Dialog Target Time Restoration & Git Hook Pipeline Stabilization
+*   **Goal**: Restore center target arrival time details to the POI quick metrics header and resolve pre-commit hook script aborts.
+*   **Decisions & Rationale (*The Why*)**:
+    *   **POI Dialog Target Time Restoration**: In Session 76, the dialog quick metric badge was converted from displaying arrival distance to displaying `EST. ARRIVAL RANGE` (e.g., `01:50 PM - 02:40 PM`). This inadvertently omitted the exact predicted target clock arrival time (`02:15 PM`), causing user feedback: *"We've lost the time details."* Restored a dedicated `EST. ARRIVAL` quick metric badge directly adjacent to `EST. ARRIVAL RANGE` across `index.html` and `public/404.html`, providing runners with both precise clock targets and pacing tolerance windows at a single glance.
+    *   **Pre-Commit Hook Shell Script Fix**: Investigating commit failures identified that `/Users/dkhawk/Projects/RuffTerrain/.bare/hooks/pre-commit` executed under `set -e` without fallback handling (`|| true`) on subshell command `grep -i -E "key|secret..."`. Whenever staged changes contained zero secret candidates, grep exited with code 1, causing the pre-commit hook script to crash and block valid git commits. Added defensive `|| true` fallbacks to stabilize repository commit pipelines.
+*   **Key Actions & Verification**:
+    *   Added `EST. ARRIVAL` quick metric group in `index.html` and `public/404.html`.
+    *   Updated `showPoiDetailDialog` in `src/main.js` to compute and render center target arrival timestamps.
+    *   Patched `.bare/hooks/pre-commit` subshell grep commands with defensive fallbacks.
+    *   Verified all 12 unit tests passing cleanly (`npm test`) and production web build verified (`npm run build`).
+
+---
+
+### 🚀 Session 79: Non-Blocking POI Dialog Rendering & Reference Distance Stabilization
+*   **Goal**: Ensure instant, unconditional display of arrival times and pacing metrics when opening waypoint dialogs.
+*   **Decisions & Rationale (*The Why*)**:
+    *   **Non-Blocking UI Rendering**: Previously, `showPoiDetailDialog` executed `await fetchWeatherForecast(...)` right at the start of the function. If network calls to Google Weather API lagged or throttled, execution paused before populating header metrics (`EST. ARRIVAL`, `ELAPSED`, `DIST`) and table rows, leaving the modal blank and triggering frustration (*"The times are not visible in the waypoint details dialog"*). Re-architected `showPoiDetailDialog` to render 100% of the UI synchronously with zero network blocking, triggering the forecast fetch asynchronously in the background and populating table cells via `data-pass-weather-dist` attributes upon completion.
+    *   **Reference Distance Stabilization**: Clicking waypoint markers on the map dispatched `showPoiDetailDialog(wpt, playbackIndex, playbackDistance)`. When playback was inactive, `playbackDistance` passed `0`, causing `currentDist` to evaluate to `0` and rendering `0m` elapsed hours for any clicked aid station. Updated dispatch listeners to pass `wpt.dist_m` so clicking markers renders accurate race pacing.
+    *   **Stale Worktree Warning**: User editor session was still pointing to decommissioned `/Users/dkhawk/Projects/RuffTerrain/feature-ai-race-planner/`, causing local dev preview mismatches against authoritative `main/`. Gently guided user to switch IDE workspace to `main/`.
+*   **Key Actions & Verification**:
+    *   Verified all 12 unit tests passing (`npm test`) and production build verified (`npm run build`).
+
+---
+
+### 🚀 Session 80: Authoritative ETA Enforcement Across HUD, Waypoint List, and Printed Race Plan
+*   **Goal**: Ensure precise aid station arrival estimates (ETA) are prominently displayed across the waypoint dialog, printed race sheet, fly-through HUD, and sidebar navigation list.
+*   **Decisions & Rationale (*The Why*)**:
+    *   **Printed Race Plan ETA Schedule**: Previously, clicking `🖨️ Print Sheet` (`#wiz-print-plan-btn`) generated a standalone HTML document containing only the custom terrain execution sectors. For crews and pacers supporting an ultra runner, knowing exact clock arrival estimates at aid stations is mission critical. Enriched print sheet generation in `src/main.js` to create an authoritative `📍 Aid Station Arrival Schedule (ETA)` table directly above the terrain sectors, listing every waypoint with precise clock target ETA, ETA tolerance bounds, elapsed duration, cut-off limit, and strategy notes.
+    *   **Fly-Through HUD ETA Display**: In `src/gpx-parser.js`, attached `absolute_dist_m` to the `nextAid` metric object. In `src/main.js` `updateHUD()`, formatted predicted clock ETA (`Fri 02:15 PM`) into `#hud-val-next-as`, allowing runners to monitor real-time arrival estimates at upcoming aid stations during fly-through playback or GPS tracking.
+    *   **Sidebar Course Waypoints List**: Enriched `renderEditWaypointList()` in `src/main.js` to format exact target clock ETAs directly into each waypoint list item label (`Twin Lakes (12.5 mi, ETA: Fri 02:15 PM)`).
+*   **Key Actions & Verification**:
+    *   Updated `src/gpx-parser.js` and `src/main.js`.
+    *   Added automated unit test `Authoritative ETA calculation for HUD, Waypoint List, and Printed Plan` in `test/gpx.test.js`.
+    *   Verified all 13 unit tests passing (`npm test`) and production bundle verified (`npm run build`).
+
+---
+
+### 🚀 Session 81: POI Details Dialog ReferenceError Crash Resolution
+*   **Goal**: Resolve missing time fields and empty pass tables in the Studio Waypoint Details dialog (`#poi-detail-dialog`).
+*   **Decisions & Rationale (*The Why*)**:
+    *   **Fatal ReferenceError Crash**: While the preview dialog and other cards rendered successfully, clicking waypoints inside the Studio tab left header time fields (`ELAPSED`, `EST. ARRIVAL`, `PREV`, `NEXT`) at `-` placeholders and rendered zero rows in the timeline table. Code auditing revealed that line 2258 executed `if (poiValElapsed) poiValElapsed.textContent = formatSplitTime(elapsedHrs)`. Although `formatSplitTime` was invoked in 10 distinct UI locations across `src/main.js`, its definition had been inadvertently omitted from the bundle. When line 2258 executed, JavaScript threw `ReferenceError: formatSplitTime is not defined`, crashing `showPoiDetailDialog` instantly before subsequent time headers or table row generation could execute. Defined `formatSplitTime(hrs)` helper in `src/main.js` to ensure robust formatting of split durations (`2h 45m`).
+*   **Key Actions & Verification**:
+    *   Added `formatSplitTime` helper function in `src/main.js`.
+    *   Verified all 13 unit tests passing (`npm test`) and production bundle verified (`npm run build`).
+
+---
+
+### 🚀 Session 82: User-Configurable Climb Gradient Classification Scale & Harmonized Alert Styling
+*   **Goal**: Enable runners to classify trail climbs based on gradient tier cutoffs (`-2% to 2% flat`, `3% to 5% moderate`, `5% to 8% steep`, `8% to 10% very steep`, `> 10% extreme`), make thresholds user settable in settings, and harmonize color schemes across 3D polylines, UI tables, and the safety alerts dialog.
+*   **Decisions & Rationale (*The Why*)**:
+    *   **Configurable Gradient Taxonomy**: Ultra runners pacing mountain routes require granular gradient classification to dictate effort levels (e.g. running vs power hiking). Hardcoded elevation thresholds fail to accommodate different fitness levels or terrain profiles. Added user-settable gradient bound inputs inside the Kokopelli Settings modal (`#settings-overlay` in `index.html`), persisted in `localStorage` (`grad_thresh_flat`, `grad_thresh_mod`, etc.).
+    *   **Harmonized Alert & Badge Aesthetics**: To fulfill the directive *"Use the same coloring scheme as the background in the 'alerts' dialog"*, established a unified 6-tier palette (`descent` green `#10b981`, `flat` blue `#3b82f6`, `moderate` yellow `#f59e0b`, `steep` orange `#f97316`, `verysteep` red `#ef4444`, `extreme` dark red `#b91c1c`). Attached `avgGrade` directly to `DIFFICULT_CLIMB` safety warnings in `src/gpx-parser.js` and styled alert list items (`.warning-item` in `#card-warnings`) dynamically with matching semi-transparent glassmorphism backgrounds.
+    *   **Unified Route & Table Visualization**: Both the 3D map route polyline renderer (`src/map-3d.js`) and sector pacing tables (`wizPrintPlanBtn` export and `#strat-sectors-list` modal) now invoke `classifyGradient(grade)` and `computeSectorGradient(route, sec)`, ensuring 100% aesthetic and data consistency across all views.
+    *   Updated `index.html`, `src/gpx-parser.js`, `src/main.js`, and `src/map-3d.js`.
+    *   Added automated unit test suite `User-settable climb gradient classification scale and coloring` in `test/gpx.test.js`.
+    *   Verified all 15 unit tests passing (`npm test`) and production bundle built (`npm run build`).
+
+---
+
+### 🚀 Session 83: Steep & Long Descent Detection & Unified 3D Hazard Highlight Styling
+*   **Goal**: Automatically scan courses for long, steep downhill running hazards (`STEEP_DESCENT`), and ensure 3D map polylines highlighted upon clicking sidebar alerts match exact alert card colors.
+*   **Decisions & Rationale (*The Why*)**:
+    *   **Downhill Eccentric Load Hazards**: While long climbs stress cardiovascular systems, steep prolonged descents impose heavy eccentric loading on quadriceps and knees, representing major race-ending ultra hazards if hammered too hard. In `src/gpx-parser.js` `calculateWarnings()`, implemented independent sequential scanning for sustained downhill drops (`grade < -3.5%`, distance >= 400m, drop score >= 100).
+    *   **Exact Visual Parity in Map Highlights**: Previously, clicking an alert item in the sidebar highlighted the section on the 3D map using hardcoded red or purple strokes. To fulfill *"the coloring of the highlight of the difficult section should match the color of the alert warning"*, attached explicit `colorHex` and `colorBg` properties to every single warning object (`STEEP_DESCENT` mint green `#10b981`, `DIFFICULT_CLIMB` tier color, `RESOURCE_DESERT` coral red `#ef4444`, `SPATIAL_MISMATCH` purple `#a855f7`). In `src/map-3d.js` `highlightWarning()`, the 3D highlight polyline now inherits `warn.colorHex` directly.
+    *   Updated `src/gpx-parser.js`, `src/main.js`, and `src/map-3d.js`.
+    *   Added unit test suite `Steep descent warnings and unified alert coloring properties` in `test/gpx.test.js`.
+    *   Verified all 16 unit tests passing (`npm test`) and production bundle built (`npm run build`).
+
+---
+
+### 🚀 Session 84: Day Architect & Runner Pacing Profiles Engine
+*   **Goal**: Transform the race planner into an intelligent Day Architect featuring prominent Runner Profile identity, Effort Presets (`Hard Race`, `Training Run`, `Fun Day Out`), automated course landmark segmentation, and Bidirectional Time Solving (`Goal Pace Mode` vs. `Deadline Clock Mode`).
+*   **Decisions & Rationale (*The Why*)**:
+    *   **Historical Runner Identity**: Generic mapping tools calculate hiking times using static speeds (e.g. 3.0 mph). In ultra endurance mountain running, speed is non-linear and dictated by individual aerobic capability across specific slopes. Added `DEFAULT_RUNNER_PROFILES` ([gpx-parser.js](file:///Users/dkhawk/Projects/RuffTerrain/main/src/gpx-parser.js)) tracking individual `basePaces` (e.g. Dan Hawk Pro: 20 min/mi climb, 10 min/mi flat, 9 min/mi descent).
+    *   **Automated Landmark Segmentation**: Sliced loaded courses automatically at major terrain inflection points (sustained transitions between climbing, flat, and downhill running) merged with aid station POIs via `autoSegmentCourse(route)`.
+    *   **Descent-Protected Deadline Solving**: In **Deadline Clock Mode** (e.g. must finish by curfew clock time 15:00), the mathematical solver works backward (`solveBackwardPacing`). To protect quadriceps from muscular damage and injury, downhill running paces remain locked ($\gamma_{desc} = 1.0$), while flat and climbing paces dynamically compress ($\gamma_{work}$) to meet the deadline.
+*   **Key Actions & Verification**:
+    *   Added unit test suite `Day Architect automated course slicer and descent-protected deadline solver` in `test/gpx.test.js`.
+    *   Verified 17/17 automated unit tests passing (`npm test`) and production client bundle built (`npm run build`).
+
+---
+
+### 🧠 Session 85: Architectural Brainstorming — Empirical Athlete Calibration Engine
+*   **Goal**: Architect the statistical models and ingestion pipeline for replacing self-reported manual pace sliders with empirical biological telemetry extracted from uploaded multi-run GPS archives.
+*   **Decisions & Rationale (*The Why*)**:
+    *   **Human Optimism vs. Ground Truth**: Self-reported pacing guesses fail to account for late-race muscular fatigue or weather anomalies. Ingesting multiple historical outings tagged with exertion (`Hard Race`, `Training Run`) allows the engine to apply inverse exertion multipliers ($V_{base} = V_{observed} / \mu_m$) to isolate objective baseline capability.
+    *   **Vertical Fatigue Decay Modeling**: Ultra marathon climbing velocity degrades exponentially over cumulative elevation gain ($H_{cum}$). Designed the extraction model for the **Vertical Fatigue Decay Coefficient** ($\lambda$), modeling late-race slowing ($P_{climb}(h) = P_0 \cdot e^{\lambda(h/1000)}$).
+    *   **Technical Downhill Brake Factor**: Defined $\beta = \bar{V}_{desc} / \bar{V}_{flat}$ to quantify aggressive descenders vs. technical braking behavior.
+*   **Key Actions**:
+    *   Synthesized architectural design and mathematical regression specification into persistent reference artifact [empirical_athlete_calibration_spec.md](file:///Users/dkhawk/.gemini/jetski/brain/089bdb6c-3240-45d4-85de-2f7a4871f031/empirical_athlete_calibration_spec.md).
+    *   *(No code created or modified per explicit user directive.)*
+
+---
+
+### 🚀 Session 86: Vertical Retro Stereo Volume-Style VU Meters for Gradient & Target Pace
+*   **Goal**: Add better visualization tools on the side of the map with a retro color-coded vertical bar graph representing terrain gradient (indicating zero and negative grades) and a paired vertical bar graph representing target pace, while keeping the bottom elevation profile clean and intact.
+*   **Decisions & Rationale (*The Why*)**:
+    *   **Keep Elevation Profile Intact**: Preserved the bottom elevation profile chart (`.chart-container` / `#elevation-canvas`) untouched so runners retain their full-course macro overview.
+    *   **Vertical Dual VU Meters on Side of Map (`VerticalTerrainVisualizer`)**: Built a dedicated floating glassmorphic sidebar panel (`#vertical-vu-meters-panel`) positioned vertically on the side of the 3D map viewport. Classic 1980s/1990s stereo equalizers and VU volume meters displayed paired left/right channels using vertical stacks of illuminated LED blocks. Here, we pair two vertical Canvas columns:
+        1.  **Vertical Gradient VU Column (`#vertical-grade-canvas`)**:
+            *   **Zero (0%) Center Indicator**: Explicitly marked with a bright white horizontal baseline reference tick and label `0% CTR`.
+            *   **Negative Gradients (Descent)**: When `grade < 0`, vertical LED segments extending *downward* from center illuminate in vibrant Emerald Green (`#10b981`).
+            *   **Positive Gradients (Climb)**: LED segments extending *upward* from center illuminate in Amber (`#f59e0b`), Orange (`#f97316`), Red (`#ef4444`), or Crimson (`#b91c1c`), aligned 1-to-1 with route hazard alerts and 3D map segments.
+        2.  **Vertical Target Pace VU Column (`#vertical-pace-canvas`)**:
+            *   **Why visualize target pace vertically?** Paired directly beside the gradient column, it maps target pacing expectations (`sec.target_pace_min`) across 30 discrete vertical LED blocks from fast cruising paces at the top down to steep mountain power hiking at the bottom.
+            *   **Color Scheme Alignment (`classifyPace`)**: Aligned pacing colors with the alert scheme (Green for fast cruise <= 8 min/mi, Blue for steady <= 11 min/mi, Amber for moderate hike <= 15 min/mi, Orange for steep hike <= 20 min/mi, Red for power hike > 20 min/mi).
+    *   **Synchronized Fly-through & Scrubber Integration**: Hooked `this.terrainVisualizer` into `ElevationChart` ([elevation-chart.js](file:///Users/dkhawk/Projects/RuffTerrain/feature-gradient-bars/src/elevation-chart.js)), ensuring that whenever the camera simulation ticks or the user drags the scrubber, both vertical VU meter columns refresh in lockstep.
+*   **Key Actions & Verification**:
+    *   Created `VerticalTerrainVisualizer` Canvas suite and `classifyPace` helper in `src/gradient-bars.js`.
+    *   Updated `index.html` and `src/elevation-chart.js` to render vertical floating VU meters on the side of the map.
+    *   Added automated unit test suite in `test/gpx.test.js` validating target pace classification and gradient tier alignment.
+    *   Ran `node --test test/gpx.test.js` verifying 25/25 unit tests passing.
+
+---
+
+### 🚀 Session 87: Consolidated Course Studio Tabs & Spatial HUD Overlay Dismiss Toggles
+*   **Goal**: Move the Weather Forecast dialog and Safety Alerts dialog to be tabs in the Course Architect & Studio dialog, reposition the vertical VU meter bar graphs directly beneath the spatial whiskey compass gauge instead of behind it, and make both the compass and VU bar graphs dismissible with top HUD toggle restoration.
+*   **Decisions & Rationale (*The Why*)**:
+    *   **Consolidated Course Studio Architecture**: Having multiple floating desktop dialog panels (`card-warnings` and `card-weather`) appear simultaneously alongside the master Course Studio (`card-importer`) caused visual collisions and overlapping z-index battles. Moved Weather Forecast (`#studio-view-weather`) and Course Safety Alerts (`#studio-view-warnings`) to be dedicated tabs inside the master Course Architect & Studio dialog ([index.html:L217-L218](file:///Users/dkhawk/Projects/RuffTerrain/feature-gradient-bars/index.html#L217-L218)).
+    *   **Vertical VU Repositioning (Beneath Compass)**: The spatial whiskey compass gauge (`#whiskey-compass`) floats at `top: 90px; right: 24px; height: 110px;`. Previously, placing `#vertical-vu-meters-panel` at `top: 76px; right: 16px;` put it directly behind the compass. Repositioned `#vertical-vu-meters-panel` to `top: 212px; right: 24px;` (directly beneath the compass housing), creating a cohesive right-aligned flight instrument column.
+    *   **Dismissible Viewport Controls & HUD Restoration**: Added intuitive close `×` buttons directly on `#whiskey-compass` (`#close-compass-btn`) and `#vertical-vu-meters-panel` (`#close-vu-meters-btn`). To ensure runners can always restore dismissed telemetry gauges anytime, added dedicated quick toggle buttons (`#toggle-compass-btn` 🧭 and `#toggle-vu-meters-btn` 🎚️) directly in the top HUD header ([main.js:L5170-L5183](file:///Users/dkhawk/Projects/RuffTerrain/feature-gradient-bars/src/main.js#L5170-L5183)).
+*   **Key Actions & Verification**:
+    *   Updated `index.html` moving Weather and Alerts sections into Card 1 tabs and repositioned `#vertical-vu-meters-panel`.
+    *   Updated `src/main.js` wiring tab switching and spatial HUD dismiss/restore listeners.
+    *   Ran `node --test test/gpx.test.js` verifying 25/25 unit tests passing and validated production client bundle (`npm run build`).
+
+---
+
+### 🚀 Session 88: Vertical Stacking of Dual Side VU Meters & Restoration of Clean Bottom Elevation Profile Scrubber
+*   **Goal**: Stack the Target Pace and Terrain Grade side bar graphs vertically above each other inside the sidebar gauge container, and restore the clean bottom elevation profile scrubber UI by removing any residual horizontal gradient VU meters and restoring closing header markup.
+*   **Decisions & Rationale (*The Why*)**:
+    *   **Vertical Stacking of Side VU Meters (`#vertical-vu-meters-panel`)**: Previously, the dual vertical Canvas columns for Grade and Pace were placed side-by-side (`flex-direction: row;`). On narrow mobile or resized desktop viewports, side-by-side columns protruded too far into the 3D map canvas. Refactored `#vertical-vu-meters-panel` to stack the columns vertically (`flex-direction: column; width: 72px;`) ([index.html:L177-L194](file:///Users/dkhawk/Projects/RuffTerrain/feature-gradient-bars/index.html#L177-L194)):
+        1.  **Top**: Vertical Terrain Gradient VU Meter (`GRADE`) displaying instantaneous slope.
+        2.  **Bottom**: Vertical Target Pace VU Meter (`PACE`) displaying active sector target pace.
+    *   **Restoration of Clean Bottom Elevation Scrubber & Markup Fix**: Removed the residual `.gradient-visualizers-group` container from inside `#card-elevation-scrubber` ([index.html:L1040-L1045](file:///Users/dkhawk/Projects/RuffTerrain/feature-gradient-bars/index.html#L1040-L1045)). During earlier refactoring, deleting the horizontal bar group inadvertently stripped the closing `</header>` tag before `.chart-container`, causing flexbox layout on the card header to collapse the elevation canvas. Restored the `</header>` tag so the bottom scrubber panel cleanly renders the macro 2D elevation profile chart (`#elevation-canvas`).
+*   **Key Actions & Verification**:
+    *   Updated `index.html` stacking sidebar VU meters vertically, removed `.gradient-visualizers-group`, and restored missing `</header>` tag before `.chart-container`.
+    *   Ran `node --test test/gpx.test.js` verifying 25/25 unit tests passing and validated production client bundle (`npm run build`).
+
+---
+
+### 🚀 Session 89: Unification of Race Planning into Master Standalone Strategy Modal
+*   **Goal**: Unify the duplicate race planning areas (Course Studio Race Planner tab vs. standalone Race Execution Strategy modal) by consolidating all parameters and split generator controls into the standalone Strategy Modal.
+*   **Decisions & Rationale (*The Why*)**:
+    *   **Consolidated Standalone Strategy Modal (`#strategy-overlay`)**: Having two separate race planning UIs (`#studio-view-plan` inside the Course Studio dialog and `#strategy-overlay` standalone modal) caused user confusion and fragmented state. Following user feedback, consolidated all Race Planner controls—including Event Start Time, Sun Tracking (Sunrise 🌅 & Sunset 🌙), benchmark goals, steep descent handling (`#plan-steep-descent`), heat/night degradation factor (`#plan-degradation-slider`), and split generation outputs (`#planner-output-container`)—directly into the AI Race Wizard tab of `#strategy-overlay` ([index.html:L1155-L1215](file:///Users/dkhawk/Projects/RuffTerrain/feature-gradient-bars/index.html#L1155-L1215)).
+    *   **Removal of Course Studio Race Planner Tab**: Deleted the redundant `⏱️ Race Planner` tab (`#studio-tab-plan`) and view (`#studio-view-plan`) from the Course Architect & Studio dialog ([index.html:L215-L220](file:///Users/dkhawk/Projects/RuffTerrain/feature-gradient-bars/index.html#L215-L220)).
+    *   **Authoritative HUD Gear Routing**: Removed the redundant `#toggle-strategy-btn` HUD button and routed `#toggle-planner-btn` (⏱️) to open `#strategy-overlay` directly ([main.js:L3420-L3432](file:///Users/dkhawk/Projects/RuffTerrain/feature-gradient-bars/src/main.js#L3420-L3432)).
+*   **Key Actions & Verification**:
+    *   Updated `index.html` consolidating race planner inputs/outputs into `#strategy-overlay` and removed `#studio-view-plan`.
+    *   Updated `src/main.js` routing `togglePlannerBtn` to open `#strategy-overlay`.
+    *   Ran `node --test test/gpx.test.js` verifying 25/25 unit tests passing and validated production client bundle (`npm run build`).
+
+---
+
+### 🚀 Session 90: Resolved Blank Content in Course Studio Weather & Safety Alerts Tabs
+*   **Goal**: Fix the bug where switching to the Weather Forecast tab (`🌤️ Weather`) or Course Safety Alerts tab (`⚠️ Alerts`) inside the Course Architect & Studio dialog resulted in empty/blank containers.
+*   **Decisions & Rationale (*The Why*)**:
+    *   **Authoritative DOM Reference Realignment**: When Weather Forecast and Safety Alerts were consolidated into tabs inside Card 1 (Course Architect & Studio), the container DOM IDs became `studio-view-weather` and `studio-view-warnings`. However, `cardWeather` and `cardWarnings` in `src/main.js` were still initialized looking for `card-weather` and `card-warnings`. Because these evaluated to `null`, visibility checks during background weather retrieval exited early, leaving `#weather-content` hidden forever. Updated `cardWeather` and `cardWarnings` to point to `studio-view-weather` and `studio-view-warnings` ([main.js:L238-L324](file:///Users/dkhawk/Projects/RuffTerrain/feature-gradient-bars/src/main.js#L238-L324)).
+    *   **Unconditional Loader & Content State Synchronization**: Gating `weatherContent.classList.remove("hidden")` on whether the weather tab was currently visible prevented background forecast updates from populating the DOM when other tabs (like Edit Course or Runner Profiles) were active. Removed panel visibility checks from weather success/error callbacks so the DOM state unconditionally updates whenever new weather data arrives.
+    *   **On-Demand Tab Activation Rendering**: Attached event listeners to `studioTabWeather` and `studioTabWarnings` so clicking either tab explicitly triggers `triggerWeatherWeather(...)` or `renderWarningsUI(activeRoute)` on demand ([main.js:L3485-L3498](file:///Users/dkhawk/Projects/RuffTerrain/feature-gradient-bars/src/main.js#L3485-L3498)).
+*   **Key Actions & Verification**:
+    *   Updated `src/main.js` realigning DOM element ID constants and unconditioned loader/content visibility toggling.
+    *   Ran `node --test test/gpx.test.js` verifying 25/25 unit tests passing and validated production client bundle (`npm run build`).
+>>>>>>> origin/main
 
 
 
