@@ -38,6 +38,7 @@ import com.google.android.gms.maps3d.model.Polyline
 import com.google.android.gms.maps3d.model.PolylineOptions
 import com.google.android.gms.maps3d.model.camera
 import com.google.android.gms.maps3d.model.latLngAltitude
+import kotlinx.coroutines.isActive
 
 
 @Composable
@@ -50,9 +51,6 @@ fun Map3DViewport(
     if (points.isEmpty()) return
 
     var googleMap by remember { mutableStateOf<GoogleMap3D?>(null) }
-    var activePolyline by remember { mutableStateOf<Polyline?>(null) }
-    val activeMarkers = remember { mutableListOf<Marker>() }
-    var runnerMarker by remember { mutableStateOf<Marker?>(null) }
 
     // Locate center coordinates to focus camera
     val centerPt = remember(points) {
@@ -77,16 +75,10 @@ fun Map3DViewport(
         )
     }
 
-    // Draw static path polyline and waypoint markers once map becomes ready
+    // Unified lifecycle flow matching the native maps runtime
     androidx.compose.runtime.LaunchedEffect(googleMap, points, courseData.waypoints) {
         val map = googleMap ?: return@LaunchedEffect
         
-        // Reset drawn map components
-        activePolyline?.remove()
-        activePolyline = null
-        activeMarkers.forEach { it.remove() }
-        activeMarkers.clear()
-
         // Configure and add Polyline course path
         val polyOpts = PolylineOptions().apply {
             path = points.map { pt ->
@@ -95,55 +87,61 @@ fun Map3DViewport(
             strokeColor = Color.RED
             strokeWidth = 10.0
         }
-        activePolyline = map.addPolyline(polyOpts)
+        val polyline = map.addPolyline(polyOpts)
 
         // Configure and place waypoints
-        courseData.waypoints.forEach { wpt ->
+        val markers = courseData.waypoints.mapNotNull { wpt ->
             val mOpts = MarkerOptions().apply {
                 position = LatLngAltitude(wpt.latitude, wpt.longitude, wpt.elevation)
                 label = wpt.name
             }
-            val marker = map.addMarker(mOpts)
-            if (marker != null) {
-                activeMarkers.add(marker)
-            }
+            map.addMarker(mOpts)
         }
-    }
 
-    // Update runner marker and camera position sequentially when progress ticks
-    androidx.compose.runtime.LaunchedEffect(googleMap, scrubberProgress, points) {
-        val map = googleMap ?: return@LaunchedEffect
-        val scrubberIndex = (scrubberProgress * (points.size - 1)).toInt().coerceIn(0, points.size - 1)
-        val scrubberPoint = points.getOrNull(scrubberIndex) ?: return@LaunchedEffect
+        // Initialize runner position marker
+        var runnerMarker: Marker? = null
 
-        // Refresh runner position marker
-        runnerMarker?.remove()
-        val rOpts = MarkerOptions().apply {
-            position = LatLngAltitude(scrubberPoint.latitude, scrubberPoint.longitude, scrubberPoint.elevation + 8.0)
-            label = "Runner Position"
-        }
-        runnerMarker = map.addMarker(rOpts)
+        try {
+            // Collect progress updates reactively while coroutine context is active
+            val coroutineScope = this
+            androidx.compose.runtime.snapshotFlow { scrubberProgress }
+                .collect { progress ->
+                    val scrubberIndex = (progress * (points.size - 1)).toInt().coerceIn(0, points.size - 1)
+                    val scrubberPoint = points.getOrNull(scrubberIndex)
+                    if (scrubberPoint != null && coroutineScope.isActive) {
+                        // Refresh runner position marker safely on Main thread dispatcher
+                        runnerMarker?.remove()
+                        val rOpts = MarkerOptions().apply {
+                            position = LatLngAltitude(scrubberPoint.latitude, scrubberPoint.longitude, scrubberPoint.elevation + 8.0)
+                            label = "Runner Position"
+                        }
+                        runnerMarker = map.addMarker(rOpts)
 
-        // Center the 3D map camera on the runner position
-        val currentCam = map.getCamera()
-        if (currentCam != null) {
-            val headingVal = currentCam.heading
-            val tiltVal = currentCam.tilt
-            val rangeVal = currentCam.range
-
-            map.setCamera(
-                camera {
-                    center = latLngAltitude {
-                        latitude = scrubberPoint.latitude
-                        longitude = scrubberPoint.longitude
-                        altitude = scrubberPoint.elevation
+                        // Center the 3D map camera on the runner position
+                        val currentCam = map.getCamera()
+                        if (currentCam != null && coroutineScope.isActive) {
+                            map.setCamera(
+                                camera {
+                                    center = latLngAltitude {
+                                        latitude = scrubberPoint.latitude
+                                        longitude = scrubberPoint.longitude
+                                        altitude = scrubberPoint.elevation
+                                    }
+                                    heading = currentCam.heading
+                                    tilt = currentCam.tilt
+                                    range = currentCam.range
+                                    roll = 0.0
+                                }
+                            )
+                        }
                     }
-                    heading = headingVal
-                    tilt = tiltVal
-                    range = rangeVal
-                    roll = 0.0
                 }
-            )
+        } catch (e: Exception) {
+            // Context cancelled or disposed
+        } finally {
+            // DO NOT call remove() on native components here because the map is being destroyed,
+            // and the native Map3DView.onDestroy() handles all marker and polyline cleanups.
+            // Calling JNI remove() during teardown causes dual-free crashes.
         }
     }
 
@@ -166,16 +164,11 @@ fun Map3DViewport(
                 }
             },
             update = {
-                // Telemetry updates are handled reactively in LaunchedEffects above
+                // Reactive updates are handled in LaunchedEffect flow
             },
             onRelease = { view ->
+                // Clean references and pause/destroy view; native engine teardown handles native garbage collection
                 googleMap = null
-                activePolyline?.remove()
-                activePolyline = null
-                activeMarkers.forEach { it.remove() }
-                activeMarkers.clear()
-                runnerMarker?.remove()
-                runnerMarker = null
                 view.onPause()
                 view.onDestroy()
             }
