@@ -104,8 +104,14 @@ fun classifyGradient(grade: Double?): GradientTier {
 @Composable
 fun RetroGradientBarGraph(
     currentGrade: Double,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    minGrade: Double = -16.0,
+    maxGrade: Double = 24.0
 ) {
+    // Ensure spans are valid and non-flat to prevent division-by-zero
+    val safeMinGrade = if (minGrade >= 0.0) -5.0 else minGrade
+    val safeMaxGrade = if (maxGrade <= 0.0) 5.0 else maxGrade
+
     // 1. Dampen the reading using Compose's Animatable to prevent visual bounce
     val animatedGrade = remember { androidx.compose.animation.core.Animatable(currentGrade.toFloat()) }
     
@@ -158,9 +164,6 @@ fun RetroGradientBarGraph(
             val canvasWidth = size.width
             val canvasHeight = size.height
 
-            // We design a center-zero segmented bar graph spanning from -16% (left) to +24% (right).
-            val minGradeSpan = -16.0
-            val maxGradeSpan = 24.0
             val totalBlocks = 40
             val gapPx = 1.5f.dp.toPx()
 
@@ -168,13 +171,16 @@ fun RetroGradientBarGraph(
             val availableWidth = canvasWidth - (gapPx * (totalBlocks - 1))
             val blockWidthPx = availableWidth / totalBlocks
 
-            // Identify the exact index corresponding to Zero (0%) gradient
-            val zeroBlockIndex = abs(minGradeSpan).toInt()
+            // Identify the exact index corresponding to Zero (0%) gradient dynamically
+            val totalSpan = safeMaxGrade - safeMinGrade
+            val zeroFraction = abs(safeMinGrade) / totalSpan
+            val zeroBlockIndex = (zeroFraction * totalBlocks).toInt().coerceIn(0, totalBlocks - 1)
 
             val activePath = Path()
 
             for (i in 0 until totalBlocks) {
-                val blockGrade = minGradeSpan + i
+                // Interpolate the grade of this block dynamically
+                val blockGrade = safeMinGrade + (i.toDouble() / totalBlocks) * totalSpan
                 val x = i * (blockWidthPx + gapPx)
 
                 // Determine the classification color of this specific block
@@ -182,8 +188,8 @@ fun RetroGradientBarGraph(
 
                 // Determine if this LED block is currently active (illuminated) based on smoothedGrade.
                 val isIlluminated = when {
-                    smoothedGrade > 0.5 -> i in zeroBlockIndex..ceil(smoothedGrade - minGradeSpan).toInt().coerceAtMost(totalBlocks - 1)
-                    smoothedGrade < -0.5 -> i in ceil(smoothedGrade - minGradeSpan).toInt().coerceAtLeast(0)..zeroBlockIndex
+                    smoothedGrade > 0.5 -> i in zeroBlockIndex..((smoothedGrade - safeMinGrade) / totalSpan * totalBlocks).toInt().coerceIn(0, totalBlocks - 1)
+                    smoothedGrade < -0.5 -> i in ((smoothedGrade - safeMinGrade) / totalSpan * totalBlocks).toInt().coerceIn(0, totalBlocks - 1)..zeroBlockIndex
                     else -> i == zeroBlockIndex
                 }
 
@@ -199,21 +205,6 @@ fun RetroGradientBarGraph(
                 )
             }
 
-            // Draw zero indicator ticks at the top and bottom of the zero block to leave the center text clean
-            val zeroX = zeroBlockIndex * (blockWidthPx + gapPx) + (blockWidthPx / 2f)
-            drawLine(
-                color = Color.White.copy(alpha = 0.6f),
-                start = Offset(zeroX, 0f),
-                end = Offset(zeroX, 2.dp.toPx()),
-                strokeWidth = 1.5.dp.toPx()
-            )
-            drawLine(
-                color = Color.White.copy(alpha = 0.6f),
-                start = Offset(zeroX, canvasHeight - 2.dp.toPx()),
-                end = Offset(zeroX, canvasHeight),
-                strokeWidth = 1.5.dp.toPx()
-            )
-
             // Measure and draw scale labels directly on top of the visualizer bar
             val labelStyle = TextStyle(
                 fontSize = 8.5.sp,
@@ -221,26 +212,25 @@ fun RetroGradientBarGraph(
                 fontFamily = FontFamily.Monospace
             )
 
-            // Measure each label once
-            val leftLabelResult = textMeasurer.measure("-16%", style = labelStyle)
-            val centerLabelResult = textMeasurer.measure("0%", style = labelStyle)
-            val rightLabelResult = textMeasurer.measure("+24%", style = labelStyle)
+            // Formatted scale values from min/max parameters
+            val leftText = String.format(Locale.US, "%.0f%%", safeMinGrade)
+            val rightText = String.format(Locale.US, "+%.0f%%", safeMaxGrade)
+
+            val leftLabelResult = textMeasurer.measure(leftText, style = labelStyle)
+            val rightLabelResult = textMeasurer.measure(rightText, style = labelStyle)
 
             val leftOffset = Offset(4.dp.toPx(), (canvasHeight - leftLabelResult.size.height) / 2f)
-            val centerOffset = Offset(zeroX - (centerLabelResult.size.width / 2f), (canvasHeight - centerLabelResult.size.height) / 2f)
             val rightOffset = Offset(canvasWidth - rightLabelResult.size.width - 4.dp.toPx(), (canvasHeight - rightLabelResult.size.height) / 2f)
 
             // 1. Draw labels in their default/uncovered color (a subtle light gray/blue-gray)
             val uncoveredColor = Color(0xFF94A3B8)
             drawText(textLayoutResult = leftLabelResult, color = uncoveredColor, topLeft = leftOffset)
-            drawText(textLayoutResult = centerLabelResult, color = uncoveredColor, topLeft = centerOffset)
             drawText(textLayoutResult = rightLabelResult, color = uncoveredColor, topLeft = rightOffset)
 
             // 2. Draw the exact same labels in a highly-legible dark color, clipped to active (illuminated) blocks
             val coveredColor = Color(0xFF0F172A) // Dark slate for maximum contrast on bright blocks
             clipPath(activePath) {
                 drawText(textLayoutResult = leftLabelResult, color = coveredColor, topLeft = leftOffset)
-                drawText(textLayoutResult = centerLabelResult, color = coveredColor, topLeft = centerOffset)
                 drawText(textLayoutResult = rightLabelResult, color = coveredColor, topLeft = rightOffset)
             }
         }

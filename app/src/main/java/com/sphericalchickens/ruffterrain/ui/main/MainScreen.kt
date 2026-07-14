@@ -322,6 +322,14 @@ fun MainScreen(
       }
     } else {
       val course = state.courseData
+      val minCourseGrade = remember(course) {
+          val calculatedMin = course?.points?.map { it.grade }?.minOrNull() ?: -16.0
+          calculatedMin.coerceAtMost(-5.0)
+      }
+      val maxCourseGrade = remember(course) {
+          val calculatedMax = course?.points?.map { it.grade }?.maxOrNull() ?: 24.0
+          calculatedMax.coerceAtLeast(5.0)
+      }
 
       // Force 2D map in RUNNING mode to conserve battery and support offline
       val activeMapMode = if (state.appMode == AppMode.RUNNING) MapMode.MAP_2D else state.mapMode
@@ -501,7 +509,11 @@ fun MainScreen(
                         val scrubberPoint = course.points.getOrNull(scrubberIndex)
                         val currentGrade = scrubberPoint?.grade ?: 0.0
     
-                        RetroGradientBarGraph(currentGrade = currentGrade)
+                        RetroGradientBarGraph(
+                            currentGrade = currentGrade,
+                            minGrade = minCourseGrade,
+                            maxGrade = maxCourseGrade
+                        )
     
                         AnimatedVisibility(
                             visible = isControlsVisible,
@@ -607,7 +619,11 @@ fun MainScreen(
     
                         Spacer(modifier = Modifier.height(12.dp))
     
-                        RetroGradientBarGraph(currentGrade = activePt?.grade ?: 0.0)
+                        RetroGradientBarGraph(
+                            currentGrade = activePt?.grade ?: 0.0,
+                            minGrade = minCourseGrade,
+                            maxGrade = maxCourseGrade
+                        )
     
                         Spacer(modifier = Modifier.height(12.dp))
     
