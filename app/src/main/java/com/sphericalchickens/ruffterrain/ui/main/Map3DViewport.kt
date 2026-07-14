@@ -103,9 +103,6 @@ fun Map3DViewport(
             map.addMarker(mOpts)
         }
 
-        // Initialize runner position marker
-        var runnerMarker: Marker? = null
-
         try {
             // Wait slightly longer to let the camera subsystem stabilize before querying/centering
             delay(500)
@@ -117,14 +114,6 @@ fun Map3DViewport(
                     val scrubberIndex = (progress * (points.size - 1)).toInt().coerceIn(0, points.size - 1)
                     val scrubberPoint = points.getOrNull(scrubberIndex)
                     if (scrubberPoint != null && coroutineScope.isActive) {
-                        // Refresh runner position marker safely on Main thread dispatcher
-                        runnerMarker?.remove()
-                        val rOpts = MarkerOptions().apply {
-                            position = LatLngAltitude(scrubberPoint.latitude, scrubberPoint.longitude, scrubberPoint.elevation + 8.0)
-                            label = "Runner Position"
-                        }
-                        runnerMarker = map.addMarker(rOpts)
-
                         // Center the 3D map camera on the runner position
                         val currentCam = map.getCamera()
                         if (currentCam != null && coroutineScope.isActive) {
