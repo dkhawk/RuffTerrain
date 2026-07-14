@@ -34,10 +34,13 @@ import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.BlendMode
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.graphics.drawscope.clipPath
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.drawText
 import androidx.compose.ui.text.font.FontFamily
@@ -168,6 +171,8 @@ fun RetroGradientBarGraph(
             // Identify the exact index corresponding to Zero (0%) gradient
             val zeroBlockIndex = abs(minGradeSpan).toInt()
 
+            val activePath = Path()
+
             for (i in 0 until totalBlocks) {
                 val blockGrade = minGradeSpan + i
                 val x = i * (blockWidthPx + gapPx)
@@ -180,6 +185,10 @@ fun RetroGradientBarGraph(
                     smoothedGrade > 0.5 -> i in zeroBlockIndex..ceil(smoothedGrade - minGradeSpan).toInt().coerceAtMost(totalBlocks - 1)
                     smoothedGrade < -0.5 -> i in ceil(smoothedGrade - minGradeSpan).toInt().coerceAtLeast(0)..zeroBlockIndex
                     else -> i == zeroBlockIndex
+                }
+
+                if (isIlluminated) {
+                    activePath.addRect(Rect(Offset(x, 0f), Size(blockWidthPx, canvasHeight)))
                 }
 
                 // Draw the discrete LED block
@@ -207,44 +216,33 @@ fun RetroGradientBarGraph(
 
             // Measure and draw scale labels directly on top of the visualizer bar
             val labelStyle = TextStyle(
-                color = Color.White,
                 fontSize = 8.5.sp,
                 fontWeight = FontWeight.Bold,
                 fontFamily = FontFamily.Monospace
             )
 
-            // 1. Draw "-16%" label (Left-aligned, inset slightly)
+            // Measure each label once
             val leftLabelResult = textMeasurer.measure("-16%", style = labelStyle)
-            drawText(
-                textLayoutResult = leftLabelResult,
-                topLeft = Offset(
-                    x = 4.dp.toPx(),
-                    y = (canvasHeight - leftLabelResult.size.height) / 2f
-                ),
-                blendMode = BlendMode.Difference
-            )
-
-            // 2. Draw "0%" label (Centered on the zero baseline)
             val centerLabelResult = textMeasurer.measure("0%", style = labelStyle)
-            drawText(
-                textLayoutResult = centerLabelResult,
-                topLeft = Offset(
-                    x = zeroX - (centerLabelResult.size.width / 2f),
-                    y = (canvasHeight - centerLabelResult.size.height) / 2f
-                ),
-                blendMode = BlendMode.Difference
-            )
-
-            // 3. Draw "+24%" label (Right-aligned, inset slightly)
             val rightLabelResult = textMeasurer.measure("+24%", style = labelStyle)
-            drawText(
-                textLayoutResult = rightLabelResult,
-                topLeft = Offset(
-                    x = canvasWidth - rightLabelResult.size.width - 4.dp.toPx(),
-                    y = (canvasHeight - rightLabelResult.size.height) / 2f
-                ),
-                blendMode = BlendMode.Difference
-            )
+
+            val leftOffset = Offset(4.dp.toPx(), (canvasHeight - leftLabelResult.size.height) / 2f)
+            val centerOffset = Offset(zeroX - (centerLabelResult.size.width / 2f), (canvasHeight - centerLabelResult.size.height) / 2f)
+            val rightOffset = Offset(canvasWidth - rightLabelResult.size.width - 4.dp.toPx(), (canvasHeight - rightLabelResult.size.height) / 2f)
+
+            // 1. Draw labels in their default/uncovered color (a subtle light gray/blue-gray)
+            val uncoveredColor = Color(0xFF94A3B8)
+            drawText(textLayoutResult = leftLabelResult, color = uncoveredColor, topLeft = leftOffset)
+            drawText(textLayoutResult = centerLabelResult, color = uncoveredColor, topLeft = centerOffset)
+            drawText(textLayoutResult = rightLabelResult, color = uncoveredColor, topLeft = rightOffset)
+
+            // 2. Draw the exact same labels in a highly-legible dark color, clipped to active (illuminated) blocks
+            val coveredColor = Color(0xFF0F172A) // Dark slate for maximum contrast on bright blocks
+            clipPath(activePath) {
+                drawText(textLayoutResult = leftLabelResult, color = coveredColor, topLeft = leftOffset)
+                drawText(textLayoutResult = centerLabelResult, color = coveredColor, topLeft = centerOffset)
+                drawText(textLayoutResult = rightLabelResult, color = coveredColor, topLeft = rightOffset)
+            }
         }
     }
 }
