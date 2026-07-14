@@ -149,25 +149,30 @@ fun Map3DViewport(
         AndroidView(
             modifier = Modifier.fillMaxSize(),
             factory = { ctx ->
-                Map3DView(ctx, map3DOptions).apply {
-                    onCreate(null)
-                    onResume()
-                    getMap3DViewAsync(object : OnMap3DViewReadyCallback {
-                        override fun onMap3DViewReady(map3D: GoogleMap3D) {
+                val map3DView = Map3DView(ctx, map3DOptions)
+                map3DView.tag = java.lang.Boolean.FALSE // Mark as active
+                map3DView.onCreate(null)
+                map3DView.onResume()
+                map3DView.getMap3DViewAsync(object : OnMap3DViewReadyCallback {
+                    override fun onMap3DViewReady(map3D: GoogleMap3D) {
+                        // Only set the map reference if the view hasn't been released
+                        if (map3DView.tag == java.lang.Boolean.FALSE) {
                             googleMap = map3D
                         }
+                    }
 
-                        override fun onError(e: Exception) {
-                            googleMap = null
-                        }
-                    })
-                }
+                    override fun onError(e: Exception) {
+                        googleMap = null
+                    }
+                })
+                map3DView
             },
             update = {
                 // Reactive updates are handled in LaunchedEffect flow
             },
             onRelease = { view ->
-                // Clean references and pause/destroy view; native engine teardown handles native garbage collection
+                // Flag the view as disposed immediately so any in-flight async callbacks are ignored
+                view.tag = java.lang.Boolean.TRUE
                 googleMap = null
                 view.onPause()
                 view.onDestroy()
