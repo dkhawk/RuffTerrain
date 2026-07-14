@@ -53,6 +53,7 @@ fun Map3DViewport(
     if (points.isEmpty()) return
 
     var googleMap by remember { mutableStateOf<GoogleMap3D?>(null) }
+    var isMapReleased by remember { mutableStateOf(false) }
 
     // Locate center coordinates to focus camera
     val centerPt = remember(points) {
@@ -104,6 +105,9 @@ fun Map3DViewport(
             map.addMarker(mOpts)
         }
 
+        // Initialize single instance of runner position marker
+        var runnerMarker: Marker? = null
+
         try {
             // Wait slightly longer to let the camera subsystem stabilize before querying/centering
             delay(500)
@@ -115,13 +119,16 @@ fun Map3DViewport(
                     val scrubberIndex = (progress * (points.size - 1)).toInt().coerceIn(0, points.size - 1)
                     val scrubberPoint = points.getOrNull(scrubberIndex)
                     if (scrubberPoint != null && coroutineScope.isActive) {
-                        // Add or update the runner marker using the same ID to prevent duplication and JNI race conditions
-                        val runnerOpts = markerOptions {
-                            id = "runner_marker"
-                            position = LatLngAltitude(scrubberPoint.latitude, scrubberPoint.longitude, scrubberPoint.elevation + 8.0)
-                            label = "Runner Position"
+                        val currentMarker = runnerMarker
+                        if (currentMarker == null) {
+                            val rOpts = MarkerOptions().apply {
+                                position = LatLngAltitude(scrubberPoint.latitude, scrubberPoint.longitude, scrubberPoint.elevation + 8.0)
+                                label = "Runner Position"
+                            }
+                            runnerMarker = map.addMarker(rOpts)
+                        } else {
+                            currentMarker.setPosition(LatLngAltitude(scrubberPoint.latitude, scrubberPoint.longitude, scrubberPoint.elevation + 8.0))
                         }
-                        map.addMarker(runnerOpts)
 
                         // Center the 3D map camera on the runner position
                         val currentCam = map.getCamera()
@@ -145,9 +152,12 @@ fun Map3DViewport(
         } catch (e: Exception) {
             // Context cancelled or disposed
         } finally {
-            // DO NOT call remove() on native components here because the map is being destroyed,
-            // and the native Map3DView.onDestroy() handles all marker and polyline cleanups.
-            // Calling JNI remove() during teardown causes dual-free crashes.
+            if (!isMapReleased) {
+                polyline?.remove()
+                markers.forEach { it.remove() }
+                runnerMarker?.remove()
+            }
+            runnerMarker = null
         }
     }
 

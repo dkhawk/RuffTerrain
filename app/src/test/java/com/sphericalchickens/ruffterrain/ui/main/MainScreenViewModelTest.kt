@@ -37,6 +37,7 @@ class MainScreenViewModelTest {
         Dispatchers.resetMain()
     }
 
+
     @Test
     fun testInitialUiState() = runTest {
         val repository = FakeDataRepository()
