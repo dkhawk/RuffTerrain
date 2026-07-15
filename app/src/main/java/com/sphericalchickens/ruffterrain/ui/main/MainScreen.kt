@@ -731,7 +731,7 @@ fun MainScreen(
 
         // 1. FLOATING THREE-DOTS MENU (Top Right) - Always on top
         AnimatedVisibility(
-            visible = isControlsVisible || state.appMode == AppMode.IMPORT_EDIT,
+            visible = true,
             enter = fadeIn(animationSpec = tween(300)),
             exit = fadeOut(animationSpec = tween(300)),
             modifier = Modifier
