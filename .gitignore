@@ -46,3 +46,11 @@ ruff_terrain_ultra_race_plan*
 *.bak
 
 !samples/**
+
+# Python & virtualenv
+.venv/
+__pycache__/
+*.pyc
+
+# Agent output data
+public/data/
