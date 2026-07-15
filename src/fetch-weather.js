@@ -43,18 +43,37 @@ export async function fetchWeatherForecast(lat, lon, hours = 3, apiKey) {
     return weatherCache.get(cacheKey);
   }
 
-  const url = `https://weather.googleapis.com/v1/forecast/hours:lookup?key=${apiKey}&location.latitude=${latRounded}&location.longitude=${lonRounded}&hours=${hours}`;
+  const baseUrl = `https://weather.googleapis.com/v1/forecast/hours:lookup?key=${apiKey}&location.latitude=${latRounded}&location.longitude=${lonRounded}&hours=${hours}`;
 
   try {
-    const response = await fetch(url);
-    if (!response.ok) {
-      const errorText = await response.text();
-      throw new Error(`Weather API Error (${response.status}): ${errorText || response.statusText}`);
-    }
+    let forecastHours = [];
+    let nextPageToken = null;
+    let pagesFetched = 0;
 
-    const data = await response.json();
-    weatherCache.set(cacheKey, data);
-    return data;
+    do {
+      let url = baseUrl;
+      if (nextPageToken) {
+        url += `&pageToken=${nextPageToken}`;
+      }
+
+      const response = await fetch(url);
+      if (!response.ok) {
+        const errorText = await response.text();
+        throw new Error(`Weather API Error (${response.status}): ${errorText || response.statusText}`);
+      }
+
+      const data = await response.json();
+      if (data.forecastHours && data.forecastHours.length > 0) {
+        forecastHours = forecastHours.concat(data.forecastHours);
+      }
+
+      nextPageToken = data.nextPageToken;
+      pagesFetched++;
+    } while (nextPageToken && forecastHours.length < hours && pagesFetched < 10);
+
+    const mergedData = { forecastHours };
+    weatherCache.set(cacheKey, mergedData);
+    return mergedData;
   } catch (error) {
     console.error("Failed to fetch weather forecast:", error);
     throw error;
@@ -161,6 +180,8 @@ export function getWeatherWindowDetails(activeRoute, dist_m, forecastData, arriv
     let hrMs = Date.now();
     if (hr.time) {
       hrMs = new Date(hr.time).getTime();
+    } else if (hr.interval && hr.interval.startTime) {
+      hrMs = new Date(hr.interval.startTime).getTime();
     } else if (hr.displayDateTime) {
       const dt = hr.displayDateTime;
       const arrivalDate = new Date(arrivalMs);

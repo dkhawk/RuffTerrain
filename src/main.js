@@ -1003,6 +1003,8 @@ async function updateWeatherUI(lat, lon) {
       let hrMs = Date.now();
       if (hr.time) {
         hrMs = new Date(hr.time).getTime();
+      } else if (hr.interval && hr.interval.startTime) {
+        hrMs = new Date(hr.interval.startTime).getTime();
       } else if (hr.displayDateTime) {
         const dt = hr.displayDateTime;
         hrMs = new Date(dt.year || arrivalDate.getFullYear(), (dt.month || arrivalDate.getMonth() + 1) - 1, dt.day || arrivalDate.getDate(), dt.hours || 0).getTime();
@@ -1333,6 +1335,8 @@ function formatHourOnly(hourData) {
     return `${displayHour} ${ampm}`;
   } else if (hourData.time) {
     return new Date(hourData.time).toLocaleTimeString([], { hour: 'numeric' });
+  } else if (hourData.interval && hourData.interval.startTime) {
+    return new Date(hourData.interval.startTime).toLocaleTimeString([], { hour: 'numeric' });
   }
   return "--";
 }

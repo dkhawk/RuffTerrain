@@ -1272,5 +1272,22 @@ This journal records all design decisions, architecture patterns, development st
     *   Ran `node --test test/gpx.test.js` verifying 25/25 unit tests passing and validated production client bundle (`npm run build`).
 >>>>>>> origin/main
 
+---
+
+### 🚀 Session 91: Manual Weather Fetch, Athlete Profile Engine, and Weather Pagination
+*   **Goal**: Restrict automatic weather fetches, implement wizard plan apply guards, build athlete profiles CRUD, add passes ranges/bumping, and resolve the "stuck forecast beyond 3 PM" bug.
+*   **Decisions & Rationale (*The Why*)**:
+    *   **Manual Weather Fetch & Start Time Requirement**: Stopped automatic weather fetches on startup or route select. Added `#fetch-weather-btn` to the general weather panel and `#poi-fetch-weather-btn` to the POI details dialog to allow manual fetches once start date/time is specified. If the user edits start date/time or duration inputs, state is reset (`hasFetchedWeather = false`) to enforce a re-fetch.
+    *   **Race Planner Wizard Apply Guard**: Stored generated wizard plans in `tempExecutionPlan` (combining date and time into `startTime`) instead of directly modifying `activeRoute.executionPlan` upon plan generation, allowing users to preview the plan in the wizard and explicitly click "Apply to HUD" to write it.
+    *   **Pacing Ranges and Interactive Bumping**: Displayed +/-15% pacing ranges in the passes table. Implemented `bumpArrivalTime` which adjusts expected arrival times at stations by ±10 minutes, scaling the target pace of all preceding sectors proportionally.
+    *   **Athlete Profiles Engine**: Created an athlete profile storage, loading, and deletion manager linked to wizard controls, pre-populated with default recovery and elite profiles. Speeds are locked upon load unless the fitness radio buttons are toggled manually, which resets the profile select dropdown.
+    *   **Weather Pagination (The 3 PM Bug)**: Fixed a bug where forecasts beyond 3 PM got stuck due to Google Weather API paging `pageSize` defaulting to 24 hourly records. Implemented pagination loop using `nextPageToken` to retrieve full 96-hour segments, and parsed `hr.interval.startTime` directly for timezone-agnostic UTC mapping.
+*   **Key Actions & Verification**:
+    *   Updated `index.html` adding weather fetch buttons and athlete profile management fields.
+    *   Updated `src/main.js` implementing temporary execution plan storage, profiles logic, event handlers, and time parsing updates.
+    *   Updated `src/fetch-weather.js` implementing pagination looping on `nextPageToken` and UTC timestamp comparisons on `hr.interval.startTime`.
+    *   Ran unit tests successfully (`25/25 passing`) and validated Vite production client compilation.
+
+
 
 
