@@ -9,6 +9,7 @@ import com.sphericalchickens.ruffterrain.data.model.Station
 import com.sphericalchickens.ruffterrain.data.model.Pass
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -135,6 +136,89 @@ class RunningAlertsTest {
         val state = viewModel.uiState.value
         assertNotNull(state.cutoffAlertMessage)
         assertTrue(state.cutoffAlertMessage!!.contains("CUTOFF WARNING"))
+    }
+
+    @Test
+    fun testAddCustomWaypointMultiPassAndAnnouncements() = runTest {
+        val repository = FakeDataRepository()
+        val viewModel = MainScreenViewModel(repository)
+        
+        // Setup loop course data
+        val points = listOf(
+            RoutePoint(0.0, 0.0, 0.0, 0.0),             // 0m
+            RoutePoint(0.01, 0.0, 10.0, 1000.0),        // 1000m (Outbound pass)
+            RoutePoint(0.02, 0.0, 20.0, 2000.0),        // 2000m (Turnaround point)
+            RoutePoint(0.01, 0.0001, 10.0, 3000.0),     // 3000m (Inbound pass, ~11m apart)
+            RoutePoint(0.0, 0.0, 0.0, 4000.0)           // 4000m (Finish)
+        )
+        val course = CourseData(
+            name = "Loop Course",
+            points = points,
+            waypoints = emptyList(),
+            totalDistance = 4000.0,
+            elevationGain = 20.0
+        )
+        repository.setMockResult(Result.success(course))
+        viewModel.loadCourse("".byteInputStream())
+
+        // Add custom waypoint near 0.01, 0.0
+        viewModel.addCustomWaypoint(
+            name = "Critical Turn",
+            latitude = 0.01,
+            longitude = 0.0,
+            symbol = "turn_left"
+        )
+
+        // Verify that two waypoints were added (one for outbound, one for inbound)
+        val updatedCourse = viewModel.uiState.value.courseData
+        assertNotNull(updatedCourse)
+        val customWaypoints = updatedCourse!!.waypoints.filter { it.id.startsWith("wpt-custom-") }
+        assertEquals(2, customWaypoints.size)
+        
+        val firstPass = customWaypoints[0]
+        val secondPass = customWaypoints[1]
+        
+        assertEquals("Critical Turn (Pass 1)", firstPass.name)
+        assertEquals(1000.0, firstPass.distanceMeters, 50.0)
+        
+        assertEquals("Critical Turn (Pass 2)", secondPass.name)
+        assertEquals(3000.0, secondPass.distanceMeters, 50.0)
+
+        // Test Proximity Announcements
+        val announcements = mutableListOf<String>()
+        val collectJob = launch(UnconfinedTestDispatcher()) {
+            viewModel.announcementEvents.collect {
+                announcements.add(it)
+            }
+        }
+
+        // Runner is far away: no announcements
+        viewModel.updateUserLocation(0.0, 0.0, 1000L) // at 0m
+        assertTrue(announcements.isEmpty())
+
+        // Runner approaches first pass (within 100m, e.g. at 920m)
+        // Point index 1 is at 1000m, index 0 is at 0m. User location at 0.0092 lat, 0.0 lon matches distance ~920m
+        viewModel.updateUserLocation(0.0092, 0.0, 2000L)
+        assertEquals(1, announcements.size)
+        assertEquals("Approaching Critical Turn (Pass 1)", announcements.last())
+
+        // Move past it to turnaround point (2000m)
+        viewModel.updateUserLocation(0.02, 0.0, 3000L)
+        
+        // Approach second pass (e.g. at 2920m)
+        // Index 3 is at 3000m. User location at 0.0108 lat, 0.0001 lon matches distance ~2920m
+        viewModel.updateUserLocation(0.0108, 0.0001, 4000L)
+        assertEquals(2, announcements.size)
+        assertEquals("Approaching Critical Turn (Pass 2)", announcements.last())
+
+        // Test Muting: disable TTS, move away, and approach again
+        viewModel.updateTtsEnabled(false)
+        viewModel.updateUserLocation(0.02, 0.0, 5000L) // reset location far away
+        viewModel.updateUserLocation(0.0108, 0.0001, 6000L) // approach again
+        // Announcement list size should still be 2
+        assertEquals(2, announcements.size)
+
+        collectJob.cancel()
     }
 
     private class FakeDataRepository : DataRepository {

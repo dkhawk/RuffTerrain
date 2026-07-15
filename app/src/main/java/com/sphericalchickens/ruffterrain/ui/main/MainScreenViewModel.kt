@@ -35,7 +35,12 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.MutableSharedFlow
+import kotlinx.coroutines.flow.SharedFlow
+import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.update
+import kotlinx.serialization.json.Json
+import kotlinx.serialization.encodeToString
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlin.math.cos
@@ -84,7 +89,8 @@ data class MainScreenUiState(
     val nextWaypointDurationMin: Long? = null,
     val nextWaypointDurationMax: Long? = null,
     val finishDurationMin: Long? = null,
-    val finishDurationMax: Long? = null
+    val finishDurationMax: Long? = null,
+    val isTtsEnabled: Boolean = true
 )
 
 enum class LocationAccuracyMode {
@@ -101,6 +107,11 @@ class MainScreenViewModel(private val dataRepository: DataRepository) : ViewMode
 
     private val _uiState = MutableStateFlow(MainScreenUiState())
     val uiState: StateFlow<MainScreenUiState> = _uiState.asStateFlow()
+
+    private val _announcementEvents = MutableSharedFlow<String>(extraBufferCapacity = 10)
+    val announcementEvents: SharedFlow<String> = _announcementEvents.asSharedFlow()
+
+    private val announcedWaypoints = mutableSetOf<String>()
 
     private var playbackJob: Job? = null
     private var simulationJob: Job? = null
@@ -229,6 +240,10 @@ class MainScreenViewModel(private val dataRepository: DataRepository) : ViewMode
         }
     }
 
+    fun setMapMode(mode: MapMode) {
+        _uiState.update { it.copy(mapMode = mode) }
+    }
+
     /**
      * Updates the active operational mode (e.g. IMPORT_EDIT, SIMULATION, RUNNING).
      */
@@ -325,6 +340,7 @@ class MainScreenViewModel(private val dataRepository: DataRepository) : ViewMode
 
             // Cutoff alert calculation
             val currentDist = nextProgress * totalDist
+            checkWaypointAnnouncements(currentDist, course)
             var cutoffAlert: String? = null
             
             // Find the next checkpoint waypoint
@@ -659,6 +675,7 @@ class MainScreenViewModel(private val dataRepository: DataRepository) : ViewMode
                 val speedVal = state.playbackSpeed
                 val simSpeed = 20.0 * speedVal * speedVal
                 currentDist += simSpeed * dt
+                checkWaypointAnnouncements(currentDist, course)
 
                 if (currentDist >= totalDist) {
                     _uiState.update {
@@ -769,12 +786,90 @@ class MainScreenViewModel(private val dataRepository: DataRepository) : ViewMode
         simulationJob?.cancel()
     }
 
+    private var filesDir: java.io.File? = null
+
+    fun setFilesDir(dir: java.io.File) {
+        this.filesDir = dir
+        val currentCourse = _uiState.value.courseData
+        if (currentCourse != null) {
+            mergeCustomWaypoints(currentCourse)
+        }
+    }
+
+    private fun mergeCustomWaypoints(course: CourseData) {
+        val dir = filesDir ?: return
+        val sanitizedName = course.name.replace(Regex("[^a-zA-Z0-9]"), "_")
+        val file = java.io.File(dir, "custom_waypoints_$sanitizedName.json")
+        if (!file.exists()) return
+
+        try {
+            val jsonStr = file.readText()
+            val customWpts = Json.decodeFromString<List<Waypoint>>(jsonStr)
+            
+            val existingIds = course.waypoints.map { it.id }.toSet()
+            val newCustomWpts = customWpts.filter { !existingIds.contains(it.id) }
+            
+            if (newCustomWpts.isNotEmpty()) {
+                val merged = (course.waypoints + newCustomWpts).sortedBy { it.distanceMeters }
+                _uiState.update { it.copy(courseData = course.copy(waypoints = merged)) }
+            }
+        } catch (e: Exception) {
+            // Ignore parse errors
+        }
+    }
+
+    private fun saveCustomWaypoints(course: CourseData) {
+        val dir = filesDir ?: return
+        val sanitizedName = course.name.replace(Regex("[^a-zA-Z0-9]"), "_")
+        val file = java.io.File(dir, "custom_waypoints_$sanitizedName.json")
+
+        try {
+            val customWpts = course.waypoints.filter { it.id.startsWith("wpt-custom-") }
+            if (customWpts.isEmpty()) {
+                if (file.exists()) file.delete()
+            } else {
+                val jsonStr = Json.encodeToString(customWpts)
+                file.writeText(jsonStr)
+            }
+        } catch (e: Exception) {
+            // Ignore save errors
+        }
+    }
+
+    fun announce(message: String) {
+        viewModelScope.launch {
+            _announcementEvents.emit(message)
+        }
+    }
+
+    private fun checkWaypointAnnouncements(currentDist: Double, course: CourseData) {
+        if (!_uiState.value.isTtsEnabled) return
+        val totalDist = course.totalDistance
+        if (totalDist <= 0.0) return
+
+        for (wpt in course.waypoints) {
+            val distToWpt = wpt.distanceMeters - currentDist
+            if (distToWpt in 0.0..100.0) {
+                if (!announcedWaypoints.contains(wpt.id)) {
+                    announcedWaypoints.add(wpt.id)
+                    announce("Approaching ${wpt.name}")
+                }
+            } else if (distToWpt < -150.0 || distToWpt > 250.0) {
+                announcedWaypoints.remove(wpt.id)
+            }
+        }
+    }
+
     fun updateLocationAccuracyMode(mode: LocationAccuracyMode) {
         _uiState.update { it.copy(locationAccuracyMode = mode) }
     }
 
     fun updateExpectedPauseTimeMinutes(minutes: Int) {
         _uiState.update { it.copy(expectedPauseTimeMinutes = minutes) }
+    }
+
+    fun updateTtsEnabled(enabled: Boolean) {
+        _uiState.update { it.copy(isTtsEnabled = enabled) }
     }
 
     fun addCustomWaypoint(
@@ -793,62 +888,114 @@ class MainScreenViewModel(private val dataRepository: DataRepository) : ViewMode
         val points = currentCourse.points
         if (points.isEmpty()) return
 
-        // Snap to closest trackpoint index and compute distance
-        var closestIdx = 0
-        var minSpatialDist = Double.MAX_VALUE
-        for (idx in points.indices) {
-            val trk = points[idx]
-            val d = Haversine.distance(latitude, longitude, trk.latitude, trk.longitude)
-            if (d < minSpatialDist) {
-                minSpatialDist = d
-                closestIdx = idx
+        // 1. Calculate distances to all route points
+        val distances = points.map { trk ->
+            Haversine.distance(latitude, longitude, trk.latitude, trk.longitude)
+        }
+
+        // 2. Identify local minima within 50.0 meters threshold
+        val thresholdMeters = 50.0
+        val localMinimaIndices = mutableListOf<Int>()
+        for (i in points.indices) {
+            val dist = distances[i]
+            if (dist < thresholdMeters) {
+                val isPrevLarger = i == 0 || distances[i - 1] >= dist
+                val isNextLarger = i == points.size - 1 || distances[i + 1] >= dist
+                if (isPrevLarger && isNextLarger) {
+                    localMinimaIndices.add(i)
+                }
             }
         }
-        val finalDist = points.getOrNull(closestIdx)?.distance ?: 0.0
 
-        val services = Services(
-            water = water,
-            unmanagedWater = false,
-            food = food,
-            hotFood = false,
-            toilets = toilets,
-            medical = medical,
-            sleepArea = false
-        )
-        val accessibility = Accessibility(
-            crewAllowed = crewAllowed,
-            pacerAllowed = false,
-            vehicleTier = "none",
-            dropBagAllowed = dropBagAllowed
-        )
-        
-        val stationExtensions = StationExtensions(
-            station = Station(
-                id = "station-custom-${System.currentTimeMillis()}",
-                type = if (water || food || toilets) "aid_station" else "informational",
-                subtype = if (water || food || toilets) "aid_station" else "checkpoint",
-                passes = listOf(Pass(num = 1, distM = finalDist, label = name)),
-                accessibility = accessibility,
-                services = services
+        // 3. Deduplicate / merge adjacent local minima that are within 500 meters of cumulative distance
+        val minPassIntervalMeters = 500.0
+        val acceptedIndices = mutableListOf<Int>()
+        for (idx in localMinimaIndices.sorted()) {
+            val lastAcceptedIdx = acceptedIndices.lastOrNull()
+            if (lastAcceptedIdx == null) {
+                acceptedIndices.add(idx)
+            } else {
+                val distBetween = points[idx].distance - points[lastAcceptedIdx].distance
+                if (distBetween < minPassIntervalMeters) {
+                    // Keep the one that is closer spatially
+                    if (distances[idx] < distances[lastAcceptedIdx]) {
+                        acceptedIndices[acceptedIndices.size - 1] = idx
+                    }
+                } else {
+                    acceptedIndices.add(idx)
+                }
+            }
+        }
+
+        // Fallback: If no point is within 50 meters, snap to the absolute single closest point
+        if (acceptedIndices.isEmpty()) {
+            var closestIdx = 0
+            var minSpatialDist = Double.MAX_VALUE
+            for (idx in points.indices) {
+                if (distances[idx] < minSpatialDist) {
+                    minSpatialDist = distances[idx]
+                    closestIdx = idx
+                }
+            }
+            acceptedIndices.add(closestIdx)
+        }
+
+        val addedWaypoints = acceptedIndices.mapIndexed { passIdx, closestIdx ->
+            val finalDist = points[closestIdx].distance
+            val passNum = passIdx + 1
+            
+            // If there are multiple passes, append the pass number to the name
+            val finalName = if (acceptedIndices.size > 1) {
+                "$name (Pass $passNum)"
+            } else {
+                name
+            }
+
+            val services = Services(
+                water = water,
+                unmanagedWater = false,
+                food = food,
+                hotFood = false,
+                toilets = toilets,
+                medical = medical,
+                sleepArea = false
             )
-        )
+            val accessibility = Accessibility(
+                crewAllowed = crewAllowed,
+                pacerAllowed = false,
+                vehicleTier = "none",
+                dropBagAllowed = dropBagAllowed
+            )
+            
+            val stationExtensions = StationExtensions(
+                station = Station(
+                    id = "station-custom-${System.currentTimeMillis()}-$passNum",
+                    type = if (water || food || toilets) "aid_station" else "informational",
+                    subtype = if (water || food || toilets) "aid_station" else "checkpoint",
+                    passes = listOf(Pass(num = passNum, distM = finalDist, label = finalName)),
+                    accessibility = accessibility,
+                    services = services
+                )
+            )
 
-        val newWpt = Waypoint(
-            id = "wpt-custom-${System.currentTimeMillis()}",
-            name = name,
-            latitude = latitude,
-            longitude = longitude,
-            elevation = points[closestIdx].elevation,
-            symbol = symbol,
-            description = "Custom Waypoint",
-            closestTrackpointIndex = closestIdx,
-            distanceMeters = finalDist,
-            extensions = stationExtensions
-        )
+            Waypoint(
+                id = "wpt-custom-${System.currentTimeMillis()}-$passNum",
+                name = finalName,
+                latitude = latitude,
+                longitude = longitude,
+                elevation = points[closestIdx].elevation,
+                symbol = symbol,
+                description = "Custom Waypoint",
+                closestTrackpointIndex = closestIdx,
+                distanceMeters = finalDist,
+                extensions = stationExtensions
+            )
+        }
 
-        val newWaypoints = (currentCourse.waypoints + newWpt).sortedBy { it.distanceMeters }
+        val newWaypoints = (currentCourse.waypoints + addedWaypoints).sortedBy { it.distanceMeters }
         val updatedCourse = currentCourse.copy(waypoints = newWaypoints)
         _uiState.update { it.copy(courseData = updatedCourse) }
+        saveCustomWaypoints(updatedCourse)
     }
 
     fun removeWaypoint(waypointId: String) {
@@ -856,6 +1003,7 @@ class MainScreenViewModel(private val dataRepository: DataRepository) : ViewMode
         val newWaypoints = currentCourse.waypoints.filter { it.id != waypointId }
         val updatedCourse = currentCourse.copy(waypoints = newWaypoints)
         _uiState.update { it.copy(courseData = updatedCourse) }
+        saveCustomWaypoints(updatedCourse)
     }
 
     fun editWaypoint(
@@ -910,6 +1058,7 @@ class MainScreenViewModel(private val dataRepository: DataRepository) : ViewMode
         }
         val updatedCourse = currentCourse.copy(waypoints = newWaypoints)
         _uiState.update { it.copy(courseData = updatedCourse) }
+        saveCustomWaypoints(updatedCourse)
     }
 
     companion object {

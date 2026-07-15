@@ -18,6 +18,7 @@ package com.sphericalchickens.ruffterrain.ui.main
 
 import android.content.Context
 import android.net.Uri
+import android.speech.tts.TextToSpeech
 import java.util.Locale
 import android.provider.OpenableColumns
 import androidx.activity.compose.rememberLauncherForActivityResult
@@ -122,11 +123,38 @@ fun MainScreen(
   var mapTypePref by remember { mutableStateOf(sharedPrefs.getString("map_type_preference", "NORMAL") ?: "NORMAL") }
   var showMapTypeDialog by remember { mutableStateOf(false) }
 
+  // Initialize filesDir in ViewModel on startup
+  LaunchedEffect(context) {
+      viewModel.setFilesDir(context.filesDir)
+  }
+
+  // Initialize TextToSpeech engine and collect announcements
+  var tts by remember { mutableStateOf<TextToSpeech?>(null) }
+  DisposableEffect(context) {
+      val ttsInstance = TextToSpeech(context) { status -> }
+      tts = ttsInstance
+      onDispose {
+          ttsInstance.stop()
+          ttsInstance.shutdown()
+      }
+  }
+
+  LaunchedEffect(viewModel, tts) {
+      viewModel.announcementEvents.collect { message ->
+          tts?.speak(message, TextToSpeech.QUEUE_ADD, null, null)
+      }
+  }
+
   // Sync settings with VM on startup/change
-  LaunchedEffect(accuracyPref, pauseTimePref) {
+  LaunchedEffect(accuracyPref, pauseTimePref, mapTypePref) {
       val mode = try { LocationAccuracyMode.valueOf(accuracyPref) } catch(e: Exception) { LocationAccuracyMode.AUTO }
       viewModel.updateLocationAccuracyMode(mode)
       viewModel.updateExpectedPauseTimeMinutes(pauseTimePref)
+      if (mapTypePref == "3D") {
+          viewModel.setMapMode(MapMode.MAP_3D)
+      } else {
+          viewModel.setMapMode(MapMode.MAP_2D)
+      }
   }
 
   // Auto-hide controls after a timeout (3 seconds) of no interaction
@@ -529,6 +557,38 @@ fun MainScreen(
                                 valueRange = 0f..1f,
                                 modifier = Modifier.fillMaxWidth()
                             )
+
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(vertical = 4.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.SpaceBetween
+                            ) {
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    Text(
+                                        text = if (state.isTtsEnabled) "🔊" else "🔇",
+                                        fontSize = 16.sp,
+                                        modifier = Modifier.padding(end = 8.dp)
+                                    )
+                                    Text(
+                                        text = "Voice Announcements",
+                                        color = Color.White,
+                                        fontSize = 14.sp,
+                                        fontWeight = FontWeight.Medium
+                                    )
+                                }
+                                Switch(
+                                    checked = state.isTtsEnabled,
+                                    onCheckedChange = { viewModel.updateTtsEnabled(it) },
+                                    colors = androidx.compose.material3.SwitchDefaults.colors(
+                                        checkedThumbColor = Color(0xFF3B82F6),
+                                        checkedTrackColor = Color(0xFF3B82F6).copy(alpha = 0.5f),
+                                        uncheckedThumbColor = Color.Gray,
+                                        uncheckedTrackColor = Color.DarkGray
+                                    )
+                                )
+                            }
         
                             Row(
                                 modifier = Modifier.fillMaxWidth(),
@@ -669,150 +729,151 @@ fun MainScreen(
             }
         }
 
-        // 1. FLOATING MODE SELECTION BAR (Top Pill Bar) - Always on top
+        // 1. FLOATING THREE-DOTS MENU (Top Right) - Always on top
         AnimatedVisibility(
             visible = isControlsVisible || state.appMode == AppMode.IMPORT_EDIT,
             enter = fadeIn(animationSpec = tween(300)),
             exit = fadeOut(animationSpec = tween(300)),
             modifier = Modifier
-                .align(Alignment.TopCenter)
+                .align(Alignment.TopEnd)
                 .statusBarsPadding()
                 .padding(16.dp)
-                .fillMaxWidth()
         ) {
-          Card(
-              shape = RoundedCornerShape(24.dp),
-              colors = CardDefaults.cardColors(containerColor = Color(0xDD0F172A))
-          ) {
-            Row(
-                modifier = Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 4.dp),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.SpaceBetween
-            ) {
-              Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-                ModeTabButton(
-                    title = "📂 Plan",
-                    isSelected = state.appMode == AppMode.IMPORT_EDIT,
-                    onClick = { viewModel.updateAppMode(AppMode.IMPORT_EDIT) }
-                )
-                ModeTabButton(
-                    title = "🎮 Preview",
-                    isSelected = state.appMode == AppMode.SIMULATION,
-                    onClick = { viewModel.updateAppMode(AppMode.SIMULATION) }
-                )
-                ModeTabButton(
-                    title = "🏃 Run",
-                    isSelected = state.appMode == AppMode.RUNNING,
-                    onClick = { viewModel.updateAppMode(AppMode.RUNNING) }
-                )
-              }
-
-              Box {
-                Box(
-                    modifier = Modifier
-                        .clickable { showSettingsMenu = true }
-                        .padding(8.dp)
+            Box {
+                Card(
+                    shape = RoundedCornerShape(24.dp),
+                    colors = CardDefaults.cardColors(containerColor = Color(0xDD0F172A)),
+                    modifier = Modifier.clickable { showSettingsMenu = true }
                 ) {
-                  Text("⚙️", fontSize = 18.sp)
+                    Text(
+                        text = "⋮",
+                        color = Color.White,
+                        fontSize = 24.sp,
+                        fontWeight = FontWeight.Bold,
+                        modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)
+                    )
                 }
 
                 DropdownMenu(
                     expanded = showSettingsMenu,
                     onDismissRequest = { showSettingsMenu = false }
                 ) {
-                   DropdownMenuItem(
-                       text = { Text("Import GPX Course") },
-                       onClick = {
-                         showSettingsMenu = false
-                         filePickerLauncher.launch("*/*")
-                       }
-                   )
-                   DropdownMenuItem(
-                       text = { Text("📍 Launch GPS Simulator") },
-                       onClick = {
-                         showSettingsMenu = false
-                         showSimulationHarness = true
-                       }
-                   )
-                  if (state.appMode != AppMode.RUNNING) {
+                    // Modes Section
+                    DropdownMenuItem(
+                        text = { Text(if (state.appMode == AppMode.IMPORT_EDIT) "📂 Mode: Plan (Active)" else "📂 Mode: Plan") },
+                        onClick = {
+                            viewModel.updateAppMode(AppMode.IMPORT_EDIT)
+                            showSettingsMenu = false
+                        }
+                    )
+                    DropdownMenuItem(
+                        text = { Text(if (state.appMode == AppMode.SIMULATION) "🎮 Mode: Preview (Active)" else "🎮 Mode: Preview") },
+                        onClick = {
+                            viewModel.updateAppMode(AppMode.SIMULATION)
+                            showSettingsMenu = false
+                        }
+                    )
+                    DropdownMenuItem(
+                        text = { Text(if (state.appMode == AppMode.RUNNING) "🏃 Mode: Run (Active)" else "🏃 Mode: Run") },
+                        onClick = {
+                            viewModel.updateAppMode(AppMode.RUNNING)
+                            showSettingsMenu = false
+                        }
+                    )
+                    
+                    Spacer(
+                        modifier = Modifier
+                            .height(1.dp)
+                            .fillMaxWidth()
+                            .background(Color.Gray.copy(alpha = 0.3f))
+                    )
+
+                    // Actions & Settings
+                    DropdownMenuItem(
+                        text = { Text("Import GPX Course") },
+                        onClick = {
+                            showSettingsMenu = false
+                            filePickerLauncher.launch("*/*")
+                        }
+                    )
+                    DropdownMenuItem(
+                        text = { Text("📍 Launch GPS Simulator") },
+                        onClick = {
+                            showSettingsMenu = false
+                            showSimulationHarness = true
+                        }
+                    )
+                    if (state.appMode != AppMode.RUNNING) {
+                        DropdownMenuItem(
+                            text = {
+                                val label = when (mapTypePref) {
+                                    "SATELLITE" -> "Map Type: Satellite"
+                                    "HYBRID" -> "Map Type: Hybrid"
+                                    "3D" -> "Map Type: 3D Terrain"
+                                    else -> "Map Type: Regular Map"
+                                }
+                                Text("🗺️ $label")
+                            },
+                            onClick = {
+                                showSettingsMenu = false
+                                showMapTypeDialog = true
+                            }
+                        )
+                    }
                     DropdownMenuItem(
                         text = {
-                            val label = when (mapTypePref) {
-                                "SATELLITE" -> "Map Type: Satellite"
-                                "HYBRID" -> "Map Type: Hybrid"
-                                else -> "Map Type: Regular Map"
+                            val label = when (unitsPref) {
+                                "metric" -> "Units: Metric (km/m)"
+                                "imperial" -> "Units: Imperial (mi/ft)"
+                                else -> "Units: Locale Default"
                             }
-                            Text("🗺️ $label")
+                            Text(label)
                         },
                         onClick = {
                             showSettingsMenu = false
-                            showMapTypeDialog = true
+                            val nextPref = when (unitsPref) {
+                                "default" -> "metric"
+                                "metric" -> "imperial"
+                                else -> "default"
+                            }
+                            unitsPref = nextPref
+                            sharedPrefs.edit().putString("units_preference", nextPref).apply()
                         }
                     )
                     DropdownMenuItem(
-                        text = { Text(if (state.mapMode == MapMode.MAP_3D) "Switch to 2D Map" else "Switch to 3D Map") },
-                        onClick = {
-                          showSettingsMenu = false
-                          viewModel.toggleMapMode()
-                        }
-                    )
-                  }
-                   DropdownMenuItem(
-                       text = {
-                           val label = when (unitsPref) {
-                               "metric" -> "Units: Metric (km/m)"
-                               "imperial" -> "Units: Imperial (mi/ft)"
-                               else -> "Units: Locale Default"
-                           }
-                           Text(label)
-                       },
-                       onClick = {
-                           showSettingsMenu = false
-                           val nextPref = when (unitsPref) {
-                               "default" -> "metric"
-                               "metric" -> "imperial"
-                               else -> "default"
-                           }
-                           unitsPref = nextPref
-                           sharedPrefs.edit().putString("units_preference", nextPref).apply()
-                       }
-                   )
-                   DropdownMenuItem(
                         text = { Text("Reload Leadville Sample") },
                         onClick = {
-                         showSettingsMenu = false
-                         try {
-                           val sharedPrefs = context.getSharedPreferences("ruff_terrain_prefs", android.content.Context.MODE_PRIVATE)
-                           sharedPrefs.edit().remove("last_opened_course").apply()
-                           
-                           context.assets.open("leadville_sample.gpx").use { assetStream ->
-                             viewModel.loadCourseBytes(assetStream.readBytes())
-                           }
-                         } catch (e: Exception) {
-                           // ignore
-                         }
-                       }
-                   )
-                   DropdownMenuItem(
+                            showSettingsMenu = false
+                            try {
+                                val sharedPrefs = context.getSharedPreferences("ruff_terrain_prefs", android.content.Context.MODE_PRIVATE)
+                                sharedPrefs.edit().remove("last_opened_course").apply()
+                                
+                                context.assets.open("leadville_sample.gpx").use { assetStream ->
+                                    viewModel.loadCourseBytes(assetStream.readBytes())
+                                }
+                            } catch (e: Exception) {
+                                // ignore
+                            }
+                        }
+                    )
+                    DropdownMenuItem(
                         text = { Text("Load Bear Canyon Sample") },
                         onClick = {
-                         showSettingsMenu = false
-                         try {
-                           val sharedPrefs = context.getSharedPreferences("ruff_terrain_prefs", android.content.Context.MODE_PRIVATE)
-                           sharedPrefs.edit().remove("last_opened_course").apply()
-                           
-                           context.assets.open("bear_canyon_sample.gpx").use { assetStream ->
-                             viewModel.loadCourseBytes(assetStream.readBytes())
-                           }
-                         } catch (e: Exception) {
-                           // ignore
-                         }
-                       }
-                   )
+                            showSettingsMenu = false
+                            try {
+                                val sharedPrefs = context.getSharedPreferences("ruff_terrain_prefs", android.content.Context.MODE_PRIVATE)
+                                sharedPrefs.edit().remove("last_opened_course").apply()
+                                
+                                context.assets.open("bear_canyon_sample.gpx").use { assetStream ->
+                                    viewModel.loadCourseBytes(assetStream.readBytes())
+                                }
+                            } catch (e: Exception) {
+                                // ignore
+                            }
+                        }
+                    )
                 }
-              }
             }
-          }
         }
       }
     }
@@ -862,6 +923,11 @@ fun MainScreen(
             onSelect = { type ->
                 mapTypePref = type
                 sharedPrefs.edit().putString("map_type_preference", type).apply()
+                if (type == "3D") {
+                    viewModel.setMapMode(MapMode.MAP_3D)
+                } else {
+                    viewModel.setMapMode(MapMode.MAP_2D)
+                }
                 showMapTypeDialog = false
             }
         )
@@ -2132,8 +2198,9 @@ fun AddWaypointDialog(
         dropBag: Boolean
     ) -> Unit
 ) {
-    var name by remember { mutableStateOf("") }
     var symbol by remember { mutableStateOf("icons/aid_station.svg") }
+    var name by remember { mutableStateOf("Aid AS") }
+    var lastDefaultName by remember { mutableStateOf("Aid AS") }
     
     var water by remember { mutableStateOf(false) }
     var food by remember { mutableStateOf(false) }
@@ -2211,7 +2278,13 @@ fun AddWaypointDialog(
                         rowItems.forEach { (symPath, label) ->
                             val isSelected = symbol == symPath
                             Button(
-                                onClick = { symbol = symPath },
+                                onClick = {
+                                    symbol = symPath
+                                    if (name.isEmpty() || name == lastDefaultName) {
+                                        name = label
+                                        lastDefaultName = label
+                                    }
+                                },
                                 colors = ButtonDefaults.buttonColors(
                                     containerColor = if (isSelected) Color(0xFF3B82F6) else Color(0xFF1E293B)
                                 ),
@@ -2597,7 +2670,8 @@ fun MapTypeDialog(
                 val options = listOf(
                     "NORMAL" to "Regular Map",
                     "SATELLITE" to "Satellite View",
-                    "HYBRID" to "Hybrid View"
+                    "HYBRID" to "Hybrid View",
+                    "3D" to "3D Terrain Map"
                 )
 
                 options.forEach { (key, label) ->
