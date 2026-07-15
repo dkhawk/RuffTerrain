@@ -1,0 +1,39 @@
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="32dp"
+    android:height="32dp"
+    android:viewportWidth="24"
+    android:viewportHeight="24">
+    <!-- Flagpole -->
+    <path
+        android:fillColor="#94A3B8"
+        android:pathData="M4,2h2v20H4z" />
+    
+    <!-- Flag background (White) -->
+    <path
+        android:fillColor="#FFFFFF"
+        android:pathData="M6,3h16v10H6z" />
+    
+    <!-- Black squares in checkered pattern -->
+    <!-- Row 1: x=6..10 (black), x=14..18 (black) -->
+    <path
+        android:fillColor="#000000"
+        android:pathData="M6,3h4v2.5H6z M14,3h4v2.5H14z" />
+    <!-- Row 2: x=10..14 (black), x=18..22 (black) -->
+    <path
+        android:fillColor="#000000"
+        android:pathData="M10,5.5h4v2.5H10z M18,5.5h4v2.5H18z" />
+    <!-- Row 3: x=6..10 (black), x=14..18 (black) -->
+    <path
+        android:fillColor="#000000"
+        android:pathData="M6,8h4v2.5H6z M14,8h4v2.5H14z" />
+    <!-- Row 4: x=10..14 (black), x=18..22 (black) -->
+    <path
+        android:fillColor="#000000"
+        android:pathData="M10,10.5h4V13H10z M18,10.5h4V13H18z" />
+        
+    <!-- Outer border/shadow outline for high contrast on map -->
+    <path
+        android:strokeColor="#1E293B"
+        android:strokeWidth="0.8"
+        android:pathData="M6,3h16v10H6z" />
+</vector>

@@ -1,0 +1,34 @@
+#!/bin/bash
+
+# Regex for Google API Key: AIzaSy followed by exactly 33 characters (alphanumeric, hyphen, or underscore)
+KEY_REGEX="AIzaSy[A-Za-z0-9_-]{33}"
+
+# Flag to track if any keys are found
+FOUND_KEYS=0
+
+# Get list of staged files that contain "AIzaSy" in their diff
+STAGED_FILES_WITH_PATTERN=$(git diff --cached --name-only -S"AIzaSy" 2>/dev/null)
+
+for file in $STAGED_FILES_WITH_PATTERN; do
+    # Skip directories or deleted files
+    if [ ! -f "$file" ]; then
+        continue
+    fi
+
+    # Extract only the added lines from git diff for this file and check for the key regex.
+    # We look for lines starting with a single '+' (excluding git diff header lines starting with '+++')
+    OFFENDING_LINES=$(git diff -U0 --cached -- "$file" | grep -E "^\+[^+]" | grep -E "$KEY_REGEX")
+
+    if [ ! -z "$OFFENDING_LINES" ]; then
+        echo -e "\033[31;1m[ERROR] Potential Google API Key detected in staged changes for file: $file\033[0m"
+        echo -e "Offending line(s):\n$OFFENDING_LINES\n"
+        FOUND_KEYS=1
+    fi
+done
+
+if [ $FOUND_KEYS -ne 0 ]; then
+    echo -e "\033[33;1mCommit aborted. Please remove the API key or store it securely in a git-ignored file like 'secrets.properties'.\033[0m\n"
+    exit 1
+fi
+
+exit 0

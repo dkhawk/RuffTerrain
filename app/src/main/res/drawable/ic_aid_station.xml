@@ -1,0 +1,19 @@
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="36dp"
+    android:height="36dp"
+    android:viewportWidth="36"
+    android:viewportHeight="36">
+    <!-- Circle background (Emerald Green) -->
+    <path
+        android:fillColor="#10B981"
+        android:pathData="M18,18m-16,0a16,16 0,1 1,32 0a16,16 0,1 1,-32 0"/>
+    <!-- Outer White Border ring -->
+    <path
+        android:strokeColor="#FFFFFF"
+        android:strokeWidth="2"
+        android:pathData="M18,18m-14,0a14,14 0,1 1,28 0a14,14 0,1 1,-28 0"/>
+    <!-- Medical Cross icon in white -->
+    <path
+        android:fillColor="#FFFFFF"
+        android:pathData="M15,10h6v5h5v6h-5v5h-6v-5h-5v-6h5z"/>
+</vector>
