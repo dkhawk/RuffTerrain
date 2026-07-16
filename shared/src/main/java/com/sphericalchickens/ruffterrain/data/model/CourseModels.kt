@@ -194,4 +194,12 @@ data class ClimbInfo(
     val averageGrade: Double
 )
 
-
+@Serializable
+data class RunnerProgress(
+    val elapsedTimeMs: Long,
+    val distanceRunMeters: Double,
+    val heartRate: Int = 0,
+    val currentPaceMinPerKm: Double = 0.0,
+    val nextStationName: String = "",
+    val nextStationDistanceRemainingM: Double = 0.0
+)

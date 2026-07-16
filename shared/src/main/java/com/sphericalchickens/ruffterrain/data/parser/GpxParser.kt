@@ -157,9 +157,6 @@ object GpxParser {
                 totalDescent += descent
 
                 // Calculate gradient percentage (%) over ~30-meter horizontal baseline lookback window.
-                // Why ~30 meters? Because raw GPS trackpoint-to-trackpoint elevation changes over 1-2 meters
-                // suffer from high vertical GPS noise and quantization error. A 30-meter baseline smooths out
-                // false spikes while accurately capturing true physical terrain steepness.
                 var grade = 0.0
                 var j = finalPoints.size - 1
                 while (j > 0 && cumulativeDistance - finalPoints[j].distance < 30.0) {
@@ -424,7 +421,7 @@ object GpxParser {
             val temp = 12.0 + 6.0 * Math.sin(angle)
             val conditionIdx = (h / 5).coerceIn(0, weatherTypes.size - 1)
             val (emoji, text) = weatherTypes[conditionIdx]
-            
+
             forecastList.add(
                 WeatherCondition(
                     timestamp = hourStr,

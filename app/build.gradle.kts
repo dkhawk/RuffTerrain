@@ -107,6 +107,12 @@ dependencies {
   
   // Serialization
   implementation(libs.kotlinx.serialization.json)
+
+  // Shared module
+  implementation(project(":shared"))
+
+  // Play Services Wearable
+  implementation(libs.play.services.wearable)
 }
 
 tasks.register<JacocoReport>("jacocoTestReport") {

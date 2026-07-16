@@ -108,6 +108,11 @@ fun MainScreen(
 ) {
   val state by viewModel.uiState.collectAsStateWithLifecycle()
   val context = LocalContext.current
+
+  LaunchedEffect(context) {
+    val helper = com.sphericalchickens.ruffterrain.util.WearDataSyncHelper(context)
+    viewModel.setWearSyncHelper(helper)
+  }
   var showSettingsMenu by remember { mutableStateOf(false) }
   var showSimulationHarness by remember { mutableStateOf(false) }
   var isScreenLocked by remember { mutableStateOf(false) }
@@ -1512,10 +1517,11 @@ fun RunningTacticalDashboard(
                                             modifier = Modifier.fillMaxWidth(),
                                             horizontalArrangement = Arrangement.SpaceBetween
                                         ) {
-                                            if (passObj.targetArrival != null) {
+                                            val targetArr = passObj.targetArrival
+                                            if (targetArr != null) {
                                                 Column {
                                                     Text("PLAN ETA", color = Color.LightGray, fontSize = 9.sp)
-                                                    Text(passObj.targetArrival, color = Color.White, fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                                                    Text(targetArr, color = Color.White, fontSize = 12.sp, fontWeight = FontWeight.Bold)
                                                 }
                                             }
                                             val cutoffText = passObj.cutoffClock ?: passObj.cutoffElapsed
@@ -1985,8 +1991,9 @@ fun WaypointDetailDialog(
                 Spacer(modifier = Modifier.height(4.dp))
                 
                 // Estimate arrival time in hours (using normal 2.78 m/s speed if targetArrival is empty)
-                val arrivalHour = if (pass != null && !pass.targetArrival.isNullOrEmpty()) {
-                    val parts = pass.targetArrival.split(":")
+                val targetArr = pass?.targetArrival
+                val arrivalHour = if (!targetArr.isNullOrEmpty()) {
+                    val parts = targetArr.split(":")
                     val hrs = parts.getOrNull(0)?.toIntOrNull() ?: 0
                     hrs.coerceIn(0, 24)
                 } else {

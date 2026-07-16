@@ -19,3 +19,5 @@ plugins {
 
 rootProject.name = "RuffTerrain"
 include(":app")
+include(":shared")
+include(":wear")

@@ -105,6 +105,13 @@ enum class LocationAccuracyMode {
  */
 class MainScreenViewModel(private val dataRepository: DataRepository) : ViewModel() {
 
+    private var wearSyncHelper: com.sphericalchickens.ruffterrain.util.WearDataSyncHelper? = null
+
+    fun setWearSyncHelper(helper: com.sphericalchickens.ruffterrain.util.WearDataSyncHelper) {
+        this.wearSyncHelper = helper
+        _uiState.value.courseData?.let { helper.syncCourse(it) }
+    }
+
     private val _uiState = MutableStateFlow(MainScreenUiState())
     val uiState: StateFlow<MainScreenUiState> = _uiState.asStateFlow()
 
@@ -117,6 +124,56 @@ class MainScreenViewModel(private val dataRepository: DataRepository) : ViewMode
     private var simulationJob: Job? = null
     private var raceStartTimestampMs: Long? = null
     private var lastResolvedIndex: Int? = null
+
+    init {
+        viewModelScope.launch {
+            var lastSyncedCourse: CourseData? = null
+            var lastSyncTimeMs = 0L
+
+            _uiState.collect { state ->
+                val helper = wearSyncHelper ?: return@collect
+                val course = state.courseData
+
+                // 1. Sync course if it changes
+                if (course != null && course !== lastSyncedCourse) {
+                    lastSyncedCourse = course
+                    helper.syncCourse(course)
+                }
+
+                // 2. Sync progress (throttled to at most once per 1000ms)
+                val now = System.currentTimeMillis()
+                if (course != null && (now - lastSyncTimeMs >= 1000L)) {
+                    lastSyncTimeMs = now
+                    
+                    val totalDist = course.totalDistance
+                    val currentDist = state.scrubberProgress * totalDist
+
+                    val nextWaypoint = course.waypoints
+                        .filter { it.distanceMeters > currentDist }
+                        .minByOrNull { it.distanceMeters }
+
+                    val elapsedSec = if (state.activeSimulationScenario != null) {
+                        state.elapsedSimulationTimeSeconds
+                    } else {
+                        ((now - (raceStartTimestampMs ?: now)) / 1000)
+                    }
+
+                    val nextWptName = nextWaypoint?.name ?: "Finish"
+                    val nextWptDist = if (nextWaypoint != null) (nextWaypoint.distanceMeters - currentDist) else 0.0
+
+                    val progressPayload = com.sphericalchickens.ruffterrain.data.model.RunnerProgress(
+                        elapsedTimeMs = elapsedSec * 1000L,
+                        distanceRunMeters = currentDist,
+                        heartRate = 0,
+                        currentPaceMinPerKm = 0.0,
+                        nextStationName = nextWptName,
+                        nextStationDistanceRemainingM = nextWptDist
+                    )
+                    helper.syncProgress(progressPayload)
+                }
+            }
+        }
+    }
 
     /**
      * Loads a course from an input stream. Reads the bytes synchronously to prevent closure issues.
