@@ -5,9 +5,10 @@ import { loadGoogleMaps, calculateBearing } from "./map-3d.js";
 // Global application state
 let activeDay = 1;
 let googleMapsInstance = null;
-let activeMap3D = null;
-let activePolyline = null;
-let activeMarkers = [];
+let activeMap2D = null;
+let activePolyline2D = null;
+let activeMarkers2D = [];
+let scrubberMarker2D = null;
 let elevationChart = null;
 let parsedRoute = null;
 
@@ -40,7 +41,7 @@ function checkApiKeyAndInit() {
   if (apiKey && apiKey.length > 5) {
     document.getElementById("map-loader-state").innerHTML = `
       <div style="text-align: center;">
-        <h2 style="font-family: 'Outfit'; font-size: 20px; margin-bottom: 12px;">Loading 3D Satellite Map...</h2>
+        <h2 style="font-family: 'Outfit'; font-size: 20px; margin-bottom: 12px;">Loading Map Explorer...</h2>
         <div class="loader-spinner" style="width: 40px; height: 40px; border: 4px solid rgba(255,255,255,0.1); border-top-color: #60a5fa; border-radius: 50%; margin: 0 auto; animation: spin 1s linear infinite;"></div>
       </div>
       <style>@keyframes spin { to { transform: rotate(360deg); } }</style>
@@ -50,7 +51,7 @@ function checkApiKeyAndInit() {
       .then((maps) => {
         googleMapsInstance = maps;
         document.getElementById("map-loader-state").classList.add("hidden");
-        init3DMap();
+        init2DMap();
         loadStage(activeDay);
       })
       .catch((err) => {
@@ -88,19 +89,39 @@ function showWelcomeBox(errorMsg = null) {
   });
 }
 
-// Initialize the 3D Map Viewport container
-function init3DMap() {
+// Initialize the 2D Google Map
+function init2DMap() {
   const viewport = document.getElementById("map-viewport");
+  const mapDiv = document.createElement("div");
+  mapDiv.id = "map-2d";
+  mapDiv.style.width = "100%";
+  mapDiv.style.height = "100%";
+  viewport.appendChild(mapDiv);
   
-  // Create photorealistic 3D map element
-  activeMap3D = new googleMapsInstance.maps3d.Map3DElement({
-    center: { lat: 45.92349, lng: 6.86898, altitude: 4000 },
-    tilt: 60,
-    heading: 0,
-    range: 8000
+  activeMap2D = new googleMapsInstance.Map(mapDiv, {
+    center: { lat: 45.92349, lng: 6.86898 },
+    zoom: 12,
+    mapTypeId: "hybrid",
+    mapTypeControl: false,
+    streetViewControl: false,
+    fullscreenControl: false
   });
   
-  viewport.appendChild(activeMap3D);
+  // Show map type selector panel
+  document.getElementById("map-type-selector").classList.remove("hidden");
+  
+  // Bind type buttons
+  const buttons = document.querySelectorAll(".map-type-btn");
+  buttons.forEach(btn => {
+    btn.addEventListener("click", () => {
+      buttons.forEach(b => b.classList.remove("active"));
+      btn.classList.add("active");
+      const type = btn.getAttribute("data-type");
+      if (activeMap2D) {
+        activeMap2D.setMapTypeId(type);
+      }
+    });
+  });
 }
 
 // 2. Build Horizontal Timeline Day Selector
@@ -177,12 +198,10 @@ function loadStage(day) {
     document.getElementById("rest-day-overlay").classList.remove("hidden");
     document.getElementById("bottom-panel").classList.add("hidden");
     
-    // Reposition 3D camera to showcase Courmayeur town center beautifully
-    if (activeMap3D) {
-      activeMap3D.center = { lat: 45.79062, lng: 6.97197, altitude: 2000 };
-      activeMap3D.heading = 45;
-      activeMap3D.tilt = 65;
-      activeMap3D.range = 3000;
+    // Reposition 2D camera to showcase Courmayeur town center beautifully
+    if (activeMap2D) {
+      activeMap2D.panTo({ lat: 45.79062, lng: 6.97197 });
+      activeMap2D.setZoom(14);
     }
   } else {
     // Hide Rest Day overlay
@@ -198,7 +217,7 @@ function loadStage(day) {
       .then(gpxText => {
         parsedRoute = parseGPX(gpxText);
         updateStatsDynamically(parsedRoute, stage);
-        renderRouteOn3DMap(parsedRoute, stage);
+        renderRouteOn2DMap(parsedRoute, stage);
         renderElevationProfile(parsedRoute);
       })
       .catch(err => {
@@ -248,74 +267,56 @@ function updateStatsDynamically(route, stage) {
 }
 
 // 3. Render 3D Route Line & Photo Pins
-function renderRouteOn3DMap(route, stage) {
-  if (!googleMapsInstance || !activeMap3D || !route.trackpoints.length) return;
+// 3. Render 2D Route Line & Photo Pins
+function renderRouteOn2DMap(route, stage) {
+  if (!googleMapsInstance || !activeMap2D || !route.trackpoints.length) return;
   
   const coordinates = route.trackpoints.map(pt => ({
     lat: pt.lat,
-    lng: pt.lon,
-    altitude: pt.ele + 10 // slightly offset from ground to prevent z-fighting
+    lng: pt.lon
   }));
   
-  // Draw polyline route using standard web component creation
-  activePolyline = document.createElement("gmp-polyline-3d");
-  activePolyline.path = coordinates;
-  activePolyline.strokeColor = "#60a5fa";
-  activePolyline.strokeWidth = 8;
-  activePolyline.altitudeMode = "CLAMP_TO_GROUND";
-  activeMap3D.appendChild(activePolyline);
+  // Fit 2D map bounds to the route coordinates
+  const bounds = new googleMapsInstance.LatLngBounds();
+  coordinates.forEach(coord => bounds.extend(coord));
+  activeMap2D.fitBounds(bounds);
   
-  // Reposition camera centered around start of the stage
-  const startPt = route.trackpoints[0];
-  const nextPt = route.trackpoints[Math.min(10, route.trackpoints.length - 1)];
-  const bearing = calculateBearing(startPt.lat, startPt.lon, nextPt.lat, nextPt.lon);
+  // Draw polyline route using standard Google Maps 2D Polyline
+  activePolyline2D = new googleMapsInstance.Polyline({
+    path: coordinates,
+    geodesic: true,
+    strokeColor: "#60a5fa",
+    strokeOpacity: 0.9,
+    strokeWeight: 6,
+    map: activeMap2D
+  });
   
-  activeMap3D.center = { lat: startPt.lat, lng: startPt.lon, altitude: startPt.ele };
-  activeMap3D.tilt = 65;
-  activeMap3D.heading = bearing;
-  activeMap3D.range = 2500;
+  // Setup Scrubbing Tracker Cursor
+  scrubberMarker2D = new googleMapsInstance.Marker({
+    position: coordinates[0],
+    map: activeMap2D,
+    zIndex: 100,
+    icon: {
+      path: googleMapsInstance.SymbolPath.CIRCLE,
+      scale: 8,
+      fillColor: "#ffeb3b",
+      fillOpacity: 1,
+      strokeColor: "#0f172a",
+      strokeWeight: 2
+    }
+  });
   
   setupPhotoPins(getFilteredPhotos(stage));
 }
 
 function setupPhotoPins(photos) {
   // Clear existing photo markers
-  activeMarkers.forEach(marker => {
-    if (activeMap3D) activeMap3D.removeChild(marker);
+  activeMarkers2D.forEach(marker => {
+    marker.setMap(null);
   });
-  activeMarkers = [];
+  activeMarkers2D = [];
 
-  if (!activeMap3D || !photos || photos.length === 0) return;
-
-  // Helper to generate a beautiful custom SVG photo pin
-  const createCameraSvg = (color = "#f59e0b") => {
-    const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
-    svg.setAttribute("width", "36");
-    svg.setAttribute("height", "36");
-    svg.setAttribute("viewBox", "0 0 36 36");
-    svg.style.display = "block";
-    svg.style.cursor = "pointer";
-    svg.style.filter = "drop-shadow(0px 4px 8px rgba(0, 0, 0, 0.6))";
-
-    const bg = document.createElementNS("http://www.w3.org/2000/svg", "circle");
-    bg.setAttribute("cx", "18");
-    bg.setAttribute("cy", "18");
-    bg.setAttribute("r", "16");
-    bg.setAttribute("fill", "#0f172a");
-    bg.setAttribute("stroke", color);
-    bg.setAttribute("stroke-width", "3");
-
-    const text = document.createElementNS("http://www.w3.org/2000/svg", "text");
-    text.setAttribute("x", "18");
-    text.setAttribute("y", "23");
-    text.setAttribute("font-size", "18");
-    text.setAttribute("text-anchor", "middle");
-    text.textContent = "📸";
-
-    svg.appendChild(bg);
-    svg.appendChild(text);
-    return svg;
-  };
+  if (!activeMap2D || !photos || photos.length === 0) return;
 
   // Proximity clustering algorithm (within 400m)
   const clusters = [];
@@ -342,30 +343,37 @@ function setupPhotoPins(photos) {
     }
   });
 
-  // Place interactive Photo Pins for each cluster
+  // Place interactive 2D Photo Pins for each cluster
   clusters.forEach(cluster => {
-    const marker = document.createElement("gmp-marker-3d-interactive");
-    marker.position = { lat: cluster.lat, lng: cluster.lon, altitude: 0 };
-    marker.altitudeMode = "RELATIVE_TO_GROUND";
-    
-    // Choose color depending on whether it's a multi-photo cluster stop (green) or single photo (orange)
     const pinColor = cluster.photos.length > 1 ? "#10b981" : "#f59e0b";
-    const svgElement = createCameraSvg(pinColor);
-    const template = document.createElement("template");
-    template.content.appendChild(svgElement);
-    marker.appendChild(template);
     
-    // Smooth rotate & zoom camera towards photo landmark when clicked
-    marker.addEventListener("gmp-click", () => {
-      showPhotoClusterDetails(cluster);
-      activeMap3D.center = { lat: cluster.lat, lng: cluster.lon, altitude: cluster.lat === 45.74483 ? 2800 : 2200 };
-      activeMap3D.heading = 315; // default scenic angle
-      activeMap3D.tilt = 68;
-      activeMap3D.range = 600;
+    const marker = new googleMapsInstance.Marker({
+      position: { lat: cluster.lat, lng: cluster.lon },
+      map: activeMap2D,
+      title: cluster.title,
+      label: {
+        text: "📸",
+        fontSize: "11px",
+        color: "#ffffff"
+      },
+      icon: {
+        path: googleMapsInstance.SymbolPath.CIRCLE,
+        scale: 14,
+        fillColor: pinColor,
+        fillOpacity: 1,
+        strokeColor: "#0f172a",
+        strokeWeight: 3
+      }
     });
     
-    activeMap3D.appendChild(marker);
-    activeMarkers.push(marker);
+    // Smooth zoom towards photo landmark when clicked
+    marker.addListener("click", () => {
+      showPhotoClusterDetails(cluster);
+      activeMap2D.panTo({ lat: cluster.lat, lng: cluster.lon });
+      activeMap2D.setZoom(15);
+    });
+    
+    activeMarkers2D.push(marker);
   });
 }
 
@@ -416,14 +424,18 @@ function updatePhotoDisplay() {
 }
 
 function clearMapLayers() {
-  if (activePolyline && activeMap3D) {
-    activeMap3D.removeChild(activePolyline);
-    activePolyline = null;
+  if (activePolyline2D) {
+    activePolyline2D.setMap(null);
+    activePolyline2D = null;
   }
-  activeMarkers.forEach(marker => {
-    if (activeMap3D) activeMap3D.removeChild(marker);
+  activeMarkers2D.forEach(marker => {
+    marker.setMap(null);
   });
-  activeMarkers = [];
+  activeMarkers2D = [];
+  if (scrubberMarker2D) {
+    scrubberMarker2D.setMap(null);
+    scrubberMarker2D = null;
+  }
 }
 
 // 4. Render Dynamic Elevation Chart Sync with Scrubber
@@ -483,13 +495,15 @@ function renderElevationProfile(route) {
         }
       },
       onHover: (e, elements) => {
-        // Scrub 3D camera to snap position along trail when hovering elevation profile
+        // Scrub map camera to snap position along trail when hovering elevation profile
         if (elements.length > 0) {
           const index = elements[0].index;
           const pt = route.trackpoints[index];
-          if (pt && activeMap3D && !isFlightPlaying) {
-            activeMap3D.center = { lat: pt.lat, lng: pt.lon, altitude: pt.ele };
-            activeMap3D.range = 2000;
+          if (pt && activeMap2D && !isFlightPlaying) {
+            activeMap2D.panTo({ lat: pt.lat, lng: pt.lon });
+            if (scrubberMarker2D) {
+              scrubberMarker2D.setPosition({ lat: pt.lat, lng: pt.lon });
+            }
             
             // Sync scrubber position with closest photo
             if (typeof syncScrubberWithPhotos === "function") {
@@ -533,11 +547,11 @@ function startGuidedTour() {
     const cameraTilt = elevationSlope < -0.1 ? 75 : (elevationSlope > 0.1 ? 55 : 65);
     
     // Smooth fly
-    if (activeMap3D) {
-      activeMap3D.center = { lat: pt.lat, lng: pt.lon, altitude: pt.ele };
-      activeMap3D.heading = bearing;
-      activeMap3D.tilt = cameraTilt;
-      activeMap3D.range = 1600;
+    if (activeMap2D) {
+      activeMap2D.panTo({ lat: pt.lat, lng: pt.lon });
+      if (scrubberMarker2D) {
+        scrubberMarker2D.setPosition({ lat: pt.lat, lng: pt.lon });
+      }
     }
     
     // Scrubber chart indicator synchronization
@@ -609,9 +623,9 @@ function pauseFlightForCluster(cluster) {
   clearInterval(flightInterval);
   
   showPhotoClusterDetails(cluster);
-  if (activeMap3D) {
-    activeMap3D.center = { lat: cluster.lat, lng: cluster.lon, altitude: cluster.ele };
-    activeMap3D.range = 800;
+  if (activeMap2D) {
+    activeMap2D.panTo({ lat: cluster.lat, lng: cluster.lon });
+    activeMap2D.setZoom(15);
   }
   
   // If multiple photos exist, let the slideshow progress automatically during the pause!
@@ -653,10 +667,11 @@ function startGuidedTourResume() {
     const targetPt = parsedRoute.trackpoints[lookAheadIndex];
     const bearing = calculateBearing(pt.lat, pt.lon, targetPt.lat, targetPt.lon);
     
-    if (activeMap3D) {
-      activeMap3D.center = { lat: pt.lat, lng: pt.lon, altitude: pt.ele };
-      activeMap3D.heading = bearing;
-      activeMap3D.range = 1600;
+    if (activeMap2D) {
+      activeMap2D.panTo({ lat: pt.lat, lng: pt.lon });
+      if (scrubberMarker2D) {
+        scrubberMarker2D.setPosition({ lat: pt.lat, lng: pt.lon });
+      }
     }
     
     checkNearbyPhotoTrigger(pt);
@@ -1022,10 +1037,11 @@ function applyPhotoFiltersAndRefresh(stage) {
 function panMapToPhoto(photo) {
   if (!photo || !photo.lat || !photo.lon) return;
   
-  if (activeMap3D) {
-    activeMap3D.center = { lat: photo.lat, lng: photo.lon, altitude: (photo.ele || 2000) + 600 };
-    activeMap3D.tilt = 68;
-    activeMap3D.heading = 315;
-    activeMap3D.range = 600;
+  if (activeMap2D) {
+    activeMap2D.panTo({ lat: photo.lat, lng: photo.lon });
+    activeMap2D.setZoom(15);
+    if (scrubberMarker2D) {
+      scrubberMarker2D.setPosition({ lat: photo.lat, lng: photo.lon });
+    }
   }
 }
