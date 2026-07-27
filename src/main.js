@@ -32,11 +32,6 @@ document.addEventListener("DOMContentLoaded", () => {
 
 // 1. API Key Check & Map Bootstrapping
 function checkApiKeyAndInit() {
-  // Clear old inactive cached key if present so it falls back to the new env key
-  if (localStorage.getItem("tmb_gmaps_key") === "AIzaSy" + "AYXPaeUiQhVVAZeAMh-3cvia5LTE6zno0") {
-    localStorage.removeItem("tmb_gmaps_key");
-  }
-  
   // Try retrieving key from localStorage or Vite env
   const apiKey = localStorage.getItem("tmb_gmaps_key") || import.meta.env.VITE_GMAPS_API_KEY || import.meta.env.VITE_GOOGLE_MAPS_API_KEY;
   
