@@ -792,6 +792,7 @@ function renderThumbnailCarousel(stage) {
     
     const img = document.createElement("img");
     img.src = photo.img;
+    img.referrerPolicy = "no-referrer";
     img.alt = photo.title;
     
     const timeSpan = document.createElement("div");
