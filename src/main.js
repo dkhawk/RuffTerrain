@@ -3,7 +3,7 @@ import { parseGPX } from "./gpx-parser.js";
 import { loadGoogleMaps, calculateBearing } from "./map-3d.js";
 
 // Global application state
-let activeDay = 1;
+let activeDay = 0;
 let googleMapsInstance = null;
 let activeMap2D = null;
 let activePolyline2D = null;
@@ -52,7 +52,7 @@ function checkApiKeyAndInit() {
         googleMapsInstance = maps;
         document.getElementById("map-loader-state").classList.add("hidden");
         init2DMap();
-        loadStage(activeDay);
+        selectDay(activeDay);
       })
       .catch((err) => {
         console.error(err);
@@ -137,7 +137,13 @@ function initTimeline() {
     const pill = document.createElement("button");
     pill.className = `day-pill ${stage.restDay ? 'rest-day-pill' : ''}`;
     pill.id = `pill-day-${stage.day}`;
-    pill.innerHTML = `<span>D${stage.day}</span> ${stage.restDay ? '💤' : '🥾'}`;
+    let label = `D${stage.day}`;
+    let icon = stage.restDay ? '💤' : '🥾';
+    if (stage.day === 0) {
+      label = "Pre-TMB";
+      icon = "🏃‍♂️";
+    }
+    pill.innerHTML = `<span>${label}</span> ${icon}`;
     pill.title = stage.title;
     
     pill.addEventListener("click", () => {
