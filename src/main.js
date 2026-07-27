@@ -89,14 +89,18 @@ function showWelcomeBox(errorMsg = null) {
   });
 }
 
-// Initialize the 2D Google Map
 function init2DMap() {
-  const viewport = document.getElementById("map-viewport");
+  const container = document.getElementById("map-canvas");
+  
+  // Clean up any existing map div
+  const existingMap = document.getElementById("map-2d");
+  if (existingMap) existingMap.remove();
+  
   const mapDiv = document.createElement("div");
   mapDiv.id = "map-2d";
   mapDiv.style.width = "100%";
   mapDiv.style.height = "100%";
-  viewport.appendChild(mapDiv);
+  container.appendChild(mapDiv);
   
   activeMap2D = new googleMapsInstance.Map(mapDiv, {
     center: { lat: 45.92349, lng: 6.86898 },
