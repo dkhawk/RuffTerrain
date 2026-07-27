@@ -14,6 +14,8 @@ let parsedRoute = null;
 // Carousel state variables
 let activeCluster = null;
 let activePhotoIndex = 0;
+let activePhoto = null;
+let activeHikerFilter = null;
 
 // Cinematic flight states
 let flightInterval = null;
@@ -152,8 +154,17 @@ function loadStage(day) {
   document.getElementById("stage-route-desc").textContent = stage.photos[0]?.desc || "Exploring the Alps.";
   document.getElementById("stage-card").classList.remove("hidden");
   
-  // Close existing photo popover
-  document.getElementById("photo-viewer").classList.add("hidden");
+  // Reset hiker filter on stage change
+  activeHikerFilter = null;
+  renderHikerFilter(stage);
+  
+  const filtered = getFilteredPhotos(stage);
+  activePhoto = filtered.length > 0 ? filtered[0] : null;
+  if (activePhoto) {
+    updatePhotoDisplay();
+  } else {
+    document.getElementById("photo-viewer").classList.add("hidden");
+  }
   
   // Clear previous rendering layers
   clearMapLayers();
@@ -264,6 +275,18 @@ function renderRouteOn3DMap(route, stage) {
   activeMap3D.heading = bearing;
   activeMap3D.range = 2500;
   
+  setupPhotoPins(getFilteredPhotos(stage));
+}
+
+function setupPhotoPins(photos) {
+  // Clear existing photo markers
+  activeMarkers.forEach(marker => {
+    if (activeMap3D) activeMap3D.removeChild(marker);
+  });
+  activeMarkers = [];
+
+  if (!activeMap3D || !photos || photos.length === 0) return;
+
   // Helper to generate a beautiful custom SVG photo pin
   const createCameraSvg = (color = "#f59e0b") => {
     const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
@@ -296,7 +319,7 @@ function renderRouteOn3DMap(route, stage) {
 
   // Proximity clustering algorithm (within 400m)
   const clusters = [];
-  stage.photos.forEach(photo => {
+  photos.forEach(photo => {
     let matchedCluster = null;
     for (let c of clusters) {
       const dist = calculateDistance(photo.lat, photo.lon, c.lat, c.lon);
@@ -348,30 +371,42 @@ function renderRouteOn3DMap(route, stage) {
 
 function showPhotoClusterDetails(cluster) {
   activeCluster = cluster;
-  activePhotoIndex = 0;
+  activePhoto = cluster.photos[0];
   updatePhotoDisplay();
 }
 
 function updatePhotoDisplay() {
-  if (!activeCluster || !activeCluster.photos.length) return;
-  const photo = activeCluster.photos[activePhotoIndex];
+  if (!activePhoto) return;
   
   const popover = document.getElementById("photo-viewer");
-  document.getElementById("photo-display").src = photo.img;
-  document.getElementById("photo-time").textContent = `${photo.timestamp} (${activePhotoIndex + 1}/${activeCluster.photos.length})`;
-  document.getElementById("photo-title").textContent = photo.title;
-  document.getElementById("photo-desc").textContent = photo.desc;
+  
+  const displayImg = document.getElementById("photo-display");
+  displayImg.src = activePhoto.img;
+  displayImg.referrerPolicy = "no-referrer";
+  
+  const photoLink = document.getElementById("photo-link");
+  if (photoLink) {
+    photoLink.href = activePhoto.img.split('=')[0];
+  }
+  
+  const stage = TMB_STAGES.find(s => s.day === activeDay);
+  const filtered = stage ? getFilteredPhotos(stage) : [];
+  const curIdx = filtered.findIndex(p => p.id === activePhoto.id);
+  
+  document.getElementById("photo-time").textContent = `${activePhoto.timestamp} (${curIdx !== -1 ? curIdx + 1 : 1}/${filtered.length})`;
+  document.getElementById("photo-title").textContent = activePhoto.title;
+  document.getElementById("photo-desc").textContent = activePhoto.desc;
   popover.classList.remove("hidden");
   
   // Highlight active thumbnail in bottom carousel
   if (typeof highlightActiveThumbnail === "function") {
-    highlightActiveThumbnail(photo.id);
+    highlightActiveThumbnail(activePhoto.id);
   }
   
   const prevBtn = document.getElementById("prev-photo-btn");
   const nextBtn = document.getElementById("next-photo-btn");
   
-  if (activeCluster.photos.length > 1) {
+  if (filtered.length > 1) {
     prevBtn.classList.remove("hidden");
     nextBtn.classList.remove("hidden");
   } else {
@@ -735,17 +770,31 @@ function setupEventListeners() {
     document.getElementById("photo-viewer").classList.add("hidden");
   });
   
-  // Carousel controls
+  // Carousel controls (chronological chronological stepping across the day)
   document.getElementById("prev-photo-btn").addEventListener("click", () => {
-    if (!activeCluster) return;
-    activePhotoIndex = (activePhotoIndex - 1 + activeCluster.photos.length) % activeCluster.photos.length;
+    const stage = TMB_STAGES.find(s => s.day === activeDay);
+    if (!stage) return;
+    const filtered = getFilteredPhotos(stage);
+    if (filtered.length <= 1) return;
+    
+    const curIdx = filtered.findIndex(p => p.id === activePhoto.id);
+    const prevIdx = (curIdx - 1 + filtered.length) % filtered.length;
+    activePhoto = filtered[prevIdx];
     updatePhotoDisplay();
+    panMapToPhoto(activePhoto);
   });
   
   document.getElementById("next-photo-btn").addEventListener("click", () => {
-    if (!activeCluster) return;
-    activePhotoIndex = (activePhotoIndex + 1) % activeCluster.photos.length;
+    const stage = TMB_STAGES.find(s => s.day === activeDay);
+    if (!stage) return;
+    const filtered = getFilteredPhotos(stage);
+    if (filtered.length <= 1) return;
+    
+    const curIdx = filtered.findIndex(p => p.id === activePhoto.id);
+    const nextIdx = (curIdx + 1) % filtered.length;
+    activePhoto = filtered[nextIdx];
     updatePhotoDisplay();
+    panMapToPhoto(activePhoto);
   });
   
   // Setup configuration dialogs
@@ -778,17 +827,21 @@ function renderThumbnailCarousel(stage) {
   const container = document.getElementById("carousel-thumbnails-container");
   container.innerHTML = "";
   
-  if (stage.restDay || !stage.photos || stage.photos.length === 0) {
+  const filtered = getFilteredPhotos(stage);
+  if (stage.restDay || filtered.length === 0) {
     carousel.classList.add("hidden");
     return;
   }
   
   carousel.classList.remove("hidden");
   
-  stage.photos.forEach(photo => {
+  filtered.forEach(photo => {
     const item = document.createElement("div");
     item.className = "thumbnail-item";
     item.id = `thumb-${photo.id}`;
+    if (activePhoto && activePhoto.id === photo.id) {
+      item.classList.add("active");
+    }
     
     const img = document.createElement("img");
     img.src = photo.img;
@@ -804,22 +857,9 @@ function renderThumbnailCarousel(stage) {
     
     // Thumbnail click zooms camera and opens high-res detail overlay
     item.addEventListener("click", () => {
-      const clusters = getStageClusters(stage);
-      const cluster = clusters.find(c => c.photos.some(p => p.id === photo.id));
-      if (cluster) {
-        showPhotoClusterDetails(cluster);
-        activePhotoIndex = cluster.photos.findIndex(p => p.id === photo.id);
-        updatePhotoDisplay();
-        
-        highlightActiveThumbnail(photo.id);
-        
-        if (activeMap3D) {
-          activeMap3D.center = { lat: cluster.lat, lng: cluster.lon, altitude: cluster.lat === 45.74483 ? 2800 : 2200 };
-          activeMap3D.heading = 315;
-          activeMap3D.tilt = 68;
-          activeMap3D.range = 600;
-        }
-      }
+      activePhoto = photo;
+      updatePhotoDisplay();
+      panMapToPhoto(photo);
     });
     
     container.appendChild(item);
@@ -828,7 +868,8 @@ function renderThumbnailCarousel(stage) {
 
 function getStageClusters(stage) {
   const clusters = [];
-  stage.photos.forEach(photo => {
+  const filtered = getFilteredPhotos(stage);
+  filtered.forEach(photo => {
     let matchedCluster = null;
     for (let c of clusters) {
       const dist = calculateDistance(photo.lat, photo.lon, c.lat, c.lon);
@@ -864,12 +905,14 @@ function highlightActiveThumbnail(photoId) {
 
 function syncScrubberWithPhotos(pt) {
   const stage = TMB_STAGES.find(s => s.day === activeDay);
-  if (!stage || !stage.photos || stage.photos.length === 0) return;
+  if (!stage) return;
+  const filtered = getFilteredPhotos(stage);
+  if (filtered.length === 0) return;
   
   let closestPhoto = null;
   let minDistance = Infinity;
   
-  stage.photos.forEach(photo => {
+  filtered.forEach(photo => {
     const dist = calculateDistance(pt.lat, pt.lon, photo.lat, photo.lon);
     if (dist < minDistance) {
       minDistance = dist;
@@ -880,5 +923,109 @@ function syncScrubberWithPhotos(pt) {
   // Highlight thumbnail if scrubber is within 1.5 km of a photo milestone
   if (closestPhoto && minDistance < 1500) {
     highlightActiveThumbnail(closestPhoto.id);
+  }
+}
+
+// --- HIKER FACE FILTER HELPERS ---
+
+function getFilteredPhotos(stage) {
+  if (!stage.photos) return [];
+  if (!activeHikerFilter) return stage.photos;
+  return stage.photos.filter(p => p.ownerName === activeHikerFilter);
+}
+
+function renderHikerFilter(stage) {
+  const panel = document.getElementById("face-filter-panel");
+  const container = document.getElementById("faces-row-container");
+  container.innerHTML = "";
+  
+  if (stage.restDay || !stage.photos || stage.photos.length === 0) {
+    panel.classList.add("hidden");
+    return;
+  }
+  
+  // Extract unique owner names and their avatars
+  const owners = {};
+  stage.photos.forEach(photo => {
+    if (photo.ownerName && photo.ownerAvatar) {
+      owners[photo.ownerName] = photo.ownerAvatar;
+    }
+  });
+  
+  const ownerNames = Object.keys(owners);
+  if (ownerNames.length <= 1) {
+    panel.classList.add("hidden");
+    return;
+  }
+  
+  panel.classList.remove("hidden");
+  
+  ownerNames.forEach(name => {
+    const item = document.createElement("div");
+    item.className = "face-avatar-item";
+    if (activeHikerFilter === name) {
+      item.classList.add("active");
+    }
+    item.title = `Show photos by ${name}`;
+    
+    const img = document.createElement("img");
+    img.src = owners[name];
+    img.referrerPolicy = "no-referrer";
+    img.alt = name;
+    
+    item.appendChild(img);
+    
+    item.addEventListener("click", () => {
+      if (activeHikerFilter === name) {
+        activeHikerFilter = null;
+        item.classList.remove("active");
+      } else {
+        activeHikerFilter = name;
+        document.querySelectorAll(".face-avatar-item").forEach(el => el.classList.remove("active"));
+        item.classList.add("active");
+      }
+      
+      applyPhotoFiltersAndRefresh(stage);
+    });
+    
+    container.appendChild(item);
+  });
+}
+
+function applyPhotoFiltersAndRefresh(stage) {
+  const filtered = getFilteredPhotos(stage);
+  
+  // 1. Re-render Map Markers/Pins
+  setupPhotoPins(filtered);
+  
+  // 2. Re-render bottom carousel
+  renderThumbnailCarousel(stage);
+  
+  // 3. Reset activePhoto if it's no longer in the filtered set
+  if (activePhoto) {
+    const stillValid = filtered.some(p => p.id === activePhoto.id);
+    if (!stillValid) {
+      if (filtered.length > 0) {
+        activePhoto = filtered[0];
+        updatePhotoDisplay();
+        panMapToPhoto(activePhoto);
+      } else {
+        activePhoto = null;
+        document.getElementById("photo-viewer").classList.add("hidden");
+      }
+    } else {
+      updatePhotoDisplay();
+    }
+  }
+}
+
+function panMapToPhoto(photo) {
+  if (!photo || !photo.lat || !photo.lon) return;
+  
+  if (activeMap3D) {
+    activeMap3D.center = { lat: photo.lat, lng: photo.lon, altitude: (photo.ele || 2000) + 600 };
+    activeMap3D.tilt = 68;
+    activeMap3D.heading = 315;
+    activeMap3D.range = 600;
   }
 }

@@ -56,6 +56,14 @@
       </div>
     </main>
 
+    <!-- Face/Contributor Filter Overlay (Upper Right) -->
+    <div id="face-filter-panel" class="glass-panel hidden">
+      <span class="filter-label">👤 FILTER HIKER:</span>
+      <div id="faces-row-container" class="faces-row">
+        <!-- Dynamically populated avatar faces -->
+      </div>
+    </div>
+
     <!-- Dynamic Stage Stats Overlay Card (Floating Left) -->
     <section id="stage-card" class="glass-card hidden">
       <h2 id="stage-day-title">Day 1: Chamonix to Les Contamines</h2>
@@ -106,7 +114,9 @@
     <div id="photo-viewer" class="glass-card hidden">
       <button id="close-photo-btn" class="close-btn">&times;</button>
       <button id="prev-photo-btn" class="carousel-btn prev-btn" title="Previous Photo">&lsaquo;</button>
-      <img id="photo-display" src="" referrerpolicy="no-referrer" alt="Story Milestone photo" />
+      <a id="photo-link" href="" target="_blank" title="Click to view full-resolution image">
+        <img id="photo-display" src="" referrerpolicy="no-referrer" alt="Story Milestone photo" />
+      </a>
       <button id="next-photo-btn" class="carousel-btn next-btn" title="Next Photo">&rsaquo;</button>
       <div class="photo-metadata">
         <span id="photo-time" class="photo-timestamp">11:15 AM</span>
