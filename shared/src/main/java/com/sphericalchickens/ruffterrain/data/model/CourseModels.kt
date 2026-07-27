@@ -143,7 +143,9 @@ data class Sector(
     val name: String,
     val targetPaceMin: Double,
     val strategy: String = "",
-    val nutrition: String = ""
+    val nutrition: String = "",
+    val bestPaceMin: Double = targetPaceMin,
+    val worstPaceMin: Double = targetPaceMin
 )
 
 @Serializable

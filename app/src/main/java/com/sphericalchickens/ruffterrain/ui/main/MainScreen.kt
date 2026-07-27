@@ -20,6 +20,10 @@ import android.content.Context
 import android.net.Uri
 import android.speech.tts.TextToSpeech
 import java.util.Locale
+import android.hardware.Sensor
+import android.hardware.SensorEvent
+import android.hardware.SensorEventListener
+import android.hardware.SensorManager
 import android.provider.OpenableColumns
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
@@ -127,10 +131,93 @@ fun MainScreen(
   var pauseTimePref by remember { mutableStateOf(sharedPrefs.getInt("pause_time_preference", 2)) }
   var mapTypePref by remember { mutableStateOf(sharedPrefs.getString("map_type_preference", "NORMAL") ?: "NORMAL") }
   var showMapTypeDialog by remember { mutableStateOf(false) }
+  var showSettingsDialog by remember { mutableStateOf(false) }
+  var isCompassEnabledPref by remember { mutableStateOf(sharedPrefs.getBoolean("compass_enabled", true)) }
+  var offTrailThresholdPref by remember { mutableStateOf(sharedPrefs.getFloat("off_trail_threshold", 30.0f)) }
+  var swoopTransitionPref by remember { mutableStateOf(sharedPrefs.getFloat("swoop_transition_rate", 1.0f)) }
+  var compassHeading by remember { mutableStateOf(0.0) }
 
-  // Initialize filesDir in ViewModel on startup
+  // Compass Sensor listener that registers/unregisters dynamically
+  DisposableEffect(isCompassEnabledPref) {
+      if (isCompassEnabledPref) {
+          val sensorManager = context.getSystemService(android.content.Context.SENSOR_SERVICE) as SensorManager
+          val rotationSensor = sensorManager.getDefaultSensor(Sensor.TYPE_ROTATION_VECTOR)
+          val listener = object : SensorEventListener {
+              override fun onSensorChanged(event: SensorEvent) {
+                  if (event.sensor.type == Sensor.TYPE_ROTATION_VECTOR) {
+                      val rotationMatrix = FloatArray(9)
+                      SensorManager.getRotationMatrixFromVector(rotationMatrix, event.values)
+                      val orientation = FloatArray(3)
+                      SensorManager.getOrientation(rotationMatrix, orientation)
+                      val heading = Math.toDegrees(orientation[0].toDouble())
+                      compassHeading = (heading + 360.0) % 360.0
+                  }
+              }
+              override fun onAccuracyChanged(sensor: Sensor?, accuracy: Int) {}
+          }
+          
+          if (rotationSensor != null) {
+              sensorManager.registerListener(listener, rotationSensor, SensorManager.SENSOR_DELAY_UI)
+          } else {
+              val accel = sensorManager.getDefaultSensor(Sensor.TYPE_ACCELEROMETER)
+              val mag = sensorManager.getDefaultSensor(Sensor.TYPE_MAGNETIC_FIELD)
+              val fallbackListener = object : SensorEventListener {
+                  var gravity: FloatArray? = null
+                  var geomagnetic: FloatArray? = null
+                  override fun onSensorChanged(event: SensorEvent) {
+                      if (event.sensor.type == Sensor.TYPE_ACCELEROMETER) gravity = event.values.clone()
+                      if (event.sensor.type == Sensor.TYPE_MAGNETIC_FIELD) geomagnetic = event.values.clone()
+                      val g = gravity
+                      val m = geomagnetic
+                      if (g != null && m != null) {
+                          val R = FloatArray(9)
+                          val I = FloatArray(9)
+                          if (SensorManager.getRotationMatrix(R, I, g, m)) {
+                              val orientation = FloatArray(3)
+                              SensorManager.getOrientation(R, orientation)
+                              val heading = Math.toDegrees(orientation[0].toDouble())
+                              compassHeading = (heading + 360.0) % 360.0
+                          }
+                      }
+                  }
+                  override fun onAccuracyChanged(sensor: Sensor?, accuracy: Int) {}
+              }
+              sensorManager.registerListener(fallbackListener, accel, SensorManager.SENSOR_DELAY_UI)
+              sensorManager.registerListener(fallbackListener, mag, SensorManager.SENSOR_DELAY_UI)
+          }
+          
+          onDispose {
+              sensorManager.unregisterListener(listener)
+          }
+      } else {
+          onDispose {}
+      }
+  }
+
+  // Initialize filesDir and tracking database in ViewModel on startup
   LaunchedEffect(context) {
       viewModel.setFilesDir(context.filesDir)
+      viewModel.initializeDb(context)
+  }
+
+  // Activity launcher to create and export GPX files
+  var pendingGpxExportContent by remember { mutableStateOf<String?>(null) }
+  val createDocumentLauncher = rememberLauncherForActivityResult(
+      contract = ActivityResultContracts.CreateDocument("application/gpx+xml")
+  ) { uri ->
+      uri?.let {
+          pendingGpxExportContent?.let { content ->
+              try {
+                  context.contentResolver.openOutputStream(uri)?.use { stream ->
+                      stream.write(content.toByteArray(Charsets.UTF_8))
+                  }
+                  android.widget.Toast.makeText(context, "GPX file exported successfully!", android.widget.Toast.LENGTH_LONG).show()
+              } catch (e: java.lang.Exception) {
+                  android.widget.Toast.makeText(context, "Export failed: ${e.message}", android.widget.Toast.LENGTH_LONG).show()
+              }
+          }
+      }
+      pendingGpxExportContent = null
   }
 
   // Initialize TextToSpeech engine and collect announcements
@@ -151,10 +238,13 @@ fun MainScreen(
   }
 
   // Sync settings with VM on startup/change
-  LaunchedEffect(accuracyPref, pauseTimePref, mapTypePref) {
+  LaunchedEffect(accuracyPref, pauseTimePref, mapTypePref, isCompassEnabledPref, offTrailThresholdPref, swoopTransitionPref) {
       val mode = try { LocationAccuracyMode.valueOf(accuracyPref) } catch(e: Exception) { LocationAccuracyMode.AUTO }
       viewModel.updateLocationAccuracyMode(mode)
       viewModel.updateExpectedPauseTimeMinutes(pauseTimePref)
+      viewModel.updateCompassEnabled(isCompassEnabledPref)
+      viewModel.updateOffTrailDistanceThreshold(offTrailThresholdPref.toDouble())
+      viewModel.updateSwoopTransitionRate(swoopTransitionPref.toDouble())
       if (mapTypePref == "3D") {
           viewModel.setMapMode(MapMode.MAP_3D)
       } else {
@@ -197,6 +287,17 @@ fun MainScreen(
   }
 
   // Location permissions launcher
+  val backgroundPermissionLauncher = rememberLauncherForActivityResult(
+      contract = ActivityResultContracts.RequestPermission()
+  ) { granted ->
+      if (granted) {
+          android.widget.Toast.makeText(context, "Background tracking enabled!", android.widget.Toast.LENGTH_SHORT).show()
+      } else {
+          android.widget.Toast.makeText(context, "Background tracking disabled. Keep app open to record location.", android.widget.Toast.LENGTH_LONG).show()
+      }
+  }
+
+  // Location permissions launcher
   val permissionLauncher = rememberLauncherForActivityResult(
       contract = ActivityResultContracts.RequestMultiplePermissions()
   ) { permissions ->
@@ -204,6 +305,14 @@ fun MainScreen(
       val coarseGranted = permissions[android.Manifest.permission.ACCESS_COARSE_LOCATION] ?: false
       if (fineGranted || coarseGranted) {
           viewModel.toggleGpsEnabled(true)
+          if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.Q) {
+              val hasBackground = ContextCompat.checkSelfPermission(
+                  context, android.Manifest.permission.ACCESS_BACKGROUND_LOCATION
+              ) == android.content.pm.PackageManager.PERMISSION_GRANTED
+              if (!hasBackground) {
+                  backgroundPermissionLauncher.launch(android.Manifest.permission.ACCESS_BACKGROUND_LOCATION)
+              }
+          }
       } else {
           viewModel.toggleGpsEnabled(false)
       }
@@ -214,7 +323,11 @@ fun MainScreen(
   val locationListener = remember {
       object : android.location.LocationListener {
           override fun onLocationChanged(location: android.location.Location) {
-              viewModel.updateUserLocation(location.latitude, location.longitude)
+              viewModel.updateUserLocation(
+                  lat = location.latitude,
+                  lon = location.longitude,
+                  elevation = location.altitude
+              )
           }
           override fun onStatusChanged(provider: String?, status: Int, extras: android.os.Bundle?) {}
           override fun onProviderEnabled(provider: String) {}
@@ -245,6 +358,14 @@ fun MainScreen(
 
   // Register location updates when GPS is enabled
   LaunchedEffect(state.isGpsEnabled, minTimeMs, minDistanceM) {
+      val intent = android.content.Intent(context, com.sphericalchickens.ruffterrain.receiver.BackgroundLocationReceiver::class.java)
+      val pendingIntent = android.app.PendingIntent.getBroadcast(
+          context,
+          0,
+          intent,
+          android.app.PendingIntent.FLAG_UPDATE_CURRENT or android.app.PendingIntent.FLAG_MUTABLE
+      )
+
       if (state.isGpsEnabled) {
           try {
               val hasFine = ContextCompat.checkSelfPermission(
@@ -255,29 +376,55 @@ fun MainScreen(
               ) == android.content.pm.PackageManager.PERMISSION_GRANTED
               
               if (hasFine || hasCoarse) {
-                  val provider = if (locationManager.isProviderEnabled(android.location.LocationManager.GPS_PROVIDER)) {
-                      android.location.LocationManager.GPS_PROVIDER
-                  } else {
-                      android.location.LocationManager.NETWORK_PROVIDER
-                  }
+                  // Strictly target GPS provider for high-accuracy coordinates
+                  val provider = android.location.LocationManager.GPS_PROVIDER
+                  
+                  // 1. Register foreground location updates
                   locationManager.requestLocationUpdates(
                       provider,
                       minTimeMs,
                       minDistanceM,
                       locationListener
                   )
+                  
+                  // 2. Register background PendingIntent location updates
+                  locationManager.requestLocationUpdates(
+                      provider,
+                      minTimeMs,
+                      minDistanceM,
+                      pendingIntent
+                  )
+                  
                   val lastKnown = locationManager.getLastKnownLocation(provider)
                   if (lastKnown != null) {
-                      viewModel.updateUserLocation(lastKnown.latitude, lastKnown.longitude)
+                      viewModel.updateUserLocation(
+                          lat = lastKnown.latitude,
+                          lon = lastKnown.longitude,
+                          elevation = lastKnown.altitude
+                      )
                   }
               } else {
                   viewModel.toggleGpsEnabled(false)
               }
           } catch (e: SecurityException) {
               viewModel.toggleGpsEnabled(false)
+          } catch (e: Exception) {
+              android.widget.Toast.makeText(context, "GPS Provider unavailable: ${e.message}", android.widget.Toast.LENGTH_LONG).show()
+              viewModel.toggleGpsEnabled(false)
           }
       } else {
           locationManager.removeUpdates(locationListener)
+          locationManager.removeUpdates(pendingIntent)
+      }
+  }
+
+  // Periodic check to update grade-adjusted stale position prediction every second
+  LaunchedEffect(state.appMode) {
+      if (state.appMode == AppMode.RUNNING || state.appMode == AppMode.SIMULATION) {
+          while (true) {
+              kotlinx.coroutines.delay(1000)
+              viewModel.updateStalePrediction()
+          }
       }
   }
 
@@ -377,6 +524,12 @@ fun MainScreen(
             modifier = Modifier.fillMaxSize(),
             unitsPref = unitsPref,
             mapTypePref = mapTypePref,
+            userLatitude = state.userLatitude,
+            userLongitude = state.userLongitude,
+            appMode = state.appMode,
+            isLocationStale = state.isLocationStale,
+            predictedLatitude = state.predictedLatitude,
+            predictedLongitude = state.predictedLongitude,
             onWaypointClick = { selectedDetailWaypoint = it },
             onMapLongClick = {
                 if (state.appMode == AppMode.IMPORT_EDIT) {
@@ -421,7 +574,8 @@ fun MainScreen(
                 permissionLauncher = permissionLauncher,
                 isScreenLocked = isScreenLocked,
                 onLockToggle = { isScreenLocked = it },
-                unitsPref = unitsPref
+                unitsPref = unitsPref,
+                compassHeading = compassHeading
             )
         } else {
             // RENDER STANDARD BOTTOM OVERLAYS (Import, Simulation, or Run-with-map)
@@ -802,6 +956,13 @@ fun MainScreen(
                         }
                     )
                     DropdownMenuItem(
+                        text = { Text("⚙️ App Settings") },
+                        onClick = {
+                            showSettingsMenu = false
+                            showSettingsDialog = true
+                        }
+                    )
+                    DropdownMenuItem(
                         text = { Text("📍 Launch GPS Simulator") },
                         onClick = {
                             showSettingsMenu = false
@@ -889,6 +1050,43 @@ fun MainScreen(
           state = state,
           viewModel = viewModel,
           onDismiss = { showSimulationHarness = false }
+      )
+  }
+
+  if (showSettingsDialog) {
+      SettingsDialog(
+          sharedPrefs = sharedPrefs,
+          isCompassEnabled = isCompassEnabledPref,
+          onCompassToggle = { enabled ->
+              isCompassEnabledPref = enabled
+              sharedPrefs.edit().putBoolean("compass_enabled", enabled).apply()
+          },
+          offTrailThreshold = offTrailThresholdPref,
+          onThresholdChange = { threshold ->
+              offTrailThresholdPref = threshold
+              sharedPrefs.edit().putFloat("off_trail_threshold", threshold).apply()
+          },
+          swoopTransition = swoopTransitionPref,
+          onTransitionChange = { rate ->
+              swoopTransitionPref = rate
+              sharedPrefs.edit().putFloat("swoop_transition_rate", rate).apply()
+          },
+          accuracyPref = accuracyPref,
+          onAccuracyChange = { accuracy ->
+              accuracyPref = accuracy
+              sharedPrefs.edit().putString("accuracy_preference", accuracy).apply()
+          },
+          savedSessions = state.savedTrackingSessions,
+          onExportSession = { sessionId ->
+              val points = viewModel.getPointsForSession(sessionId)
+              val gpxString = com.sphericalchickens.ruffterrain.util.GpxExporter.exportSessionToGpxString(sessionId, points)
+              pendingGpxExportContent = gpxString
+              createDocumentLauncher.launch(sessionId.replace(":", "_").replace(" ", "_") + ".gpx")
+          },
+          onDeleteSession = { sessionId ->
+              viewModel.deleteSession(sessionId)
+          },
+          onDismiss = { showSettingsDialog = false }
       )
   }
 
@@ -1135,6 +1333,7 @@ fun RunningTacticalDashboard(
     isScreenLocked: Boolean,
     onLockToggle: (Boolean) -> Unit,
     unitsPref: String = "default",
+    compassHeading: Double = 0.0,
     modifier: Modifier = Modifier
 ) {
     val course = state.courseData ?: return
@@ -1239,6 +1438,58 @@ fun RunningTacticalDashboard(
 
                 Spacer(modifier = Modifier.height(8.dp))
 
+                // GPS Path Tracking Controller Card
+                Card(
+                    colors = CardDefaults.cardColors(containerColor = Color(0xFF1E293B)),
+                    shape = RoundedCornerShape(16.dp),
+                    modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp)
+                ) {
+                    Row(
+                        modifier = Modifier.padding(16.dp).fillMaxWidth(),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.SpaceBetween
+                    ) {
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text(
+                                text = "🏃 GPS Track Logger",
+                                color = Color.White,
+                                fontWeight = FontWeight.Bold,
+                                fontSize = 16.sp
+                            )
+                            Spacer(modifier = Modifier.height(2.dp))
+                            Text(
+                                text = if (state.isTracking) {
+                                    "Recording: ${state.recordedPointsCount} points"
+                                } else {
+                                    "Save your run to a GPX file"
+                                },
+                                color = if (state.isTracking) Color(0xFF10B981) else Color.LightGray,
+                                fontSize = 13.sp
+                            )
+                        }
+                        
+                        Button(
+                            onClick = {
+                                if (state.isTracking) {
+                                    viewModel.stopTracking(context)
+                                } else {
+                                    viewModel.startTracking(context)
+                                }
+                            },
+                            colors = ButtonDefaults.buttonColors(
+                                containerColor = if (state.isTracking) Color(0xFFEF4444) else Color(0xFF10B981)
+                            ),
+                            shape = RoundedCornerShape(8.dp)
+                        ) {
+                            Text(
+                                text = if (state.isTracking) "Stop Recording" else "Start Recording",
+                                color = Color.White,
+                                fontWeight = FontWeight.Bold
+                            )
+                        }
+                    }
+                }
+
                 if (state.activeSimulationScenario != null) {
                     Card(
                         colors = CardDefaults.cardColors(containerColor = Color(0xFF0F172A)),
@@ -1304,8 +1555,42 @@ fun RunningTacticalDashboard(
 
                 Spacer(modifier = Modifier.height(4.dp))
 
-                val isOffTrail = state.deviationMeters > 20.0
-                val (arrow, cardinalDir) = getDirectionArrowAndText(state.bearingToTrail)
+                val thresholdLimit = state.offTrailDistanceThresholdMeters
+                val isOffTrail = state.deviationMeters > thresholdLimit
+                val targetBearing = if (state.isCompassEnabled) {
+                    (state.bearingToTrail - compassHeading + 360.0) % 360.0
+                } else {
+                    state.bearingToTrail
+                }
+                
+                val (arrow, directionText) = if (state.isCompassEnabled) {
+                    val index = (((targetBearing + 22.5) % 360) / 45.0).toInt()
+                    val arr = when (index) {
+                        0 -> "⬆"
+                        1 -> "↗"
+                        2 -> "➡"
+                        3 -> "↘"
+                        4 -> "⬇"
+                        5 -> "↙"
+                        6 -> "⬅"
+                        7 -> "↖"
+                        else -> "⬆"
+                    }
+                    val dir = when (index) {
+                        0 -> "Straight ahead"
+                        1 -> "Slightly right"
+                        2 -> "Hard right"
+                        3 -> "Right and back"
+                        4 -> "Turn around"
+                        5 -> "Left and back"
+                        6 -> "Hard left"
+                        7 -> "Slightly left"
+                        else -> "Straight ahead"
+                    }
+                    Pair(arr, dir)
+                } else {
+                    getDirectionArrowAndText(state.bearingToTrail)
+                }
 
                 Card(
                     modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp),
@@ -1326,8 +1611,8 @@ fun RunningTacticalDashboard(
                         )
                         Spacer(modifier = Modifier.height(4.dp))
                         Text(
-                            text = String.format("Deviation: %.0f meters (Limit: 20m)", state.deviationMeters),
-                            fontSize = 24.sp,
+                            text = String.format("Distance to trail: %.0f meters (Limit: %.0f m)", state.deviationMeters, thresholdLimit),
+                            fontSize = 20.sp,
                             fontWeight = FontWeight.ExtraBold,
                             color = Color.White,
                             fontFamily = FontFamily.Monospace
@@ -1345,7 +1630,7 @@ fun RunningTacticalDashboard(
                             )
                             Spacer(modifier = Modifier.width(8.dp))
                             Text(
-                                text = if (isOffTrail) "Steer $cardinalDir to return" else "Path goes $cardinalDir",
+                                text = if (isOffTrail) "Steer $directionText to return" else "Course heading: $directionText",
                                 fontSize = 14.sp,
                                 color = Color.White,
                                 fontWeight = FontWeight.SemiBold
@@ -1812,6 +2097,12 @@ fun MapViewport(
     modifier: Modifier = Modifier,
     unitsPref: String = "default",
     mapTypePref: String = "NORMAL",
+    userLatitude: Double? = null,
+    userLongitude: Double? = null,
+    appMode: AppMode = AppMode.IMPORT_EDIT,
+    isLocationStale: Boolean = false,
+    predictedLatitude: Double? = null,
+    predictedLongitude: Double? = null,
     onWaypointClick: (Waypoint) -> Unit = {},
     onMapLongClick: (LatLng) -> Unit = {}
 ) {
@@ -1824,6 +2115,12 @@ fun MapViewport(
             modifier = modifier,
             unitsPref = unitsPref,
             mapTypePref = mapTypePref,
+            userLatitude = userLatitude,
+            userLongitude = userLongitude,
+            appMode = appMode,
+            isLocationStale = isLocationStale,
+            predictedLatitude = predictedLatitude,
+            predictedLongitude = predictedLongitude,
             onWaypointClick = onWaypointClick,
             onMapLongClick = onMapLongClick
         )
@@ -2712,6 +3009,258 @@ fun MapTypeDialog(
                     modifier = Modifier.align(Alignment.End)
                 ) {
                     Text("Cancel", color = Color.White)
+                }
+            }
+        }
+    }
+}
+
+@Composable
+fun SettingsDialog(
+    sharedPrefs: android.content.SharedPreferences,
+    isCompassEnabled: Boolean,
+    onCompassToggle: (Boolean) -> Unit,
+    offTrailThreshold: Float,
+    onThresholdChange: (Float) -> Unit,
+    swoopTransition: Float,
+    onTransitionChange: (Float) -> Unit,
+    accuracyPref: String,
+    onAccuracyChange: (String) -> Unit,
+    savedSessions: List<String> = emptyList(),
+    onExportSession: (String) -> Unit = {},
+    onDeleteSession: (String) -> Unit = {},
+    onDismiss: () -> Unit
+) {
+    var showAdvanced by remember { mutableStateOf(false) }
+
+    Dialog(onDismissRequest = onDismiss) {
+        Card(
+            colors = CardDefaults.cardColors(containerColor = Color(0xFF0F172A)),
+            shape = RoundedCornerShape(16.dp),
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(16.dp)
+        ) {
+            Column(
+                modifier = Modifier
+                    .padding(24.dp)
+                    .verticalScroll(rememberScrollState()),
+                horizontalAlignment = Alignment.Start
+            ) {
+                Text(
+                    text = "⚙️ App Settings",
+                    color = Color.White,
+                    fontWeight = FontWeight.Bold,
+                    fontSize = 20.sp,
+                    modifier = Modifier.padding(bottom = 16.dp)
+                )
+
+                // 1. GPS update rate slider (Main setting)
+                Text(
+                    text = "GPS Tracking Mode",
+                    color = Color.White,
+                    fontWeight = FontWeight.SemiBold,
+                    fontSize = 14.sp
+                )
+                Spacer(modifier = Modifier.height(4.dp))
+                
+                val sliderValue = when (accuracyPref) {
+                    "ULTRA_SAVER" -> 0f
+                    "BALANCED" -> 1f
+                    "HIGH_PERFORMANCE" -> 2f
+                    else -> 3f // AUTO
+                }
+                
+                Slider(
+                    value = sliderValue,
+                    onValueChange = { newVal ->
+                        val nextMode = when (Math.round(newVal)) {
+                            0 -> "ULTRA_SAVER"
+                            1 -> "BALANCED"
+                            2 -> "HIGH_PERFORMANCE"
+                            else -> "AUTO"
+                        }
+                        onAccuracyChange(nextMode)
+                    },
+                    valueRange = 0f..3f,
+                    steps = 2
+                )
+                
+                val resolutionLabel = when (accuracyPref) {
+                    "ULTRA_SAVER" -> "🔋 Save Battery (60s updates)"
+                    "BALANCED" -> "⚖️ Balanced (15s updates)"
+                    "HIGH_PERFORMANCE" -> "🎯 High Resolution (2s updates)"
+                    else -> "🤖 Auto-manage (smart adjustments)"
+                }
+                Text(
+                    text = resolutionLabel,
+                    color = Color(0xFF38BDF8),
+                    fontSize = 12.sp,
+                    fontWeight = FontWeight.Medium
+                )
+                
+                Spacer(modifier = Modifier.height(20.dp))
+
+                // 2. Compass Toggle
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.SpaceBetween
+                ) {
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text(
+                            text = "Enable Compass Direction",
+                            color = Color.White,
+                            fontWeight = FontWeight.SemiBold,
+                            fontSize = 14.sp
+                        )
+                        Text(
+                            text = "Uses magnetometer to orient the direction arrow relative to your phone.",
+                            color = Color.Gray,
+                            fontSize = 11.sp
+                        )
+                    }
+                    Switch(
+                        checked = isCompassEnabled,
+                        onCheckedChange = onCompassToggle
+                    )
+                }
+
+                Spacer(modifier = Modifier.height(20.dp))
+
+                // 3. Saved Tracking Runs section
+                Text(
+                    text = "Saved Tracking Runs",
+                    color = Color.White,
+                    fontWeight = FontWeight.SemiBold,
+                    fontSize = 14.sp
+                )
+                Spacer(modifier = Modifier.height(8.dp))
+
+                if (savedSessions.isEmpty()) {
+                    Text(
+                        text = "No runs recorded yet.",
+                        color = Color.Gray,
+                        fontSize = 12.sp,
+                        modifier = Modifier.padding(vertical = 8.dp)
+                    )
+                } else {
+                    savedSessions.forEach { session ->
+                        Card(
+                            colors = CardDefaults.cardColors(containerColor = Color(0xFF1E293B)),
+                            shape = RoundedCornerShape(8.dp),
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(vertical = 4.dp)
+                        ) {
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(8.dp),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Text(
+                                    text = session,
+                                    color = Color.White,
+                                    fontSize = 12.sp,
+                                    fontWeight = FontWeight.Medium,
+                                    modifier = Modifier.weight(1f)
+                                )
+                                Row {
+                                    Button(
+                                        onClick = { onExportSession(session) },
+                                        colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF3B82F6)),
+                                        shape = RoundedCornerShape(4.dp),
+                                        contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 8.dp, vertical = 4.dp),
+                                        modifier = Modifier.height(28.dp).padding(horizontal = 2.dp)
+                                    ) {
+                                        Text("Export", fontSize = 10.sp, color = Color.White)
+                                    }
+                                    Button(
+                                        onClick = { onDeleteSession(session) },
+                                        colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFEF4444)),
+                                        shape = RoundedCornerShape(4.dp),
+                                        contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 8.dp, vertical = 4.dp),
+                                        modifier = Modifier.height(28.dp).padding(horizontal = 2.dp)
+                                    ) {
+                                        Text("Delete", fontSize = 10.sp, color = Color.White)
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+
+                Spacer(modifier = Modifier.height(20.dp))
+
+                // 4. Expandable Advanced Settings (Off-trail Tuning)
+                Text(
+                    text = if (showAdvanced) "▼ Advanced Settings" else "▶ Advanced Settings",
+                    color = Color(0xFF60A5FA),
+                    fontSize = 14.sp,
+                    fontWeight = FontWeight.Bold,
+                    modifier = Modifier
+                        .clickable { showAdvanced = !showAdvanced }
+                        .padding(vertical = 8.dp)
+                )
+
+                if (showAdvanced) {
+                    Card(
+                        colors = CardDefaults.cardColors(containerColor = Color(0xFF1E293B)),
+                        shape = RoundedCornerShape(8.dp),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(vertical = 8.dp)
+                    ) {
+                        Column(modifier = Modifier.padding(12.dp)) {
+                            Text(
+                                text = "⚠️ WARNING: TWEAKING THESE SETTINGS CAN SEVERELY DEGRADE NAVIGATION ALIGNMENT OR DELAY OFF-COURSE ALERTS.",
+                                color = Color(0xFFFCA5A5),
+                                fontSize = 10.sp,
+                                fontWeight = FontWeight.Bold,
+                                modifier = Modifier.padding(bottom = 12.dp)
+                            )
+
+                            // Off-trail threshold
+                            Text(
+                                text = String.format("Off-Trail Snapping Threshold: %.0f meters", offTrailThreshold),
+                                color = Color.White,
+                                fontSize = 12.sp,
+                                fontWeight = FontWeight.SemiBold
+                            )
+                            Slider(
+                                value = offTrailThreshold,
+                                onValueChange = onThresholdChange,
+                                valueRange = 10f..100f
+                            )
+                            Spacer(modifier = Modifier.height(8.dp))
+
+                            // Swoop rate exponent
+                            Text(
+                                text = String.format("Swoop Blending Exponent: %.1f", swoopTransition),
+                                color = Color.White,
+                                fontSize = 12.sp,
+                                fontWeight = FontWeight.SemiBold
+                            )
+                            Slider(
+                                value = swoopTransition,
+                                onValueChange = onTransitionChange,
+                                valueRange = 0.5f..3.0f
+                            )
+                        }
+                    }
+                }
+
+                Spacer(modifier = Modifier.height(24.dp))
+
+                Button(
+                    onClick = onDismiss,
+                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF10B981)),
+                    shape = RoundedCornerShape(8.dp),
+                    modifier = Modifier.align(Alignment.End)
+                ) {
+                    Text("Done", color = Color.White)
                 }
             }
         }

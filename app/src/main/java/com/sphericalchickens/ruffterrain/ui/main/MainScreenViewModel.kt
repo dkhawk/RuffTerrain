@@ -13,9 +13,9 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-
 package com.sphericalchickens.ruffterrain.ui.main
 
+import android.content.Context
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.sphericalchickens.ruffterrain.data.DataRepository
@@ -90,7 +90,17 @@ data class MainScreenUiState(
     val nextWaypointDurationMax: Long? = null,
     val finishDurationMin: Long? = null,
     val finishDurationMax: Long? = null,
-    val isTtsEnabled: Boolean = true
+    val isTtsEnabled: Boolean = true,
+    val offTrailDistanceThresholdMeters: Double = 30.0,
+    val swoopTransitionRate: Double = 1.0,
+    val isCompassEnabled: Boolean = true,
+    val isTracking: Boolean = false,
+    val activeSessionId: String? = null,
+    val recordedPointsCount: Int = 0,
+    val savedTrackingSessions: List<String> = emptyList(),
+    val isLocationStale: Boolean = false,
+    val predictedLatitude: Double? = null,
+    val predictedLongitude: Double? = null
 )
 
 enum class LocationAccuracyMode {
@@ -106,6 +116,7 @@ enum class LocationAccuracyMode {
 class MainScreenViewModel(private val dataRepository: DataRepository) : ViewModel() {
 
     private var wearSyncHelper: com.sphericalchickens.ruffterrain.util.WearDataSyncHelper? = null
+    private var dbHelper: com.sphericalchickens.ruffterrain.db.TrackingDbHelper? = null
 
     fun setWearSyncHelper(helper: com.sphericalchickens.ruffterrain.util.WearDataSyncHelper) {
         this.wearSyncHelper = helper
@@ -126,6 +137,17 @@ class MainScreenViewModel(private val dataRepository: DataRepository) : ViewMode
     private var lastResolvedIndex: Int? = null
 
     init {
+        viewModelScope.launch {
+            var lastSavedCourse: CourseData? = null
+            _uiState.collect { state ->
+                val course = state.courseData
+                if (course != null && course !== lastSavedCourse) {
+                    lastSavedCourse = course
+                    saveActiveCourseToStorage(course)
+                }
+            }
+        }
+
         viewModelScope.launch {
             var lastSyncedCourse: CourseData? = null
             var lastSyncTimeMs = 0L
@@ -172,6 +194,68 @@ class MainScreenViewModel(private val dataRepository: DataRepository) : ViewMode
                     helper.syncProgress(progressPayload)
                 }
             }
+        }
+
+    }
+
+    fun updateStalePrediction() {
+        val state = _uiState.value
+        val lastTime = state.userLocationTimestampMs
+        val course = state.courseData ?: return
+
+        val now = System.currentTimeMillis()
+        if (lastTime == null || (now - lastTime) < 60000L) {
+            _uiState.update {
+                it.copy(
+                    isLocationStale = false,
+                    predictedLatitude = null,
+                    predictedLongitude = null
+                )
+            }
+            return
+        }
+
+        _uiState.update { it.copy(isLocationStale = true) }
+
+        val lastDist = state.scrubberProgress * course.totalDistance
+        val dtSec = (now - lastTime) / 1000.0
+        val baseSpeed = if (state.currentSpeedMps > 0.1) state.currentSpeedMps else 1.38
+
+        val idx = lastResolvedIndex ?: 0
+        val currentPt = course.points.getOrNull(idx)
+        val nextPt = course.points.getOrNull((idx + 1).coerceAtMost(course.points.size - 1))
+        
+        val gradeFactor = if (currentPt != null && nextPt != null) {
+            val dD = nextPt.distance - currentPt.distance
+            val dE = nextPt.elevation - currentPt.elevation
+            if (dD > 0.1) {
+                val slope = dE / dD
+                if (slope > 0.0) {
+                    (1.0 - (slope * 3.0)).coerceIn(0.3, 1.0)
+                } else if (slope < -0.1) {
+                    (1.0 - (-slope * 1.5)).coerceIn(0.6, 1.0)
+                } else {
+                    1.0
+                }
+            } else {
+                1.0
+            }
+        } else {
+            1.0
+        }
+
+        val predSpeed = baseSpeed * gradeFactor
+        val predDist = (lastDist + predSpeed * dtSec).coerceIn(0.0, course.totalDistance)
+
+        val ptIdx = course.points.indexOfFirst { it.distance >= predDist }
+            .coerceIn(0, course.points.size - 1)
+        val predPt = course.points[ptIdx]
+
+        _uiState.update {
+            it.copy(
+                predictedLatitude = predPt.latitude,
+                predictedLongitude = predPt.longitude
+            )
         }
     }
 
@@ -358,8 +442,27 @@ class MainScreenViewModel(private val dataRepository: DataRepository) : ViewMode
 
     /**
      * Updates coordinates and snaps progress + deviation from GPS.
+     * Optionally records the coordinate to the SQLite tracking database if tracking is active.
      */
-    fun updateUserLocation(lat: Double, lon: Double, timestampMs: Long = System.currentTimeMillis()) {
+    fun updateUserLocation(lat: Double, lon: Double, timestampMs: Long = System.currentTimeMillis(), elevation: Double = 0.0) {
+        val currentState = _uiState.value
+        if (currentState.isTracking) {
+            val sessionId = currentState.activeSessionId
+            if (sessionId != null) {
+                dbHelper?.let { helper ->
+                    val point = com.sphericalchickens.ruffterrain.db.TrackingPoint(
+                        sessionId = sessionId,
+                        latitude = lat,
+                        longitude = lon,
+                        elevation = elevation,
+                        timestampMs = timestampMs
+                    )
+                    helper.insertPoint(point)
+                    _uiState.update { it.copy(recordedPointsCount = it.recordedPointsCount + 1) }
+                }
+            }
+        }
+
         val course = _uiState.value.courseData ?: return
         if (course.points.isEmpty()) return
 
@@ -569,6 +672,8 @@ class MainScreenViewModel(private val dataRepository: DataRepository) : ViewMode
     /**
      * Projects GPS coordinates to the closest trail segment. Uses a sliding search window to
      * avoid out-and-back or tight switchback snapping errors.
+     * Integrates the "Swoop" direction recommender: blends direct perpendicular approach to
+     * the trail with the parallel course heading smoothly as the user gets closer to the trail.
      */
     fun projectUserToTrail(userLat: Double, userLon: Double, course: CourseData): ProjectionResult {
         if (course.points.isEmpty()) return ProjectionResult(0.0, 0.0, 0.0)
@@ -614,6 +719,15 @@ class MainScreenViewModel(private val dataRepository: DataRepository) : ViewMode
         // 2. Project onto adjacent segments to find cross-track error
         var bestDist = minDist
         var bestProgressDist = course.points[closestIdx].distance
+        var projLat = course.points[closestIdx].latitude
+        var projLon = course.points[closestIdx].longitude
+
+        // Default segment direction: closest point to next point
+        val defaultTargetIdx = (closestIdx + 1).coerceAtMost(course.points.size - 1)
+        var parallelBearing = Haversine.bearing(
+            course.points[closestIdx].latitude, course.points[closestIdx].longitude,
+            course.points[defaultTargetIdx].latitude, course.points[defaultTargetIdx].longitude
+        )
 
         // Check segment before (closestIdx - 1 -> closestIdx)
         if (closestIdx > 0) {
@@ -624,6 +738,9 @@ class MainScreenViewModel(private val dataRepository: DataRepository) : ViewMode
                 bestDist = dSeg
                 val r = calculateSegmentFactor(userLat, userLon, ptA.latitude, ptA.longitude, ptB.latitude, ptB.longitude)
                 bestProgressDist = ptA.distance + r * (ptB.distance - ptA.distance)
+                projLat = ptA.latitude + r * (ptB.latitude - ptA.latitude)
+                projLon = ptA.longitude + r * (ptB.longitude - ptA.longitude)
+                parallelBearing = Haversine.bearing(ptA.latitude, ptA.longitude, ptB.latitude, ptB.longitude)
             }
         }
 
@@ -636,14 +753,37 @@ class MainScreenViewModel(private val dataRepository: DataRepository) : ViewMode
                 bestDist = dSeg
                 val r = calculateSegmentFactor(userLat, userLon, ptA.latitude, ptA.longitude, ptB.latitude, ptB.longitude)
                 bestProgressDist = ptA.distance + r * (ptB.distance - ptA.distance)
+                projLat = ptA.latitude + r * (ptB.latitude - ptA.latitude)
+                projLon = ptA.longitude + r * (ptB.longitude - ptA.longitude)
+                parallelBearing = Haversine.bearing(ptA.latitude, ptA.longitude, ptB.latitude, ptB.longitude)
             }
         }
 
-        val targetPtIdx = (closestIdx + 1).coerceAtMost(course.points.size - 1)
-        val targetPt = course.points[targetPtIdx]
-        val brg = Haversine.bearing(userLat, userLon, targetPt.latitude, targetPt.longitude)
+        // Perpendicular bearing from user directly to projected point on trail
+        val perpBearing = Haversine.bearing(userLat, userLon, projLat, projLon)
 
-        return ProjectionResult(bestProgressDist, bestDist, brg)
+        // Blending ratio weight computation based on off-trail threshold and transition rate
+        val threshold = _uiState.value.offTrailDistanceThresholdMeters.coerceAtLeast(1.0)
+        val rate = _uiState.value.swoopTransitionRate.coerceAtLeast(0.1)
+
+        val ratio = (bestDist / threshold).coerceIn(0.0..1.0)
+        val w = Math.pow(ratio, rate)
+
+        // Convert angles to 2D unit vectors
+        val xPar = Math.sin(Math.toRadians(parallelBearing))
+        val yPar = Math.cos(Math.toRadians(parallelBearing))
+
+        val xPerp = Math.sin(Math.toRadians(perpBearing))
+        val yPerp = Math.cos(Math.toRadians(perpBearing))
+
+        // Linearly blend the vectors
+        val xRec = (1.0 - w) * xPar + w * xPerp
+        val yRec = (1.0 - w) * yPar + w * yPerp
+
+        // Get the recommended direction bearing
+        val recommendedBearing = (Math.toDegrees(Math.atan2(xRec, yRec)) + 360.0) % 360.0
+
+        return ProjectionResult(bestProgressDist, bestDist, recommendedBearing)
     }
 
     private fun calculateSegmentFactor(lat: Double, lon: Double, latA: Double, lonA: Double, latB: Double, lonB: Double): Double {
@@ -850,6 +990,48 @@ class MainScreenViewModel(private val dataRepository: DataRepository) : ViewMode
         val currentCourse = _uiState.value.courseData
         if (currentCourse != null) {
             mergeCustomWaypoints(currentCourse)
+        } else {
+            restoreActiveCourseFromStorage(dir)
+        }
+    }
+
+    private fun saveActiveCourseToStorage(course: CourseData) {
+        val dir = filesDir ?: return
+        viewModelScope.launch(kotlinx.coroutines.Dispatchers.IO) {
+            try {
+                val file = java.io.File(dir, "active_course.json")
+                val jsonStr = Json.encodeToString(course)
+                file.writeText(jsonStr)
+            } catch (e: Exception) {
+                android.util.Log.e("MainScreenViewModel", "Failed to save active course: ${e.message}")
+            }
+        }
+    }
+
+    private fun restoreActiveCourseFromStorage(dir: java.io.File) {
+        val file = java.io.File(dir, "active_course.json")
+        if (!file.exists()) return
+
+        viewModelScope.launch {
+            try {
+                val jsonStr = with(kotlinx.coroutines.Dispatchers.IO) { file.readText() }
+                val course = Json.decodeFromString<CourseData>(jsonStr)
+                lastResolvedIndex = null
+                _uiState.update {
+                    val updatedState = it.copy(
+                        courseData = course,
+                        isLoading = false,
+                        scrubberProgress = 0.0,
+                        appMode = AppMode.SIMULATION,
+                        isGpsEnabled = false,
+                        deviationMeters = 0.0,
+                        mockDeviation = 0.0
+                    )
+                    updatedState.copy(activeClimbInfo = detectClimb(0.0, course))
+                }
+            } catch (e: Exception) {
+                android.util.Log.e("MainScreenViewModel", "Failed to restore active course: ${e.message}")
+            }
         }
     }
 
@@ -927,6 +1109,72 @@ class MainScreenViewModel(private val dataRepository: DataRepository) : ViewMode
 
     fun updateTtsEnabled(enabled: Boolean) {
         _uiState.update { it.copy(isTtsEnabled = enabled) }
+    }
+
+    fun updateOffTrailDistanceThreshold(threshold: Double) {
+        _uiState.update { it.copy(offTrailDistanceThresholdMeters = threshold) }
+    }
+
+    fun updateSwoopTransitionRate(rate: Double) {
+        _uiState.update { it.copy(swoopTransitionRate = rate) }
+    }
+
+    fun updateCompassEnabled(enabled: Boolean) {
+        _uiState.update { it.copy(isCompassEnabled = enabled) }
+    }
+
+    fun initializeDb(context: Context) {
+        dbHelper = com.sphericalchickens.ruffterrain.db.TrackingDbHelper(context)
+        refreshSavedSessions()
+    }
+
+    fun startTracking(context: Context) {
+        val formatter = java.time.format.DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss")
+        val timestamp = formatter.format(java.time.LocalDateTime.now())
+        val sessionId = "Run - $timestamp"
+        _uiState.update {
+            it.copy(
+                isTracking = true,
+                activeSessionId = sessionId,
+                recordedPointsCount = 0
+            )
+        }
+        val sharedPrefs = context.getSharedPreferences("ruff_terrain_prefs", Context.MODE_PRIVATE)
+        sharedPrefs.edit()
+            .putBoolean("is_tracking", true)
+            .putString("active_session_id", sessionId)
+            .apply()
+    }
+
+    fun stopTracking(context: Context) {
+        _uiState.update {
+            it.copy(
+                isTracking = false,
+                activeSessionId = null
+            )
+        }
+        val sharedPrefs = context.getSharedPreferences("ruff_terrain_prefs", Context.MODE_PRIVATE)
+        sharedPrefs.edit()
+            .putBoolean("is_tracking", false)
+            .remove("active_session_id")
+            .apply()
+        refreshSavedSessions()
+    }
+
+    fun deleteSession(sessionId: String) {
+        dbHelper?.deleteSession(sessionId)
+        refreshSavedSessions()
+    }
+
+    fun refreshSavedSessions() {
+        dbHelper?.let { helper ->
+            val sessions = helper.getAllSessions()
+            _uiState.update { it.copy(savedTrackingSessions = sessions) }
+        }
+    }
+
+    fun getPointsForSession(sessionId: String): List<com.sphericalchickens.ruffterrain.db.TrackingPoint> {
+        return dbHelper?.getPointsForSession(sessionId) ?: emptyList()
     }
 
     fun addCustomWaypoint(

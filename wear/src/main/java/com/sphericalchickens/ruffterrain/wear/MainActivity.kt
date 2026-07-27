@@ -17,18 +17,33 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
 import androidx.wear.compose.material.*
 import com.sphericalchickens.ruffterrain.wear.data.WearAppStateStore
+import com.sphericalchickens.ruffterrain.wear.engine.WearLocationEngine
 import com.sphericalchickens.ruffterrain.wear.ui.CheckpointsScreen
 import com.sphericalchickens.ruffterrain.wear.ui.DashboardScreen
 import com.sphericalchickens.ruffterrain.wear.ui.ElevationProfileScreen
+import com.sphericalchickens.ruffterrain.wear.ui.ObstacleHudScreen
 
 class MainActivity : ComponentActivity() {
+    private lateinit var locationEngine: WearLocationEngine
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState);
+        locationEngine = WearLocationEngine(applicationContext)
         setContent {
             WearAppTheme {
-                MainPagerScreen()
+                MainPagerScreen(locationEngine)
             }
         }
+    }
+
+    override fun onResume() {
+        super.onResume()
+        locationEngine.onScreenStateChanged(true)
+    }
+
+    override fun onPause() {
+        super.onPause()
+        locationEngine.onScreenStateChanged(false)
     }
 }
 
@@ -47,11 +62,11 @@ fun WearAppTheme(content: @Composable () -> Unit) {
 
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
-fun MainPagerScreen() {
+fun MainPagerScreen(locationEngine: WearLocationEngine) {
     val course by WearAppStateStore.courseData.collectAsState()
     val progress by WearAppStateStore.runnerProgress.collectAsState()
 
-    val pagerState = rememberPagerState(pageCount = { 3 })
+    val pagerState = rememberPagerState(pageCount = { 4 })
 
     Box(
         modifier = Modifier
@@ -64,9 +79,10 @@ fun MainPagerScreen() {
             modifier = Modifier.fillMaxSize()
         ) { page ->
             when (page) {
-                0 -> DashboardScreen(course = course, progress = progress)
-                1 -> ElevationProfileScreen(course = course, progress = progress)
-                2 -> CheckpointsScreen(course = course, progress = progress)
+                0 -> ObstacleHudScreen(course = course, progress = progress, locationEngine = locationEngine)
+                1 -> DashboardScreen(course = course, progress = progress)
+                2 -> ElevationProfileScreen(course = course, progress = progress)
+                3 -> CheckpointsScreen(course = course, progress = progress)
             }
         }
 
@@ -77,7 +93,7 @@ fun MainPagerScreen() {
                 .padding(bottom = 6.dp),
             horizontalArrangement = Arrangement.spacedBy(4.dp)
         ) {
-            repeat(3) { index ->
+            repeat(4) { index ->
                 val active = pagerState.currentPage == index
                 val color = if (active) Color(0xFF10B981) else Color.Gray.copy(alpha = 0.5f)
                 Box(

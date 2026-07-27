@@ -36,6 +36,7 @@ import androidx.compose.ui.platform.LocalContext
 import com.sphericalchickens.ruffterrain.R
 import com.sphericalchickens.ruffterrain.data.model.CourseData
 import com.sphericalchickens.ruffterrain.data.model.Waypoint
+import com.sphericalchickens.ruffterrain.data.model.AppMode
 import com.google.android.gms.maps.model.BitmapDescriptor
 import com.google.android.gms.maps.model.BitmapDescriptorFactory
 import com.google.android.gms.maps.model.CameraPosition
@@ -75,6 +76,12 @@ fun Map2DViewport(
     modifier: Modifier = Modifier,
     unitsPref: String = "default",
     mapTypePref: String = "NORMAL",
+    userLatitude: Double? = null,
+    userLongitude: Double? = null,
+    appMode: AppMode = AppMode.IMPORT_EDIT,
+    isLocationStale: Boolean = false,
+    predictedLatitude: Double? = null,
+    predictedLongitude: Double? = null,
     onWaypointClick: (Waypoint) -> Unit = {},
     onMapLongClick: (LatLng) -> Unit = {}
 ) {
@@ -169,9 +176,23 @@ fun Map2DViewport(
 
     val runnerMarkerState = rememberMarkerState()
 
-    // Auto-update camera to center on the runner's marker as progress updates
-    LaunchedEffect(scrubberLatLng) {
-        scrubberLatLng?.let { latLng ->
+    val userLatLng = if (userLatitude != null && userLongitude != null) LatLng(userLatitude, userLongitude) else null
+    val predictedLatLng = if (predictedLatitude != null && predictedLongitude != null) LatLng(predictedLatitude, predictedLongitude) else null
+
+    // Determine the active focal coordinate (User location, predicted location, or scrubber in planning mode)
+    val activeLatLng = if (appMode == AppMode.RUNNING || appMode == AppMode.SIMULATION) {
+        if (isLocationStale && predictedLatLng != null) {
+            predictedLatLng
+        } else {
+            userLatLng ?: scrubberLatLng
+        }
+    } else {
+        scrubberLatLng
+    }
+
+    // Auto-update camera to center on the active position as it updates
+    LaunchedEffect(activeLatLng) {
+        activeLatLng?.let { latLng ->
             runnerMarkerState.position = latLng
             cameraPositionState.move(
                 com.google.android.gms.maps.CameraUpdateFactory.newLatLng(latLng)
@@ -302,16 +323,42 @@ fun Map2DViewport(
                 }
             }
 
-            // Draw runner progress marker dot
-            if (scrubberLatLng != null && scrubberPoint != null) {
+            // Draw separate blue dot marker for the user's actual GPS location in Plan mode
+            if (appMode == AppMode.IMPORT_EDIT && userLatLng != null) {
+                Marker(
+                    state = rememberMarkerState(position = userLatLng),
+                    title = "Your Location",
+                    icon = BitmapDescriptorFactory.defaultMarker(BitmapDescriptorFactory.HUE_AZURE)
+                )
+            }
+
+            // Draw runner progress marker dot at the active focal coordinate
+            if (activeLatLng != null) {
                 val system = getActiveUnitSystem(unitsPref)
-                val distStr = formatDistance(scrubberPoint.distance, system)
-                val elevStr = formatElevation(scrubberPoint.elevation, system)
+                val title = if (appMode == AppMode.RUNNING || appMode == AppMode.SIMULATION) {
+                    if (isLocationStale) "Predicted Position (GPS stale)" else "Current Location"
+                } else {
+                    "Runner Position"
+                }
+                val snippet = if (isLocationStale) {
+                    "Estimating position based on course slope"
+                } else if (scrubberPoint != null) {
+                    "Distance: ${formatDistance(scrubberPoint.distance, system)} | Elevation: ${formatElevation(scrubberPoint.elevation, system)}"
+                } else {
+                    "Tracking Active"
+                }
+
+                val markerIcon = if (isLocationStale) {
+                    BitmapDescriptorFactory.defaultMarker(BitmapDescriptorFactory.HUE_ORANGE)
+                } else {
+                    runnerIcon
+                }
+
                 Marker(
                     state = runnerMarkerState,
-                    title = "Runner Position",
-                    snippet = "Distance: $distStr | Elevation: $elevStr",
-                    icon = runnerIcon
+                    title = title,
+                    snippet = snippet,
+                    icon = markerIcon
                 )
             }
         }
