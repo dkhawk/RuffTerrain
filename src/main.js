@@ -183,6 +183,7 @@ function loadStage(day) {
       })
       .then(gpxText => {
         parsedRoute = parseGPX(gpxText);
+        updateStatsDynamically(parsedRoute, stage);
         renderRouteOn3DMap(parsedRoute, stage);
         renderElevationProfile(parsedRoute);
       })
@@ -190,6 +191,46 @@ function loadStage(day) {
         console.error("Error loading stage GPX:", err);
       });
   }
+}
+
+function updateStatsDynamically(route, stage) {
+  // Convert meters to miles
+  const distanceMi = (route.totalDistance / 1609.34).toFixed(2) + " mi";
+  
+  // Convert meters to feet
+  const gainFt = "+" + Math.round(route.totalElevationGain * 3.28084).toLocaleString() + " ft";
+  const lossFt = "-" + Math.round(route.totalElevationLoss * 3.28084).toLocaleString() + " ft";
+  
+  // Convert peak elevation from meters to feet
+  const maxEleFt = Math.round(route.maxElevation * 3.28084).toLocaleString() + " ft";
+  
+  // Extract peak name from stage or fallback
+  let peakName = stage.stats.peak.split(" (")[0] || "Peak";
+  const peakText = `${peakName} (${maxEleFt})`;
+  
+  // Duration based on timestamps
+  let durationText = stage.stats.duration; // fallback to estimation
+  if (route.trackpoints.length > 1) {
+    const firstPt = route.trackpoints[0];
+    const lastPt = route.trackpoints[route.trackpoints.length - 1];
+    if (firstPt.time && lastPt.time) {
+      const start = new Date(firstPt.time);
+      const end = new Date(lastPt.time);
+      const diffMs = end - start;
+      if (diffMs > 0) {
+        const diffHrs = diffMs / (1000 * 60 * 60);
+        const hrs = Math.floor(diffHrs);
+        const mins = Math.round((diffHrs - hrs) * 60);
+        durationText = `${hrs}h ${mins}m`;
+      }
+    }
+  }
+  
+  document.getElementById("stat-dist").textContent = distanceMi;
+  document.getElementById("stat-gain").textContent = gainFt;
+  document.getElementById("stat-loss").textContent = lossFt;
+  document.getElementById("stat-peak").textContent = peakText;
+  document.getElementById("stat-duration").textContent = durationText;
 }
 
 // 3. Render 3D Route Line & Photo Pins
