@@ -3993,7 +3993,7 @@ export const TMB_STAGES = [
         "lon": 6.97197,
         "title": "Rest day coffee in Italy",
         "desc": "Enjoying fresh Italian espresso and pastries in the center plaza of Courmayeur.",
-        "img": "https://lh3.googleusercontent.com/pw/AP1GczNx1zq-VbFhD6zTTRD_5CroURDIEutlmBe9171NZpXcduOjeNukgvvQm7S9GHKpc2xQTApEXp0gW5aE9GFDOOhCXTLtwOVrCFFE4SXCaHIx7pi8S3Jt=w1200",
+        "img": "https://images.unsplash.com/photo-1501339847302-ac426a4a7cbb?w=1200",
         "timestamp": "09:30 AM"
       }
     ]
@@ -4022,7 +4022,7 @@ export const TMB_STAGES = [
         "lon": 7.07823,
         "title": "Grand Col Ferret Border Crossing",
         "desc": "Standing at the high wind-swept pass of Grand Col Ferret, crossing from Italy into Switzerland.",
-        "img": "https://lh3.googleusercontent.com/pw/AP1GczPEvAQInfUPceEkTYh995gIR5OkTm50njybsGvmqA=w1200",
+        "img": "https://images.unsplash.com/photo-1464822759023-fed622ff2c3b?w=1200",
         "timestamp": "12:15 PM"
       }
     ]
@@ -4051,7 +4051,7 @@ export const TMB_STAGES = [
         "lon": 7.04211,
         "title": "Bovine Ridge Cows",
         "desc": "Encountering the legendary grazing Swiss cows along the steep meadows of the Bovine trail route.",
-        "img": "https://lh3.googleusercontent.com/pw/AP1GczOpzPertZZlP-Ick9Bf_9vz44mwuu=w1200",
+        "img": "https://images.unsplash.com/photo-1570042225831-d98fa7577f1e?w=1200",
         "timestamp": "11:00 AM"
       }
     ]
@@ -4080,7 +4080,7 @@ export const TMB_STAGES = [
         "lon": 6.88317,
         "title": "Lac Blanc Reflection",
         "desc": "Breathtaking view of the reflection of the entire Mont Blanc chain in the mirror-like waters of Lac Blanc.",
-        "img": "https://lh3.googleusercontent.com/pw/AP1GczMaNhob0V0ErlEOT049n9p3ijos=w1200",
+        "img": "https://images.unsplash.com/photo-1470071459604-3b5ec3a7fe05?w=1200",
         "timestamp": "02:30 PM"
       }
     ]
