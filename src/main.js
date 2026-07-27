@@ -25,6 +25,8 @@ let isFlightPlaying = false;
 let isFlightRecording = false;
 let mediaRecorder = null;
 let recordedChunks = [];
+let tourPauseTimeout = null;
+let tourCarouselInterval = null;
 
 // Initialize application on DOM load
 document.addEventListener("DOMContentLoaded", () => {
@@ -629,6 +631,16 @@ function isPhotoOpenedRecently(id) {
 }
 
 function pauseFlightForCluster(cluster) {
+  // Clear any existing active timers
+  if (tourPauseTimeout) {
+    clearTimeout(tourPauseTimeout);
+    tourPauseTimeout = null;
+  }
+  if (tourCarouselInterval) {
+    clearInterval(tourCarouselInterval);
+    tourCarouselInterval = null;
+  }
+
   openedPhotoIds.add(cluster.id);
   clearInterval(flightInterval);
   
@@ -638,30 +650,68 @@ function pauseFlightForCluster(cluster) {
     activeMap2D.setZoom(15);
   }
   
+  // Show skip/resume button and progress container
+  const skipBtn = document.getElementById("skip-pause-btn");
+  const progressContainer = document.getElementById("pause-progress-container");
+  const progressBar = document.getElementById("pause-progress-bar");
+  
+  if (skipBtn) skipBtn.classList.remove("hidden");
+  if (progressContainer) progressContainer.classList.remove("hidden");
+  
+  const pauseDuration = Math.max(4000, cluster.photos.length * 2000);
+  
+  // Animate the progress bar from 100% to 0% width over the pause duration
+  if (progressBar) {
+    progressBar.style.transition = "none";
+    progressBar.style.width = "100%";
+    
+    // Force a browser reflow/repaint to apply initial state
+    progressBar.offsetHeight;
+    
+    progressBar.style.transition = `width ${pauseDuration}ms linear`;
+    progressBar.style.width = "0%";
+  }
+
   // If multiple photos exist, let the slideshow progress automatically during the pause!
-  let carouselTimer = null;
   if (cluster.photos.length > 1) {
     let slideCount = 0;
-    carouselTimer = setInterval(() => {
+    tourCarouselInterval = setInterval(() => {
       if (slideCount < cluster.photos.length - 1) {
         activePhotoIndex++;
         updatePhotoDisplay();
         slideCount++;
       } else {
-        clearInterval(carouselTimer);
+        clearInterval(tourCarouselInterval);
+        tourCarouselInterval = null;
       }
     }, 2000); // cycle slide every 2 seconds
   }
   
-  const pauseDuration = Math.max(4000, cluster.photos.length * 2000);
-  
-  setTimeout(() => {
-    if (carouselTimer) clearInterval(carouselTimer);
-    document.getElementById("photo-viewer").classList.add("hidden");
-    if (isFlightPlaying) {
-      startGuidedTourResume();
-    }
+  tourPauseTimeout = setTimeout(() => {
+    resumeTourFromPause();
   }, pauseDuration);
+}
+
+function resumeTourFromPause() {
+  if (tourPauseTimeout) {
+    clearTimeout(tourPauseTimeout);
+    tourPauseTimeout = null;
+  }
+  if (tourCarouselInterval) {
+    clearInterval(tourCarouselInterval);
+    tourCarouselInterval = null;
+  }
+  
+  // Hide UI skip components
+  const skipBtn = document.getElementById("skip-pause-btn");
+  const progressContainer = document.getElementById("pause-progress-container");
+  if (skipBtn) skipBtn.classList.add("hidden");
+  if (progressContainer) progressContainer.classList.add("hidden");
+  
+  document.getElementById("photo-viewer").classList.add("hidden");
+  if (isFlightPlaying) {
+    startGuidedTourResume();
+  }
 }
 
 function startGuidedTourResume() {
@@ -693,6 +743,21 @@ function stopGuidedTour() {
   isFlightPlaying = false;
   clearInterval(flightInterval);
   openedPhotoIds.clear();
+  
+  if (tourPauseTimeout) {
+    clearTimeout(tourPauseTimeout);
+    tourPauseTimeout = null;
+  }
+  if (tourCarouselInterval) {
+    clearInterval(tourCarouselInterval);
+    tourCarouselInterval = null;
+  }
+  
+  // Hide UI skip components
+  const skipBtn = document.getElementById("skip-pause-btn");
+  const progressContainer = document.getElementById("pause-progress-container");
+  if (skipBtn) skipBtn.classList.add("hidden");
+  if (progressContainer) progressContainer.classList.add("hidden");
   
   const playBtn = document.getElementById("guided-tour-btn");
   playBtn.innerHTML = `<span class="play-icon">▶</span> Play Guided Tour`;
@@ -820,6 +885,11 @@ function setupEventListeners() {
     activePhoto = filtered[nextIdx];
     updatePhotoDisplay();
     panMapToPhoto(activePhoto);
+  });
+  
+  // Skip photo pause listener
+  document.getElementById("skip-pause-btn").addEventListener("click", () => {
+    resumeTourFromPause();
   });
   
   // Setup configuration dialogs
