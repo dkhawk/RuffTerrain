@@ -282,7 +282,7 @@ function renderRouteOn3DMap(route, stage) {
 
   // Place interactive Photo Pins for each cluster
   clusters.forEach(cluster => {
-    const marker = document.createElement("gmp-marker-3d");
+    const marker = document.createElement("gmp-marker-3d-interactive");
     marker.position = { lat: cluster.lat, lng: cluster.lon, altitude: 0 };
     marker.altitudeMode = "RELATIVE_TO_GROUND";
     
