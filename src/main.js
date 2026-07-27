@@ -158,6 +158,9 @@ function loadStage(day) {
   // Clear previous rendering layers
   clearMapLayers();
   
+  // Render photo thumbnails strip at bottom
+  renderThumbnailCarousel(stage);
+  
   if (stage.restDay) {
     // Show Rest Day Card
     document.getElementById("rest-day-overlay").classList.remove("hidden");
@@ -360,6 +363,11 @@ function updatePhotoDisplay() {
   document.getElementById("photo-desc").textContent = photo.desc;
   popover.classList.remove("hidden");
   
+  // Highlight active thumbnail in bottom carousel
+  if (typeof highlightActiveThumbnail === "function") {
+    highlightActiveThumbnail(photo.id);
+  }
+  
   const prevBtn = document.getElementById("prev-photo-btn");
   const nextBtn = document.getElementById("next-photo-btn");
   
@@ -447,6 +455,11 @@ function renderElevationProfile(route) {
           if (pt && activeMap3D && !isFlightPlaying) {
             activeMap3D.center = { lat: pt.lat, lng: pt.lon, altitude: pt.ele };
             activeMap3D.range = 2000;
+            
+            // Sync scrubber position with closest photo
+            if (typeof syncScrubberWithPhotos === "function") {
+              syncScrubberWithPhotos(pt);
+            }
           }
         }
       }
@@ -499,6 +512,11 @@ function startGuidedTour() {
         index: flightIndex
       }]);
       elevationChart.update();
+      
+      // Highlight closest photo milestone thumbnail as we fly
+      if (typeof syncScrubberWithPhotos === "function") {
+        syncScrubberWithPhotos(pt);
+      }
     }
     
     // Pause automatically if approaching near photo stops
@@ -751,4 +769,115 @@ function setupEventListeners() {
     }
     window.location.reload();
   });
+}
+
+// --- PHOTO THUMBNAIL CAROUSEL HELPERS ---
+
+function renderThumbnailCarousel(stage) {
+  const carousel = document.getElementById("photo-thumbnail-carousel");
+  const container = document.getElementById("carousel-thumbnails-container");
+  container.innerHTML = "";
+  
+  if (stage.restDay || !stage.photos || stage.photos.length === 0) {
+    carousel.classList.add("hidden");
+    return;
+  }
+  
+  carousel.classList.remove("hidden");
+  
+  stage.photos.forEach(photo => {
+    const item = document.createElement("div");
+    item.className = "thumbnail-item";
+    item.id = `thumb-${photo.id}`;
+    
+    const img = document.createElement("img");
+    img.src = photo.img;
+    img.alt = photo.title;
+    
+    const timeSpan = document.createElement("div");
+    timeSpan.className = "thumbnail-time";
+    timeSpan.textContent = photo.timestamp.split(" ")[0];
+    
+    item.appendChild(img);
+    item.appendChild(timeSpan);
+    
+    // Thumbnail click zooms camera and opens high-res detail overlay
+    item.addEventListener("click", () => {
+      const clusters = getStageClusters(stage);
+      const cluster = clusters.find(c => c.photos.some(p => p.id === photo.id));
+      if (cluster) {
+        showPhotoClusterDetails(cluster);
+        activePhotoIndex = cluster.photos.findIndex(p => p.id === photo.id);
+        updatePhotoDisplay();
+        
+        highlightActiveThumbnail(photo.id);
+        
+        if (activeMap3D) {
+          activeMap3D.center = { lat: cluster.lat, lng: cluster.lon, altitude: cluster.lat === 45.74483 ? 2800 : 2200 };
+          activeMap3D.heading = 315;
+          activeMap3D.tilt = 68;
+          activeMap3D.range = 600;
+        }
+      }
+    });
+    
+    container.appendChild(item);
+  });
+}
+
+function getStageClusters(stage) {
+  const clusters = [];
+  stage.photos.forEach(photo => {
+    let matchedCluster = null;
+    for (let c of clusters) {
+      const dist = calculateDistance(photo.lat, photo.lon, c.lat, c.lon);
+      if (dist <= 400) {
+        matchedCluster = c;
+        break;
+      }
+    }
+    if (matchedCluster) {
+      matchedCluster.photos.push(photo);
+    } else {
+      clusters.push({
+        id: photo.id,
+        lat: photo.lat,
+        lon: photo.lon,
+        ele: photo.ele || 0,
+        title: photo.title,
+        photos: [photo]
+      });
+    }
+  });
+  return clusters;
+}
+
+function highlightActiveThumbnail(photoId) {
+  document.querySelectorAll(".thumbnail-item").forEach(item => item.classList.remove("active"));
+  const activeThumb = document.getElementById(`thumb-${photoId}`);
+  if (activeThumb) {
+    activeThumb.classList.add("active");
+    activeThumb.scrollIntoView({ behavior: "smooth", inline: "center", block: "nearest" });
+  }
+}
+
+function syncScrubberWithPhotos(pt) {
+  const stage = TMB_STAGES.find(s => s.day === activeDay);
+  if (!stage || !stage.photos || stage.photos.length === 0) return;
+  
+  let closestPhoto = null;
+  let minDistance = Infinity;
+  
+  stage.photos.forEach(photo => {
+    const dist = calculateDistance(pt.lat, pt.lon, photo.lat, photo.lon);
+    if (dist < minDistance) {
+      minDistance = dist;
+      closestPhoto = photo;
+    }
+  });
+  
+  // Highlight thumbnail if scrubber is within 1.5 km of a photo milestone
+  if (closestPhoto && minDistance < 1500) {
+    highlightActiveThumbnail(closestPhoto.id);
+  }
 }
