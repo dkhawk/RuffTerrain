@@ -8,8 +8,12 @@ let googleMapsInstance = null;
 let activeMap3D = null;
 let activePolyline = null;
 let activeMarkers = [];
-let parsedRoute = null;
 let elevationChart = null;
+let parsedRoute = null;
+
+// Carousel state variables
+let activeCluster = null;
+let activePhotoIndex = 0;
 
 // Cinematic flight states
 let flightInterval = null;
@@ -246,21 +250,48 @@ function renderRouteOn3DMap(route, stage) {
     return svg;
   };
 
-  // Place interactive Photo Pins
+  // Proximity clustering algorithm (within 400m)
+  const clusters = [];
   stage.photos.forEach(photo => {
+    let matchedCluster = null;
+    for (let c of clusters) {
+      const dist = calculateDistance(photo.lat, photo.lon, c.lat, c.lon);
+      if (dist <= 400) {
+        matchedCluster = c;
+        break;
+      }
+    }
+    if (matchedCluster) {
+      matchedCluster.photos.push(photo);
+    } else {
+      clusters.push({
+        id: photo.id,
+        lat: photo.lat,
+        lon: photo.lon,
+        ele: photo.ele || 0,
+        title: photo.title,
+        photos: [photo]
+      });
+    }
+  });
+
+  // Place interactive Photo Pins for each cluster
+  clusters.forEach(cluster => {
     const marker = document.createElement("gmp-marker-3d");
-    marker.position = { lat: photo.lat, lng: photo.lon, altitude: 0 };
+    marker.position = { lat: cluster.lat, lng: cluster.lon, altitude: 0 };
     marker.altitudeMode = "RELATIVE_TO_GROUND";
     
-    const svgElement = createCameraSvg();
+    // Choose color depending on whether it's a multi-photo cluster stop (green) or single photo (orange)
+    const pinColor = cluster.photos.length > 1 ? "#10b981" : "#f59e0b";
+    const svgElement = createCameraSvg(pinColor);
     const template = document.createElement("template");
     template.content.appendChild(svgElement);
     marker.appendChild(template);
     
     // Smooth rotate & zoom camera towards photo landmark when clicked
     marker.addEventListener("gmp-click", () => {
-      showPhotoDetails(photo);
-      activeMap3D.center = { lat: photo.lat, lng: photo.lon, altitude: photo.lat === 45.74483 ? 2800 : 2200 };
+      showPhotoClusterDetails(cluster);
+      activeMap3D.center = { lat: cluster.lat, lng: cluster.lon, altitude: cluster.lat === 45.74483 ? 2800 : 2200 };
       activeMap3D.heading = 315; // default scenic angle
       activeMap3D.tilt = 68;
       activeMap3D.range = 600;
@@ -271,13 +302,33 @@ function renderRouteOn3DMap(route, stage) {
   });
 }
 
-function showPhotoDetails(photo) {
+function showPhotoClusterDetails(cluster) {
+  activeCluster = cluster;
+  activePhotoIndex = 0;
+  updatePhotoDisplay();
+}
+
+function updatePhotoDisplay() {
+  if (!activeCluster || !activeCluster.photos.length) return;
+  const photo = activeCluster.photos[activePhotoIndex];
+  
   const popover = document.getElementById("photo-viewer");
   document.getElementById("photo-display").src = photo.img;
-  document.getElementById("photo-time").textContent = photo.timestamp;
+  document.getElementById("photo-time").textContent = `${photo.timestamp} (${activePhotoIndex + 1}/${activeCluster.photos.length})`;
   document.getElementById("photo-title").textContent = photo.title;
   document.getElementById("photo-desc").textContent = photo.desc;
   popover.classList.remove("hidden");
+  
+  const prevBtn = document.getElementById("prev-photo-btn");
+  const nextBtn = document.getElementById("next-photo-btn");
+  
+  if (activeCluster.photos.length > 1) {
+    prevBtn.classList.remove("hidden");
+    nextBtn.classList.remove("hidden");
+  } else {
+    prevBtn.classList.add("hidden");
+    nextBtn.classList.add("hidden");
+  }
 }
 
 function clearMapLayers() {
@@ -421,11 +472,35 @@ function checkNearbyPhotoTrigger(point) {
   const stage = TMB_STAGES.find(s => s.day === activeDay);
   if (!stage) return;
   
+  // Re-generate clusters dynamically to scan proximity
+  const clusters = [];
   stage.photos.forEach(photo => {
-    const distanceM = calculateDistance(point.lat, point.lon, photo.lat, photo.lon);
-    // If within 100 meters, slow down/pause flight briefly to showcase photo
-    if (distanceM <= 100 && !isPhotoOpenedRecently(photo.id)) {
-      pauseFlightForPhoto(photo);
+    let matchedCluster = null;
+    for (let c of clusters) {
+      const dist = calculateDistance(photo.lat, photo.lon, c.lat, c.lon);
+      if (dist <= 400) {
+        matchedCluster = c;
+        break;
+      }
+    }
+    if (matchedCluster) {
+      matchedCluster.photos.push(photo);
+    } else {
+      clusters.push({
+        id: photo.id,
+        lat: photo.lat,
+        lon: photo.lon,
+        ele: photo.ele || 0,
+        title: photo.title,
+        photos: [photo]
+      });
+    }
+  });
+
+  clusters.forEach(cluster => {
+    const distanceM = calculateDistance(point.lat, point.lon, cluster.lat, cluster.lon);
+    if (distanceM <= 120 && !isPhotoOpenedRecently(cluster.id)) {
+      pauseFlightForCluster(cluster);
     }
   });
 }
@@ -435,23 +510,40 @@ function isPhotoOpenedRecently(id) {
   return openedPhotoIds.has(id);
 }
 
-function pauseFlightForPhoto(photo) {
-  openedPhotoIds.add(photo.id);
+function pauseFlightForCluster(cluster) {
+  openedPhotoIds.add(cluster.id);
   clearInterval(flightInterval);
   
-  showPhotoDetails(photo);
+  showPhotoClusterDetails(cluster);
   if (activeMap3D) {
-    activeMap3D.center = { lat: photo.lat, lng: photo.lon, altitude: photo.ele };
+    activeMap3D.center = { lat: cluster.lat, lng: cluster.lon, altitude: cluster.ele };
     activeMap3D.range = 800;
   }
   
+  // If multiple photos exist, let the slideshow progress automatically during the pause!
+  let carouselTimer = null;
+  if (cluster.photos.length > 1) {
+    let slideCount = 0;
+    carouselTimer = setInterval(() => {
+      if (slideCount < cluster.photos.length - 1) {
+        activePhotoIndex++;
+        updatePhotoDisplay();
+        slideCount++;
+      } else {
+        clearInterval(carouselTimer);
+      }
+    }, 2000); // cycle slide every 2 seconds
+  }
+  
+  const pauseDuration = Math.max(4000, cluster.photos.length * 2000);
+  
   setTimeout(() => {
-    // Resume guided tour after 4 seconds pause
+    if (carouselTimer) clearInterval(carouselTimer);
     document.getElementById("photo-viewer").classList.add("hidden");
     if (isFlightPlaying) {
       startGuidedTourResume();
     }
-  }, 4000);
+  }, pauseDuration);
 }
 
 function startGuidedTourResume() {
@@ -582,6 +674,19 @@ function setupEventListeners() {
   // Close photo overlay
   document.getElementById("close-photo-btn").addEventListener("click", () => {
     document.getElementById("photo-viewer").classList.add("hidden");
+  });
+  
+  // Carousel controls
+  document.getElementById("prev-photo-btn").addEventListener("click", () => {
+    if (!activeCluster) return;
+    activePhotoIndex = (activePhotoIndex - 1 + activeCluster.photos.length) % activeCluster.photos.length;
+    updatePhotoDisplay();
+  });
+  
+  document.getElementById("next-photo-btn").addEventListener("click", () => {
+    if (!activeCluster) return;
+    activePhotoIndex = (activePhotoIndex + 1) % activeCluster.photos.length;
+    updatePhotoDisplay();
   });
   
   // Setup configuration dialogs

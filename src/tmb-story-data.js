@@ -85,6 +85,15 @@ export const TMB_STAGES = [
         timestamp: "11:15 AM"
       },
       {
+        id: "day3-seigne-marker",
+        lat: 45.74483,
+        lon: 6.79154,
+        title: "Col de la Seigne boundary stone",
+        desc: "The stone marker demarcating the high boundary between Savoie (France) and Valle d'Aosta (Italy).",
+        img: "/photos/col_de_la_seigne.png",
+        timestamp: "11:20 AM"
+      },
+      {
         id: "day3-combal",
         lat: 45.76317,
         lon: 6.83630,
