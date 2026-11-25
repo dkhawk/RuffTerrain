@@ -1,6 +1,6 @@
 import { test, describe } from "node:test";
 import assert from "node:assert";
-import { parseGPX, getMetricsForPoint, classifyGradient, computeSectorGradient, calculateWarnings, autoSegmentCourse, solveBackwardPacing, saveRunnerProfile, deleteRunnerProfile, getRunnerProfiles, solvePacingTriangle } from "../src/gpx-parser.js";
+import { parseGPX, getMetricsForPoint, classifyGradient, computeSectorGradient, calculateWarnings, autoSegmentCourse, solveBackwardPacing, saveRunnerProfile, deleteRunnerProfile, getRunnerProfiles, isDefaultRunnerProfile, DEFAULT_RUNNER_PROFILES, solvePacingTriangle } from "../src/gpx-parser.js";
 import { writeGPX } from "../src/gpx-writer.js";
 import { getWeatherConditionStyle, getElapsedHoursAtDistance, getWeatherWindowDetails } from "../src/fetch-weather.js";
 import { parseCalibrationTrack, deriveFatigueDecayLambda, buildEmpiricalProfile } from "../src/empirical-calibration.js";
@@ -720,5 +720,159 @@ describe("GPX Parser & Writer Tests", () => {
     assert.strictEqual(powerHike.hex, "#ef4444"); // Red
   });
 
-});
+  test("Parses GaiaGPS self-closing trkpt tags with ele attributes", () => {
+    const mockGaiaGpx = `<?xml version="1.0" ?>
+<gpx xmlns="http://www.topografix.com/GPX/1/1" creator="GaiaGPS" version="1.1">
+  <trk>
+    <name>The Keyhole via Longs Peak Trail</name>
+    <type>knownroute</type>
+    <trkseg>
+      <trkpt lat="40.272247" lon="-105.556603" ele="2869.0"/>
+      <trkpt lat="40.272155" lon="-105.556832" ele="2874.0"/>
+      <trkpt lat="40.271759" lon="-105.557015" ele="2879.0"/>
+    </trkseg>
+  </trk>
+</gpx>`;
 
+    const route = parseGPX(mockGaiaGpx, "imperial");
+    assert.ok(route);
+    assert.strictEqual(route.name, "The Keyhole via Longs Peak Trail");
+    assert.strictEqual(route.trackpoints.length, 3);
+    assert.strictEqual(route.trackpoints[0].lat, 40.272247);
+    assert.strictEqual(route.trackpoints[0].lon, -105.556603);
+    // parseGPX runs an 11-point moving-average elevation smoothing pass when >= 3 points exist:
+    // (2869.0 + 2874.0 + 2879.0) / 3 = 2874.0.
+    assert.strictEqual(route.trackpoints[0].ele, 2874.0);
+    assert.ok(route.totalDistance > 0);
+  });
+
+  test("Preserves all points and metadata when mixing self-closing and paired GPX tags", () => {
+    const mixedTrkAndWptGpx = `<?xml version="1.0" encoding="utf-8"?>
+<gpx version="1.1" creator="MixedTest">
+  <wpt lat="40.0" lon="-105.0" ele="2800"/>
+  <wpt lat="40.1" lon="-105.1"><name>Summit</name><ele>4345</ele></wpt>
+  <trk>
+    <name>Mixed Track</name>
+    <trkseg>
+      <trkpt lat="40.0" lon="-105.0" ele="2800"/>
+      <trkpt lat="40.05" lon="-105.05" ele="2850"/>
+      <trkpt lat="40.1" lon="-105.1"><ele>2900</ele><time>2026-08-01T10:00:00Z</time></trkpt>
+    </trkseg>
+  </trk>
+</gpx>`;
+
+    const route = parseGPX(mixedTrkAndWptGpx, "imperial");
+    assert.strictEqual(route.trackpoints.length, 3);
+    assert.strictEqual(route.trackpoints[0].time, null);
+    assert.strictEqual(route.trackpoints[1].lat, 40.05);
+    assert.strictEqual(route.trackpoints[2].lat, 40.1);
+    assert.strictEqual(route.trackpoints[2].time, "2026-08-01T10:00:00Z");
+
+    const summitWpt = route.waypoints.find(w => w.name === "Summit");
+    assert.ok(summitWpt, "Paired waypoint following a self-closing waypoint must not be dropped");
+    assert.strictEqual(summitWpt.lat, 40.1);
+    const firstWpt = route.waypoints.find(w => w.lat === 40.0 && w.name !== "Course Start");
+    assert.ok(firstWpt, "Self-closing waypoint must be preserved");
+    assert.notStrictEqual(firstWpt.name, "Summit");
+
+    // Also verify fallback <rtept> parsing with mixed self-closing and paired tags
+    const mixedRteGpx = `<?xml version="1.0"?>
+<gpx version="1.1">
+  <rte>
+    <name>Mixed Route</name>
+    <rtept lat="40.0" lon="-105.0" ele="3000"/>
+    <rtept lat="40.1" lon="-105.1"><ele>3100</ele></rtept>
+  </rte>
+</gpx>`;
+    const rte = parseGPX(mixedRteGpx, "imperial");
+    assert.strictEqual(rte.trackpoints.length, 2);
+    assert.strictEqual(rte.trackpoints[0].ele, 3000);
+    assert.strictEqual(rte.trackpoints[1].ele, 3100);
+  });
+
+  test("Handles GPX attribute ordering, quoting, namespace collisions, and malformed coordinates safely", () => {
+    const edgeCaseGpx = `<?xml version="1.0"?>
+<gpx version="1.1">
+  <trk>
+    <trkseg>
+      <trkpt lon = '-105.0' lat = '40.0' data-ele="9999" ns:time="bad"><ele>2800</ele><time> 2026-08-01T09:00:00Z </time></trkpt>
+      <trkpt lat="abc" lon="-105.05" ele="2850"/>
+      <trkpt lat=40.1 lon=-105.1 ele=2900 time=2026-08-01T10:00:00Z/>
+    </trkseg>
+  </trk>
+</gpx>`;
+
+    const route = parseGPX(edgeCaseGpx, "imperial");
+    // Malformed lat="abc" point is dropped, leaving 2 valid points (no smoothing triggered since length < 3)
+    assert.strictEqual(route.trackpoints.length, 2);
+    assert.ok(Number.isFinite(route.totalDistance) && route.totalDistance > 0);
+    assert.strictEqual(route.trackpoints[0].lat, 40.0);
+    assert.strictEqual(route.trackpoints[0].lon, -105.0);
+    assert.strictEqual(route.trackpoints[0].ele, 2800);
+    assert.strictEqual(route.trackpoints[0].time, "2026-08-01T09:00:00Z");
+    assert.strictEqual(route.trackpoints[1].ele, 2900);
+    assert.strictEqual(route.trackpoints[1].time, "2026-08-01T10:00:00Z");
+
+    // Blank <ele> child element must fall back to 0 rather than NaN
+    const blankEleGpx = `<gpx><trk><trkseg><trkpt lat="40.0" lon="-105.0"><ele>   </ele></trkpt></trkseg></trk></gpx>`;
+    const blankEleRoute = parseGPX(blankEleGpx, "imperial");
+    assert.strictEqual(blankEleRoute.trackpoints[0].ele, 0);
+  });
+
+  test("Technical 14er Hiker factory profile is protected from deletion and backfilled into legacy localStorage", () => {
+    const hiker = DEFAULT_RUNNER_PROFILES.find(p => p.id === "profile_14er_hiker");
+    assert.ok(hiker);
+    assert.strictEqual(hiker.basePaces.extreme, 65.0);
+    assert.strictEqual(hiker.restDurationMin, 25);
+    assert.strictEqual(isDefaultRunnerProfile("profile_14er_hiker"), true);
+    assert.strictEqual(isDefaultRunnerProfile("profile_custom_123"), false);
+
+    // Deleting a factory profile must be a no-op
+    deleteRunnerProfile("profile_14er_hiker");
+    assert.ok(getRunnerProfiles().some(p => p.id === "profile_14er_hiker"));
+
+    // Simulate an existing user whose localStorage predates profile_14er_hiker
+    const originalLocalStorage = globalThis.localStorage;
+    const store = new Map();
+    const legacyProfiles = [
+      {
+        id: "profile_hawk_pro",
+        name: "Dan Hawk (Edited)",
+        basePaces: { descent: 8.0, flat: 9.0, moderate: 12.0, steep: 15.0, verysteep: 19.0, extreme: 25.0 },
+        restDurationMin: 15
+      },
+      {
+        id: "profile_legacy_custom",
+        name: "Custom Trail Profile",
+        basePaces: { descent: 10.0, flat: 11.0, moderate: 14.0, steep: 18.0, verysteep: 23.0, extreme: 30.0 },
+        restDurationMin: 15
+      }
+    ];
+    store.set("kokopelli_runner_profiles", JSON.stringify(legacyProfiles));
+
+    globalThis.localStorage = {
+      getItem: (k) => (store.has(k) ? store.get(k) : null),
+      setItem: (k, v) => store.set(k, String(v)),
+      removeItem: (k) => store.delete(k)
+    };
+
+    try {
+      const merged = getRunnerProfiles();
+      assert.strictEqual(merged.find(p => p.id === "profile_hawk_pro").name, "Dan Hawk (Edited)");
+      assert.ok(merged.some(p => p.id === "profile_legacy_custom"), "Existing custom profiles must be preserved");
+      assert.ok(merged.some(p => p.id === "profile_casual"), "Missing factory profiles must be backfilled");
+      assert.ok(merged.some(p => p.id === "profile_14er_hiker"), "New 14er profile must be backfilled for existing users");
+
+      // Backfilled list should also be persisted so subsequent loads keep it
+      const persisted = JSON.parse(store.get("kokopelli_runner_profiles"));
+      assert.ok(persisted.some(p => p.id === "profile_14er_hiker"));
+    } finally {
+      if (originalLocalStorage === undefined) {
+        delete globalThis.localStorage;
+      } else {
+        globalThis.localStorage = originalLocalStorage;
+      }
+    }
+  });
+
+});

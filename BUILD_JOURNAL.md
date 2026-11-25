@@ -1270,7 +1270,6 @@ This journal records all design decisions, architecture patterns, development st
 *   **Key Actions & Verification**:
     *   Updated `src/main.js` realigning DOM element ID constants and unconditioned loader/content visibility toggling.
     *   Ran `node --test test/gpx.test.js` verifying 25/25 unit tests passing and validated production client bundle (`npm run build`).
->>>>>>> origin/main
 
 ---
 
@@ -1288,6 +1287,64 @@ This journal records all design decisions, architecture patterns, development st
     *   Updated `src/fetch-weather.js` implementing pagination looping on `nextPageToken` and UTC timestamp comparisons on `hr.interval.startTime`.
     *   Ran unit tests successfully (`25/25 passing`) and validated Vite production client compilation.
 
+---
 
+### 🚀 Session 92: Provision Local API Keys and Launch Web Server
+*   **Goal**: Provision Google Maps 3D and Gemini API keys into local environment configuration and launch the Vite development server.
+*   **Decisions & Rationale (*The Why*)**:
+    *   **Local Secret Provisioning**: Provisioned project API keys into git-ignored `.env.local` (`VITE_MAPS_API_KEY`, `VITE_GMAPS_API_KEY`, `VITE_GEMINI_API_KEY`), satisfying local Vite environment variable fallbacks in `src/main.js`.
+    *   **Key Verification**: Validated key authorization against the Google Maps JavaScript API with the `maps3d` library namespace via HTTP GET request (200 OK).
+*   **Key Actions & Verification**:
+    *   Created `.env.local` with API keys.
+    *   Launched Vite dev server (`npm run dev`) operating as a background daemon process on port 5173.
+    *   Verified HTTP response from `http://localhost:5173/`.
 
+---
+
+### 🚀 Session 93: Flexible GPX Attribute Parsing for GaiaGPS & Flat Self-Closing Tags
+*   **Goal**: Fix failure when loading GaiaGPS GPX files (e.g. `The Keyhole via Longs Peak Trail.gpx`), where no polyline or elevation profile rendered.
+*   **Decisions & Rationale (*The Why*)**:
+    *   **Robust GPX Point Attribute Extraction (`extractPointData`)**: The legacy regular expressions for `<trkpt>`, `<rtept>`, and `<wpt>` required `lat` to strictly precede `lon` and expected a self-closing slash `/>` or closing tag `>...` immediately after `lon="..."`. GaiaGPS and other tools emit self-closing tags with additional attributes such as `ele="2869.0"/>` (e.g., `<trkpt lat="40.27" lon="-105.55" ele="2869.0"/>`), causing regex matching to fail completely and return 0 trackpoints. Created `extractPointData` to independently extract `lat`, `lon`, `ele`, and `time` regardless of attribute order, quotes, or placement as attributes vs. child nodes (`<ele>`).
+*   **Key Actions & Verification**:
+    *   Added `extractPointData` helper and updated `parseGPX` point and waypoint parsing loops in `src/gpx-parser.js`.
+    *   Added unit test `Parses GaiaGPS self-closing trkpt tags with ele attributes` to `test/gpx.test.js`.
+    *   Verified 26/26 unit tests passing (`npm test`), production build compilation (`npm run build`), and successfully parsed `The Keyhole via Longs Peak Trail.gpx` (1,537 points, 12.92 miles, 4,408 ft vert gain).
+
+---
+
+### 🚀 Session 94: Longs Peak GPX Out-and-Back Wrong Turn Removal
+*   **Goal**: Repair local `Longs_Peak.gpx` track by removing an out-and-back wrong turn spur at mile 3.3.
+*   **Decisions & Rationale (*The Why*)**:
+    *   **Spatial Backtrack Detection**: Located 102 erroneous trackpoints (indices 1816..1917) at mile 3.275 – 3.479 (`40.2658° N, -105.5925° W` to `40.2649° N, -105.5935° W`), where the GPS track departed down a side trail for ~0.2 miles and backtracked.
+    *   **Seamless Track Splicing**: Removed the 102 out-and-back points and spliced trackpoints 1815 and 1918 (gap distance of only 21.25 meters), eliminating the wrong turn while maintaining route continuity to the 13,936 ft summit.
+*   **Key Actions & Verification**:
+    *   Updated local `Longs_Peak.gpx` in place (trackpoints reduced from 9,907 to 9,805).
+    *   Verified track summary via `parseGPX`: 14.83 miles total distance, 5,127 ft elevation gain, reaching 13,936 ft summit elevation.
+    *   Re-ran spatial spur detection confirming 0 out-and-back spurs remain between miles 3.0 and 3.6.
+
+---
+
+### 🚀 Session 95: Technical 14er Mountaineering Profile & Real-World Calibration
+*   **Goal**: Correct unrealistic automated finish time estimates for technical 14er mountaineering routes (such as Longs Peak Keyhole).
+*   **Decisions & Rationale (*The Why*)**:
+    *   **Technical 14er Scrambling Calibration**: Standard trail running presets assume non-technical trail running (where steep gradient paces range from 16 to 26 min/mile). Longs Peak Keyhole involves ~3.5 miles of Class 3 rock scrambling (Boulderfield, Keyhole, Trough, Narrows, Homestretch) at 12,000 ft – 14,259 ft altitude, where ascent paces drop to 50–65 min/mile and rocky descents take 20–30 min/mile.
+    *   **Added `Technical 14er Hiker / Mountaineer` Profile**: Added `profile_14er_hiker` to `DEFAULT_RUNNER_PROFILES` in `src/gpx-parser.js` with realistic 14er base paces (`descent: 22m, flat: 20m, moderate: 28m, steep: 38m, verysteep: 50m, extreme: 65m`).
+*   **Key Actions & Verification**:
+    *   Updated `DEFAULT_RUNNER_PROFILES` in `src/gpx-parser.js`.
+    *   Verified unit tests (`npm test`) passing 26/26.
+    *   Calculated realistic 10-hour day out pacing for Longs Peak matching user ground-truth.
+
+---
+
+### 🚀 Session 96: Pre-Submit Review Hardening — GPX Tag Regex, Profile Backfill & Feature Worktree Migration
+*   **Goal**: Address pre-submit review findings in GPX self-closing tag parsing, `profile_14er_hiker` UI/storage wiring, and branch workflow before submission.
+*   **Decisions & Rationale (*The Why*)**:
+    *   **Explicit Self-Closing vs. Paired Point Tag Matching (`createPointTagRegex`)**: The initial regex `/<trkpt\b([^>]*)>(?:([\s\S]*?)<\/trkpt>)?/g` consumed `/` in `([^>]*)` and left the optional closing branch greedy, causing (1) swallowed points and stolen metadata whenever self-closing and paired tags were mixed, and (2) $O(N^2)$ backtracking to EOF on large all-self-closing GPX files (~450 ms for 10k points). Explicitly branching on `(?:\/>|>([\s\S]*?)<\/tag>)` eliminates data corruption and cuts 10k-point `parseGPX` runtime to ~17.7 ms (linear $O(N)$).
+    *   **Hardened Attribute Extraction & Numeric Guards**: Precompiled whitespace-anchored attribute regexes prevent hyphenated/namespaced attribute collisions (`data-ele`, `ns:time`) and trailing-slash leaks, while `Number.isFinite` checks reject malformed `lat`/`lon` coordinates and default non-finite elevations to `0`.
+    *   **Factory Profile Backfill & Centralized Deletion Guard (`isDefaultRunnerProfile`)**: Existing users with persisted `kokopelli_runner_profiles` in `localStorage` previously never received newly added factory profiles, and `src/main.js` hardcoded only two factory IDs in its delete guard. Updated `getRunnerProfiles()` to merge missing `DEFAULT_RUNNER_PROFILES` without overwriting user edits, exported `isDefaultRunnerProfile()` for both `deleteRunnerProfile()` and `src/main.js`, and aligned the static fallback `<option>` in `index.html`.
+    *   **Worktree Workflow**: Moved all changes off `main` onto sibling feature worktree `feature-gpx-parsing-and-14er-profile` (branch `feature/gpx-parsing-and-14er-profile`).
+*   **Key Actions & Verification**:
+    *   Updated `src/gpx-parser.js`, `src/main.js`, `index.html`, `test/gpx.test.js`, and `BUILD_JOURNAL.md`.
+    *   Added regression tests covering mixed self-closing/paired `<trkpt>`/`<rtept>`/`<wpt>`, attribute quoting/order/namespace collisions/NaN handling, and `profile_14er_hiker` deletion protection + legacy `localStorage` backfill.
+    *   Verified 29/29 unit tests passing (`npm test`), production build passing (`npm run build`), linear scaling on 10k–20k self-closing points, and clean `main` worktree.
 

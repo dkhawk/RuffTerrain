@@ -24,7 +24,7 @@
  * The preview controller iterates through trackpoint bearings to control camera panning and triggers contextual auto-pauses when approaching points of interest.
  */
 
-import { parseGPX, parseKML, reconcileCourse, getMetricsForPoint, calculateWarnings, haversine, snapToRouteSegments, recalculateRouteMetrics, classifyGradient, computeSectorGradient, autoSegmentCourse, solveBackwardPacing, saveRunnerProfile, deleteRunnerProfile, solvePacingTriangle, getRunnerProfiles, getActiveRunnerProfile, getActiveGoalPreset } from "./gpx-parser.js";
+import { parseGPX, parseKML, reconcileCourse, getMetricsForPoint, calculateWarnings, haversine, snapToRouteSegments, recalculateRouteMetrics, classifyGradient, computeSectorGradient, autoSegmentCourse, solveBackwardPacing, saveRunnerProfile, deleteRunnerProfile, isDefaultRunnerProfile, solvePacingTriangle, getRunnerProfiles, getActiveRunnerProfile, getActiveGoalPreset } from "./gpx-parser.js";
 import { writeGPX } from "./gpx-writer.js";
 import { correctRouteElevations } from "./fetch-elevation.js";
 import { sendToGemini, fetchAvailableModels, generateWaypointFromDescription } from "./gemini-client.js";
@@ -3908,7 +3908,7 @@ function setupEventListeners() {
     deleteRunnerProfileBtn.addEventListener("click", () => {
       if (!runnerProfileSelect) return;
       const curId = runnerProfileSelect.value;
-      if (curId === "profile_hawk_pro" || curId === "profile_casual") {
+      if (isDefaultRunnerProfile(curId)) {
         showToast("Cannot delete default factory profile.", true);
         return;
       }

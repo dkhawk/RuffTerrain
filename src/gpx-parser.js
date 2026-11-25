@@ -202,6 +202,113 @@ export function recalculateRouteMetrics(route) {
 }
 
 
+// Precompiled attribute and child-element matchers for GPX point parsing.
+// Anchoring attribute names on `(?:^|\s)` avoids false positives from hyphenated or
+// namespaced attributes (such as `data-ele="..."` or `ns:time="..."`), while precompiling
+// at module scope avoids regex construction inside tight trackpoint loops.
+const ATTR_LAT_RE = /(?:^|\s)lat\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s"'=<>`/]+))/i;
+const ATTR_LON_RE = /(?:^|\s)lon\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s"'=<>`/]+))/i;
+const ATTR_ELE_RE = /(?:^|\s)ele\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s"'=<>`/]+))/i;
+const ATTR_TIME_RE = /(?:^|\s)time\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s"'=<>`/]+))/i;
+const CHILD_ELE_RE = /<ele>([^<]+)<\/ele>/i;
+const CHILD_TIME_RE = /<time>([^<]+)<\/time>/i;
+
+/**
+ * Reads a trimmed attribute value from a GPX opening tag header using a precompiled matcher.
+ * @param {string} tagHeader Attribute substring inside an opening XML tag
+ * @param {RegExp} attrRegex Precompiled attribute matcher with double-, single-, and unquoted capture groups
+ * @returns {string|null} Trimmed attribute value, or null when absent
+ */
+function readXmlAttribute(tagHeader, attrRegex) {
+  const match = tagHeader.match(attrRegex);
+  if (!match) return null;
+  const raw = match[1] ?? match[2] ?? match[3];
+  return raw !== undefined ? raw.trim() : null;
+}
+
+/**
+ * Builds a global, case-insensitive regex matching either self-closing (`<tag .../>`)
+ * or paired (`<tag ...>...</tag>`) GPX point elements.
+ *
+ * Explicitly branching on `/>` vs. `>...</tag>` prevents two failure modes:
+ * 1. Greedy matching across mixed self-closing and paired tags, which would swallow
+ *    intervening points and steal child elements from later points.
+ * 2. Quadratic O(N^2) backtracking on large all-self-closing GPX tracks (such as GaiaGPS
+ *    exports), since `/>` commits immediately without scanning to EOF for a closing tag.
+ *
+ * @param {"trkpt"|"rtept"|"wpt"} tagName GPX point element tag name
+ * @returns {RegExp}
+ */
+function createPointTagRegex(tagName) {
+  return new RegExp(`<${tagName}\\b([^>]*?)(?:\\/>|>([\\s\\S]*?)<\\/${tagName}>)`, "gi");
+}
+
+/**
+ * Extracts validated point coordinates (lat, lon, ele, time) from a point tag header and inner XML.
+ * Handles attributes in any order, single/double/unquoted values, optional whitespace around `=`,
+ * and elevation/timestamp encoded either as attributes (e.g., GaiaGPS flat tags) or child nodes.
+ *
+ * @param {string} tagHeader Attribute substring from the opening point tag
+ * @param {string} [tagInner=""] Inner XML content for paired tags
+ * @returns {{lat: number, lon: number, ele: number, time: string|null}|null} Parsed point or null if lat/lon are invalid
+ */
+function extractPointData(tagHeader, tagInner = "") {
+  const latRaw = readXmlAttribute(tagHeader, ATTR_LAT_RE);
+  const lonRaw = readXmlAttribute(tagHeader, ATTR_LON_RE);
+  if (!latRaw || !lonRaw) return null;
+
+  const lat = parseFloat(latRaw);
+  const lon = parseFloat(lonRaw);
+  // Drop malformed coordinates early so NaN cannot propagate into Haversine totals or grade calculations.
+  if (!Number.isFinite(lat) || !Number.isFinite(lon)) return null;
+
+  let ele = 0;
+  const eleAttrRaw = readXmlAttribute(tagHeader, ATTR_ELE_RE);
+  const parsedAttrEle = eleAttrRaw ? parseFloat(eleAttrRaw) : NaN;
+  if (Number.isFinite(parsedAttrEle)) {
+    ele = parsedAttrEle;
+  } else if (tagInner) {
+    const eleChildMatch = tagInner.match(CHILD_ELE_RE);
+    if (eleChildMatch) {
+      const parsedChildEle = parseFloat(eleChildMatch[1]);
+      if (Number.isFinite(parsedChildEle)) ele = parsedChildEle;
+    }
+  }
+
+  let time = null;
+  const timeAttrRaw = readXmlAttribute(tagHeader, ATTR_TIME_RE);
+  if (timeAttrRaw) {
+    time = timeAttrRaw;
+  } else if (tagInner) {
+    const timeChildMatch = tagInner.match(CHILD_TIME_RE);
+    if (timeChildMatch) {
+      const trimmedTime = timeChildMatch[1].trim();
+      if (trimmedTime) time = trimmedTime;
+    }
+  }
+
+  return { lat, lon, ele, time };
+}
+
+/**
+ * Extracts all valid GPX point objects for a given point tag name (`trkpt` or `rtept`).
+ * @param {string} xmlText XML segment or document text
+ * @param {"trkpt"|"rtept"} tagName Point tag name to extract
+ * @returns {Array<{lat: number, lon: number, ele: number, time: string|null}>}
+ */
+function extractPointsFromXml(xmlText, tagName) {
+  const pts = [];
+  const pointRegex = createPointTagRegex(tagName);
+  let ptMatch;
+  while ((ptMatch = pointRegex.exec(xmlText)) !== null) {
+    const ptData = extractPointData(ptMatch[1], ptMatch[2] || "");
+    if (ptData) {
+      pts.push(ptData);
+    }
+  }
+  return pts;
+}
+
 /**
  * Parses GPX XML content into a structured route object.
  * @param {string} gpxText Raw GPX XML string
@@ -245,22 +352,7 @@ export function parseGPX(gpxText, units = "imperial", desertThresholdMiles = 8.0
     const sDesc = sDescMatch ? sDescMatch[1].trim() : "";
     
     // Extract trackpoints inside this track
-    const pts = [];
-    const trkptRegex = /<trkpt\s+lat="([^"]+)"\s+lon="([^"]+)"(?:\s*\/|>([\s\S]*?)<\/trkpt>)/g;
-    let ptMatch;
-    while ((ptMatch = trkptRegex.exec(trkInner)) !== null) {
-      const lat = parseFloat(ptMatch[1]);
-      const lon = parseFloat(ptMatch[2]);
-      const inner = ptMatch[3] || "";
-      
-      const eleMatch = inner.match(/<ele>([^<]+)<\/ele>/);
-      const ele = eleMatch ? parseFloat(eleMatch[1]) : 0;
-      
-      const timeMatch = inner.match(/<time>([^<]+)<\/time>/);
-      const time = timeMatch ? timeMatch[1] : null;
-      
-      pts.push({ lat, lon, ele, time });
-    }
+    const pts = extractPointsFromXml(trkInner, "trkpt");
     
     if (pts.length > 0) {
       rawTrackSegments.push({
@@ -273,39 +365,11 @@ export function parseGPX(gpxText, units = "imperial", desertThresholdMiles = 8.0
 
   // Fallback: If no tracks (<trk>) with trackpoints were found, check flat trackpoints or routepoints
   if (rawTrackSegments.length === 0) {
-    const pts = [];
-    const trkptRegex = /<trkpt\s+lat="([^"]+)"\s+lon="([^"]+)"(?:\s*\/|>([\s\S]*?)<\/trkpt>)/g;
-    let match;
-    while ((match = trkptRegex.exec(gpxText)) !== null) {
-      const lat = parseFloat(match[1]);
-      const lon = parseFloat(match[2]);
-      const inner = match[3] || "";
-      
-      const eleMatch = inner.match(/<ele>([^<]+)<\/ele>/);
-      const ele = eleMatch ? parseFloat(eleMatch[1]) : 0;
-      
-      const timeMatch = inner.match(/<time>([^<]+)<\/time>/);
-      const time = timeMatch ? timeMatch[1] : null;
+    let pts = extractPointsFromXml(gpxText, "trkpt");
 
-      pts.push({ lat, lon, ele, time });
-    }
-    
     // If no trackpoints, check routepoints (<rtept>)
     if (pts.length === 0) {
-      const rteptRegex = /<rtept\s+lat="([^"]+)"\s+lon="([^"]+)"(?:\s*\/|>([\s\S]*?)<\/rtept>)/g;
-      while ((match = rteptRegex.exec(gpxText)) !== null) {
-        const lat = parseFloat(match[1]);
-        const lon = parseFloat(match[2]);
-        const inner = match[3] || "";
-        
-        const eleMatch = inner.match(/<ele>([^<]+)<\/ele>/);
-        const ele = eleMatch ? parseFloat(eleMatch[1]) : 0;
-        
-        const timeMatch = inner.match(/<time>([^<]+)<\/time>/);
-        const time = timeMatch ? timeMatch[1] : null;
-
-        pts.push({ lat, lon, ele, time });
-      }
+      pts = extractPointsFromXml(gpxText, "rtept");
     }
     
     if (pts.length > 0) {
@@ -409,18 +473,19 @@ export function parseGPX(gpxText, units = "imperial", desertThresholdMiles = 8.0
 
   // Waypoints
   const waypoints = [];
-  const wptRegex = /<wpt\s+lat="([^"]+)"\s+lon="([^"]+)"(?:\s*\/|>([\s\S]*?)<\/wpt>)/g;
+  const wptRegex = createPointTagRegex("wpt");
   let wptIdx = 0;
   while ((match = wptRegex.exec(gpxText)) !== null) {
-    const lat = parseFloat(match[1]);
-    const lon = parseFloat(match[2]);
-    const inner = match[3] || "";
+    const ptData = extractPointData(match[1], match[2] || "");
+    if (!ptData) continue;
+
+    const lat = ptData.lat;
+    const lon = ptData.lon;
+    const ele = ptData.ele;
+    const inner = match[2] || "";
     
     const nMatch = inner.match(/<name>([^<]*)<\/name>/);
     const name = nMatch ? nMatch[1].trim() : `Waypoint ${wptIdx + 1}`;
-    
-    const eMatch = inner.match(/<ele>([^<]*)<\/ele>/);
-    const ele = eMatch ? parseFloat(eMatch[1]) : 0;
     
     const sMatch = inner.match(/<sym>([^<]*)<\/sym>/);
     let sym = sMatch ? sMatch[1].trim() : "icons/services.svg";
@@ -1965,6 +2030,19 @@ export const DEFAULT_RUNNER_PROFILES = [
       extreme: 35.0
     },
     restDurationMin: 20
+  },
+  {
+    id: "profile_14er_hiker",
+    name: "Technical 14er Hiker / Mountaineer",
+    basePaces: {
+      descent: 22.0,
+      flat: 20.0,
+      moderate: 28.0,
+      steep: 38.0,
+      verysteep: 50.0,
+      extreme: 65.0
+    },
+    restDurationMin: 25
   }
 ];
 
@@ -1977,11 +2055,41 @@ export const GOAL_PRESETS = {
 
 let activeProfilesList = null;
 
+/**
+ * Returns true if the given profile ID matches one of the built-in factory profiles.
+ * Centralizing this check keeps UI deletion guards and storage helpers aligned whenever
+ * new factory profiles (e.g., Technical 14er Hiker) are introduced.
+ *
+ * @param {string} profileId Runner profile identifier
+ * @returns {boolean}
+ */
+export function isDefaultRunnerProfile(profileId) {
+  return DEFAULT_RUNNER_PROFILES.some(p => p.id === profileId);
+}
+
+/**
+ * Retrieves runner profiles from localStorage (or in-memory fallback), automatically
+ * backfilling any newly introduced factory presets from DEFAULT_RUNNER_PROFILES while
+ * preserving existing user edits and custom profiles.
+ */
 export function getRunnerProfiles() {
   if (typeof localStorage !== "undefined") {
     try {
       const stored = JSON.parse(localStorage.getItem("kokopelli_runner_profiles"));
-      if (Array.isArray(stored) && stored.length > 0) return stored;
+      if (Array.isArray(stored) && stored.length > 0) {
+        const existingIds = new Set(stored.map(p => p && p.id).filter(Boolean));
+        const missingDefaults = DEFAULT_RUNNER_PROFILES
+          .filter(def => !existingIds.has(def.id))
+          .map(def => ({ ...def, basePaces: { ...def.basePaces } }));
+        if (missingDefaults.length > 0) {
+          const merged = [...stored, ...missingDefaults];
+          try {
+            localStorage.setItem("kokopelli_runner_profiles", JSON.stringify(merged));
+          } catch (_) {}
+          return merged;
+        }
+        return stored;
+      }
     } catch(e) {}
   }
   if (!activeProfilesList) {
@@ -2018,7 +2126,8 @@ export function saveRunnerProfile(newProfile) {
 }
 
 export function deleteRunnerProfile(profileId) {
-  if (!profileId) return;
+  // Factory profiles cannot be removed (and would otherwise be re-backfilled on next read).
+  if (!profileId || isDefaultRunnerProfile(profileId)) return;
   let profiles = getRunnerProfiles().filter(p => p.id !== profileId);
   if (profiles.length === 0) {
     profiles = DEFAULT_RUNNER_PROFILES.map(p => ({ ...p, basePaces: { ...p.basePaces } }));
